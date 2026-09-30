@@ -272,7 +272,7 @@ export default function MarketMap() {
     load();
     const id = window.setInterval(load, 15000);
     return () => { stopped = true; window.clearInterval(id); };
-  }, [streamLive]);
+  }, [streamLive, dataSource]);
 
   async function changeLive(next: boolean, automatic = false) {
     setError("");
