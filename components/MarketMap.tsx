@@ -379,7 +379,7 @@ export default function MarketMap() {
           >{streamLive === true ? "Ⅱ" : "▶"}</button>
           {streamLive === false && <div className="pause-banner">
             {autoPaused ? "Автоматична пауза след 2 мин. без активност" : "Live режимът е на пауза"} · данните са от кеша
-          </div>
+          </div>}
           <div className="market-map-head">
             <div>
               <strong>Live Solana DEX traffic</strong>
