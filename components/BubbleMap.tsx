@@ -207,10 +207,10 @@ export default function BubbleMap({ mint }: { mint: string }) {
         l.kind.startsWith("flow-") ? 54 : 48
       )
       .strength((l: any) =>
-        l.kind === "funder" ? 0.72 :
-        l.kind === "direct-transfer" ? 0.62 :
-        l.kind === "timing" ? 0.42 :
-        l.kind.startsWith("flow-") ? 0.34 : 0.22
+        l.kind === "funder" ? 0.48 :
+        l.kind === "direct-transfer" ? 0.42 :
+        l.kind === "timing" ? 0.28 :
+        l.kind.startsWith("flow-") ? 0.22 : 0.16
       ));
     s.alpha(0.62).restart();
     bump((x) => x + 1);
@@ -450,7 +450,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
 
   useEffect(() => {
     let alive = true;
-    const s = forceSimulation<N>().alphaDecay(0.032).velocityDecay(0.43);
+    const s = forceSimulation<N>().alphaDecay(0.026).velocityDecay(0.34);
     s.on("tick", () => bump((x) => x + 1)); sim.current = s;
 
     (async () => {
