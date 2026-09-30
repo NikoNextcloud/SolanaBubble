@@ -89,7 +89,7 @@ export default function MarketMap() {
       .force("charge", forceManyBody().strength(-12))
       .on("tick", () => setTick((x) => x + 1));
     sim.current = s;
-    return () => s.stop();
+    return () => { s.stop(); };
   }, []);
 
   useEffect(() => {
