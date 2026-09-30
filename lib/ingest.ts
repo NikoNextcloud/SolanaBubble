@@ -140,7 +140,18 @@ async function linkByFunder(mint: string, wallet: string) {
   const { data: sibs } = await db.from("holdings").select("wallet").eq("token_mint", mint).eq("funder", funder).neq("wallet", wallet);
   for (const s of sibs ?? []) {
     const [a, b] = [wallet, s.wallet].sort();
-    await db.from("wallet_links").upsert({ token_mint: mint, wallet_a: a, wallet_b: b, kind: "funder", evidence: `общ funder ${funder}` });
+    const now = new Date().toISOString();
+    const { data: prev } = await db.from("wallet_links")
+      .select("signal_count,created_at")
+      .eq("token_mint", mint).eq("wallet_a", a).eq("wallet_b", b).eq("kind", "funder")
+      .maybeSingle();
+    await db.from("wallet_links").upsert({
+      token_mint: mint, wallet_a: a, wallet_b: b, kind: "funder",
+      evidence: `общ funder ${funder}`,
+      signal_count: Math.max(1, Number(prev?.signal_count ?? 0)),
+      created_at: prev?.created_at ?? now,
+      last_seen: now,
+    });
   }
   if (sibs?.length) await recluster(mint);
 }
@@ -152,15 +163,30 @@ async function linkByTiming(mint: string, wallet: string, when: string) {
   const others = [...new Set((data ?? []).map(r => r.wallet))];
   for (const o of others) {
     const [a, b] = [wallet, o].sort();
-    await db.from("wallet_links").upsert({ token_mint: mint, wallet_a: a, wallet_b: b, kind: "timing", evidence: `BUY в рамките на ${TIMING_WINDOW_S}s` });
+    const { data: prev } = await db.from("wallet_links")
+      .select("signal_count,created_at")
+      .eq("token_mint", mint).eq("wallet_a", a).eq("wallet_b", b).eq("kind", "timing")
+      .maybeSingle();
+    await db.from("wallet_links").upsert({
+      token_mint: mint, wallet_a: a, wallet_b: b, kind: "timing",
+      evidence: `BUY в рамките на ${TIMING_WINDOW_S}s`,
+      signal_count: Number(prev?.signal_count ?? 0) + 1,
+      created_at: prev?.created_at ?? when,
+      last_seen: when,
+    });
   }
   if (others.length) await recluster(mint);
 }
 
 export async function recluster(mint: string) {
   const db = admin();
-  const { data } = await db.from("wallet_links").select("wallet_a,wallet_b,kind").eq("token_mint", mint);
-  const map = computeClusters((data ?? []).map(l => ({ a: l.wallet_a, b: l.wallet_b, kind: l.kind }) as Link));
+  const { data } = await db.from("wallet_links").select("wallet_a,wallet_b,kind,signal_count").eq("token_mint", mint);
+  const map = computeClusters((data ?? []).map(l => ({
+    a: l.wallet_a,
+    b: l.wallet_b,
+    kind: l.kind,
+    signal_count: Number(l.signal_count ?? 1),
+  }) as Link));
   const { data: hs } = await db.from("holdings").select("wallet,cluster_id").eq("token_mint", mint);
   for (const h of hs ?? []) {
     const next = map.get(h.wallet) ?? null;
