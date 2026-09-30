@@ -78,6 +78,8 @@ export async function GET() {
       symbol: p.baseToken?.symbol ?? null,
       dex: p.dexId ?? null,
       pairAddress: p.pairAddress ?? null,
+      quoteMint: p.quoteToken?.address ?? null,
+      quoteSymbol: p.quoteToken?.symbol ?? null,
       priceUsd: Number(p.priceUsd ?? 0),
       marketCap: Number(p.marketCap ?? p.fdv ?? 0),
       liquidityUsd: Number(p.liquidity?.usd ?? 0),
@@ -95,8 +97,44 @@ export async function GET() {
   .sort((a, b) => (b.volume1h + b.trades1h * 30 + b.boost * 50) - (a.volume1h + a.trades1h * 30 + a.boost * 50))
   .slice(0, 80);
 
+  const shown = new Set(tokens.map((t) => t.mint));
+  const core = new Set([
+    SOL,
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "Es9vMFrzaCERmJfrF4H2FYDgHkmPG8TbQnYQ8V4a8Qj",
+  ]);
+
+  const flows = tokens.flatMap((t) => {
+    if (!t.quoteMint || (!shown.has(t.quoteMint) && !core.has(t.quoteMint))) return [];
+    const totalTrades = Math.max(1, t.buys1h + t.sells1h);
+    const buyShare = t.buys1h / totalTrades;
+    const sellShare = t.sells1h / totalTrades;
+    const out = [];
+    const buyUsd = t.volume1h * buyShare;
+    const sellUsd = t.volume1h * sellShare;
+    if (buyUsd > 1) out.push({
+      from: t.quoteMint,
+      to: t.mint,
+      usd1h: buyUsd,
+      trades1h: t.buys1h,
+      kind: "buy",
+      dex: t.dex,
+    });
+    if (sellUsd > 1) out.push({
+      from: t.mint,
+      to: t.quoteMint,
+      usd1h: sellUsd,
+      trades1h: t.sells1h,
+      kind: "sell",
+      dex: t.dex,
+    });
+    return out;
+  })
+  .sort((a, b) => b.usd1h - a.usd1h)
+  .slice(0, 140);
+
   return NextResponse.json(
-    { fetchedAt: new Date().toISOString(), tokens },
+    { fetchedAt: new Date().toISOString(), tokens, flows },
     { headers: { "cache-control": "no-store, max-age=0" } },
   );
 }
