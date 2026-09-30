@@ -33,6 +33,8 @@ type Node = MarketToken & {
   isCore?: boolean;
 };
 
+type DataSource = "helius" | "solscan";
+
 type Flow = {
   from: string;
   to: string;
@@ -96,6 +98,7 @@ export default function MarketMap() {
   const [motionNow, setMotionNow] = useState(0);
   const [updated, setUpdated] = useState<string | null>(null);
   const [networkSwaps1h, setNetworkSwaps1h] = useState(0);
+  const [dataSource, setDataSource] = useState<DataSource | null>(null);
   const [streamLive, setStreamLive] = useState<boolean | null>(null);
   const [autoPaused, setAutoPaused] = useState(false);
   const [selected, setSelected] = useState<MarketToken | null>(null);
@@ -134,7 +137,7 @@ export default function MarketMap() {
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [streamLive]);
+  }, [streamLive, dataSource]);
 
   useEffect(() => {
     const s = forceSimulation<any>()
@@ -229,30 +232,38 @@ export default function MarketMap() {
     for (const key of [...nodeMap.current.keys()]) if (!allowed.has(key)) nodeMap.current.delete(key);
   };
 
-  useEffect(() => {
+  function chooseSource(source: DataSource) {
+    setDataSource(source);
+    setSelected(null);
+    setError("");
     try {
-      const cached = localStorage.getItem("solanabubble:market-snapshot");
+      const cached = localStorage.getItem(`solanabubble:market-snapshot:${source}`);
       if (cached) applySnapshot(JSON.parse(cached));
     } catch {}
 
-    fetch("/api/live-mode", { cache: "no-store" })
-      .then((r) => r.ok ? r.json() : null)
-      .then((j) => { if (j && typeof j.live === "boolean") setStreamLive(j.live); })
-      .catch(() => setStreamLive(true));
-  }, []);
+    if (source === "helius") {
+      fetch("/api/live-mode", { cache: "no-store" })
+        .then((r) => r.ok ? r.json() : null)
+        .then((j) => setStreamLive(typeof j?.live === "boolean" ? j.live : true))
+        .catch(() => setStreamLive(true));
+    } else {
+      setStreamLive(true);
+    }
+  }
 
   useEffect(() => {
-    if (streamLive !== true) return;
+    if (streamLive !== true || !dataSource) return;
     let stopped = false;
 
     async function load() {
       try {
-        const r = await fetch("/api/market", { cache: "no-store" });
+        const endpoint = dataSource === "helius" ? "/api/market" : "/api/market/solscan";
+        const r = await fetch(endpoint, { cache: "no-store" });
         if (!r.ok) throw new Error("market");
         const j = await r.json();
         if (stopped) return;
         applySnapshot(j);
-        try { localStorage.setItem("solanabubble:market-snapshot", JSON.stringify(j)); } catch {}
+        try { localStorage.setItem(`solanabubble:market-snapshot:${dataSource}`, JSON.stringify(j)); } catch {}
       } catch {
         if (!stopped) setError("Не успях да обновя live пазарния поток. Показвам последния кеш.");
       }
@@ -269,10 +280,11 @@ export default function MarketMap() {
       const r = await fetch("/api/live-mode", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ live: next }),
+        body: JSON.stringify({ live: next, source: dataSource ?? "helius" }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "live mode");
+      if (j.warning) setError(j.warning);
       setStreamLive(next);
       setAutoPaused(automatic && !next);
       lastActivity.current = Date.now();
@@ -301,7 +313,7 @@ export default function MarketMap() {
       for (const name of events) window.removeEventListener(name, activity);
       window.clearInterval(timer);
     };
-  }, [streamLive, autoPaused]);
+  }, [streamLive, autoPaused, dataSource]);
 
   useEffect(() => {
     if (!selected || streamLive !== true) {
@@ -341,14 +353,37 @@ export default function MarketMap() {
     .slice(0, 100);
   void tick;
 
+  if (!dataSource) {
+    return (
+      <main className="source-gate">
+        <section className="source-card">
+          <div className="source-brand">SolanaBubble</div>
+          <h1>Избери източник на данни</h1>
+          <p>Нищо няма да се стартира, докато не избереш източник. Така не харчим излишни API кредити.</p>
+          <div className="source-options">
+            <button onClick={() => chooseSource("helius")}>
+              <strong>Helius</strong>
+              <span>Live on-chain DEX поток, holder събития и webhook данни.</span>
+            </button>
+            <button onClick={() => chooseSource("solscan")}>
+              <strong>Solscan</strong>
+              <span>Кеширани market/token данни без да стартираме Helius stream.</span>
+            </button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="market-shell">
       <header className="market-topbar">
         <div>
           <a className="brand" href="/">SolanaBubble</a>
-          <span className="market-subtitle">Solana live flow</span>
+          <span className="market-subtitle">Източник: {dataSource === "helius" ? "Helius" : "Solscan"}</span>
         </div>
         <div className="market-actions">
+          <button className="source-switch" onClick={() => { setDataSource(null); setStreamLive(null); sim.current?.stop(); }}>Смени източника</button>
           <a href="/admin">База данни</a>
           <span className={`market-live ${streamLive === false ? "paused" : ""}`}><i />{streamLive === false ? "PAUSED" : "LIVE"}</span>
         </div>
@@ -359,7 +394,7 @@ export default function MarketMap() {
         <div><span>1ч. обем</span><b>{fmtUsd(totals.volume)}</b></div>
         <div><span>Покупки / продажби</span><b>{totals.buys} / {totals.sells}</b></div>
         <div><span>Ликвидност</span><b>{fmtUsd(totals.liquidity)}</b></div>
-        <div><span>On-chain swaps 1ч.</span><b>{networkSwaps1h.toLocaleString()}</b></div>
+        <div><span>{dataSource === "helius" ? "On-chain swaps 1ч." : "Solscan feed"}</span><b>{dataSource === "helius" ? networkSwaps1h.toLocaleString() : "ACTIVE"}</b></div>
       </section>
 
       <section className="market-workspace">
@@ -382,7 +417,7 @@ export default function MarketMap() {
           </div>}
           <div className="market-map-head">
             <div>
-              <strong>Live Solana DEX traffic</strong>
+              <strong>{dataSource === "helius" ? "Live Solana DEX traffic" : "Solscan market map"}</strong>
               <span>Размер = активност · стрелките показват посоката на капиталовия поток между quote asset и токена</span>
             </div>
             <span>{updated ? `обновено ${new Date(updated).toLocaleTimeString("bg-BG")}` : "зареждане…"}</span>
