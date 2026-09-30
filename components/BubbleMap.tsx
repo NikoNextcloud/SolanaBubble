@@ -21,6 +21,21 @@ const short = (w: string) => `${w.slice(0, 4)}…${w.slice(-4)}`;
 const usd = (n: number) => n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}k` : `$${n.toFixed(0)}`;
 const num = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : n.toLocaleString();
 const clamp = (n: number, a: number, b: number) => Math.max(a, Math.min(b, n));
+const linkEndpoints = (source: N, target: N, gap = 3) => {
+  const dx = target.x - source.x;
+  const dy = target.y - source.y;
+  const d = Math.hypot(dx, dy) || 1;
+  const ux = dx / d;
+  const uy = dy / d;
+  const sr = Math.max(1, source.r) + gap;
+  const tr = Math.max(1, target.r) + gap;
+  return {
+    x1: source.x + ux * sr,
+    y1: source.y + uy * sr,
+    x2: target.x - ux * tr,
+    y2: target.y - uy * tr,
+  };
+};
 
 export default function BubbleMap({ mint }: { mint: string }) {
   const db = useMemo(() => browserDb(), []);
@@ -438,7 +453,10 @@ export default function BubbleMap({ mint }: { mint: string }) {
               onPointerCancel={() => { pan.current.active = false; }}
             >
               <defs>
-                <marker id="flowArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                <marker id="flowArrow" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" />
+                </marker>
+                <marker id="relationArrow" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
                   <path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" />
                 </marker>
               </defs>
@@ -446,17 +464,24 @@ export default function BubbleMap({ mint }: { mint: string }) {
               <g transform={`translate(${transform.x} ${transform.y}) scale(${transform.k})`}>
                 {visibleLinks.map((l: any, i) => {
                   if (l.source?.x === undefined || l.target?.x === undefined) return null;
+                  const source = l.source as N;
+                  const target = l.target as N;
                   const flow = l.kind.startsWith("flow-");
-                  const color = flow && l.group ? groupColor(l.group) : "#3b4553";
+                  const sourceGroup = groups.get(source.wallet);
+                  const targetGroup = groups.get(target.wallet);
+                  const sharedGroup = sourceGroup && sourceGroup === targetGroup ? sourceGroup : l.group;
+                  const color = sharedGroup ? groupColor(sharedGroup) : "#46505f";
+                  const p = linkEndpoints(source, target, flow ? 6 : 5);
                   return <line
                     key={i}
-                    x1={l.source.x} y1={l.source.y}
-                    x2={l.target.x} y2={l.target.y}
+                    x1={p.x1} y1={p.y1}
+                    x2={p.x2} y2={p.y2}
                     stroke={color}
-                    strokeWidth={flow ? 1.7 : 1}
-                    strokeOpacity={flow ? 0.82 : 0.35}
+                    strokeWidth={flow ? 1.8 : l.kind === "funder" ? 1.55 : 1.25}
+                    strokeOpacity={flow ? 0.9 : l.kind === "funder" ? 0.78 : 0.62}
                     strokeDasharray={flow ? "5 5" : l.kind === "timing" ? "3 4" : undefined}
-                    markerEnd={flow ? "url(#flowArrow)" : undefined}
+                    markerStart={!flow ? "url(#relationArrow)" : undefined}
+                    markerEnd={flow ? "url(#flowArrow)" : "url(#relationArrow)"}
                   />;
                 })}
 
