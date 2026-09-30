@@ -4,7 +4,7 @@ import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, f
 import { browserDb } from "@/lib/supabase-browser";
 
 type H = { wallet: string; balance: number; usd_value: number; pct_supply: number; cluster_id: number | null; funder: string | null; first_activity: string | null; last_activity: string | null; bought_usd: number; sold_usd: number };
-type N = H & { x: number; y: number; vx?: number; vy?: number; r: number; flash?: "buy" | "sell"; fk?: number };
+type N = H & { x: number; y: number; vx?: number; vy?: number; fx?: number | null; fy?: number | null; r: number; flash?: "buy" | "sell"; fk?: number };
 type L = { source: string | N; target: string | N; kind: string; group?: number; signalCount?: number };
 type E = { from_wallet: string; to_wallet: string; kind: "swap" | "transfer"; amount: number; usd_value: number; tx_count: number; last_seen: string };
 type Tx = { signature: string; wallet: string; side: string; amount: number; usd_value: number; block_time: string };
@@ -46,6 +46,15 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const links = useRef<L[]>([]);
   const sim = useRef<Simulation<N, undefined>>(undefined);
   const pan = useRef({ active: false, x: 0, y: 0, tx: 0, ty: 0 });
+  const drag = useRef({
+    active: false,
+    pointerId: -1,
+    wallet: "",
+    lastX: 0,
+    lastY: 0,
+    members: [] as string[],
+    moved: false,
+  });
 
   const [, bump] = useState(0);
   const [size, setSize] = useState({ w: 900, h: 600 });
@@ -66,6 +75,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const [motionOn, setMotionOn] = useState(true);
   const [motionNow, setMotionNow] = useState(0);
   const [hovered, setHovered] = useState<string | null>(null);
+  const [draggingWallet, setDraggingWallet] = useState<string | null>(null);
   const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 });
   const [labels, setLabels] = useState<Record<string, string>>({});
   const [watched, setWatched] = useState<string[]>([]);
@@ -246,6 +256,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const displayWallet = (wallet: string) => labels[wallet]?.trim() || short(wallet);
 
   const motionPoint = (n: N) => {
+    if (n.fx != null && n.fy != null) return { ...n, x: n.fx, y: n.fy };
     if (!motionOn || !motionNow) return { ...n };
     let seed = 0;
     for (let i = 0; i < Math.min(10, n.wallet.length); i++) seed = (seed * 31 + n.wallet.charCodeAt(i)) >>> 0;
@@ -278,6 +289,106 @@ export default function BubbleMap({ mint }: { mint: string }) {
       if (set.size >= 6 && (incoming.get(wallet) ?? 0) > 0 && (outgoing.get(wallet) ?? 0) > 0) hubs.add(wallet);
     }
     return hubs;
+  };
+
+  const linkWallet = (value: string | N) => typeof value === "string" ? value : value.wallet;
+
+  const connectedWallets = (start: string) => {
+    const adjacency = new Map<string, Set<string>>();
+    for (const l of links.current) {
+      const a = linkWallet(l.source);
+      const b = linkWallet(l.target);
+      if (!nodes.current.has(a) || !nodes.current.has(b)) continue;
+      const aa = adjacency.get(a) ?? new Set<string>();
+      const bb = adjacency.get(b) ?? new Set<string>();
+      aa.add(b);
+      bb.add(a);
+      adjacency.set(a, aa);
+      adjacency.set(b, bb);
+    }
+
+    const seen = new Set<string>([start]);
+    const queue = [start];
+    while (queue.length) {
+      const current = queue.shift()!;
+      for (const next of adjacency.get(current) ?? []) {
+        if (seen.has(next)) continue;
+        seen.add(next);
+        queue.push(next);
+      }
+    }
+    return [...seen];
+  };
+
+  const beginNodeDrag = (e: React.PointerEvent<SVGCircleElement>, wallet: string) => {
+    e.stopPropagation();
+    const members = connectedWallets(wallet);
+    for (const id of members) {
+      const n = nodes.current.get(id);
+      if (!n) continue;
+      n.fx = n.x;
+      n.fy = n.y;
+      n.vx = 0;
+      n.vy = 0;
+    }
+    drag.current = {
+      active: true,
+      pointerId: e.pointerId,
+      wallet,
+      lastX: e.clientX,
+      lastY: e.clientY,
+      members,
+      moved: false,
+    };
+    setDraggingWallet(wallet);
+    e.currentTarget.setPointerCapture(e.pointerId);
+    sim.current?.alphaTarget(0.12).restart();
+    bump((x) => x + 1);
+  };
+
+  const moveNodeDrag = (e: React.PointerEvent<SVGCircleElement>) => {
+    const d = drag.current;
+    if (!d.active || d.pointerId !== e.pointerId) return;
+    e.stopPropagation();
+    const dx = (e.clientX - d.lastX) / transform.k;
+    const dy = (e.clientY - d.lastY) / transform.k;
+    if (Math.abs(dx) + Math.abs(dy) > 0.15) d.moved = true;
+    d.lastX = e.clientX;
+    d.lastY = e.clientY;
+
+    for (const id of d.members) {
+      const n = nodes.current.get(id);
+      if (!n) continue;
+      n.fx = (n.fx ?? n.x) + dx;
+      n.fy = (n.fy ?? n.y) + dy;
+      n.x = n.fx;
+      n.y = n.fy;
+      n.vx = 0;
+      n.vy = 0;
+    }
+    bump((x) => x + 1);
+  };
+
+  const endNodeDrag = (e: React.PointerEvent<SVGCircleElement>) => {
+    const d = drag.current;
+    if (!d.active || d.pointerId !== e.pointerId) return;
+    e.stopPropagation();
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    d.active = false;
+    setDraggingWallet(null);
+    sim.current?.alphaTarget(0);
+    bump((x) => x + 1);
+  };
+
+  const releasePinnedNodes = () => {
+    for (const n of nodes.current.values()) {
+      n.fx = null;
+      n.fy = null;
+    }
+    drag.current.active = false;
+    setDraggingWallet(null);
+    sim.current?.alpha(0.55).alphaTarget(0).restart();
+    bump((x) => x + 1);
   };
 
   useEffect(() => {
@@ -509,7 +620,8 @@ export default function BubbleMap({ mint }: { mint: string }) {
             <div className="zoom-controls">
               <button onClick={() => zoomBy(1.2)} title="Zoom in">+</button>
               <button onClick={() => zoomBy(1 / 1.2)} title="Zoom out">−</button>
-              <button onClick={resetView} title="Reset view">↺</button>
+              <button onClick={resetView} title="Нулирай изгледа">↺</button>
+              <button onClick={releasePinnedNodes} title="Освободи ръчно преместените балончета">⌁</button>
               <span>{Math.round(transform.k * 100)}%</span>
             </div>
 
@@ -634,9 +746,18 @@ export default function BubbleMap({ mint }: { mint: string }) {
                       strokeWidth={active ? 3 : watched.includes(n.wallet) ? 2.8 : gid ? 2.2 : 1.35}
                       strokeDasharray={!gid && n.r <= 9 ? "2 2" : undefined}
                       tabIndex={0}
+                      data-dragging={draggingWallet === n.wallet ? "true" : "false"}
                       onPointerEnter={() => setHovered(n.wallet)}
                       onPointerLeave={() => setHovered(null)}
-                      onClick={() => setSel(n.wallet)}
+                      onPointerDown={(e) => beginNodeDrag(e, n.wallet)}
+                      onPointerMove={moveNodeDrag}
+                      onPointerUp={endNodeDrag}
+                      onPointerCancel={endNodeDrag}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!drag.current.moved) setSel(n.wallet);
+                        drag.current.moved = false;
+                      }}
                       onKeyDown={(e) => e.key === "Enter" && setSel(n.wallet)}
                     >
                       <title>{displayWallet(n.wallet)} · {Number(n.pct_supply).toFixed(2)}%{watched.includes(n.wallet) ? " · наблюдаван" : ""}</title>
