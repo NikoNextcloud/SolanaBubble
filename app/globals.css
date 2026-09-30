@@ -89,3 +89,6 @@ code{color:#c5cbd5}
 @keyframes haloPulse{0%,100%{opacity:.12;transform:scale(.98)}50%{opacity:.36;transform:scale(1.06)}}
 @keyframes activityPulse{0%{opacity:.9;transform:scale(.9)}100%{opacity:0;transform:scale(1.6)}}
 @media(prefers-reduced-motion:reduce){.node-halo,.activity-ring{animation:none}.insight-bubble{transition:none}}
+
+.insight-bubble{cursor:grab;touch-action:none}
+.insight-bubble[data-dragging="true"]{cursor:grabbing;filter:drop-shadow(0 0 9px rgba(255,255,255,.42))}
