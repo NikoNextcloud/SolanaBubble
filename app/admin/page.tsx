@@ -41,6 +41,7 @@ export default function AdminPage() {
   const [count, setCount] = useState(0);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  const [usage, setUsage] = useState<any>(null);
 
   useEffect(() => {
     setSecret(sessionStorage.getItem("solanabubble:admin-secret") || "");
@@ -67,35 +68,28 @@ export default function AdminPage() {
     setRows(j.rows || []); setCount(j.count || 0); setStatus("");
   }
 
-  async function del(row: any) {
-    if (!confirm("Сигурен ли си, че искаш да изтриеш този запис?")) return;
-    setBusy(true);
-    const r = await fetch("/api/admin/data", {
-      method: "DELETE",
-      headers: { ...authHeaders(), "content-type": "application/json" },
-      body: JSON.stringify({ table, filters: filtersFor(table, row) }),
-    });
+  async function loadUsage() {
+    if (!secret) return;
+    const r = await fetch("/api/admin/usage", { headers: authHeaders(), cache: "no-store" });
     const j = await r.json();
-    setBusy(false);
-    if (!r.ok) { setStatus(`Грешка: ${j.error}`); return; }
-    await load();
+    if (r.ok) setUsage(j);
   }
 
-  async function deleteTokenData() {
-    const target = mint.trim();
-    if (!target) { setStatus("Въведи mint адрес за изтриване."); return; }
-    if (!confirm(`Това ще изтрие токена и ВСИЧКИ негови holdings, транзакции и връзки:\n\n${target}\n\nПродължаваме ли?`)) return;
+  async function purgeAll() {
+    if (!confirm("Това ще изтрие ВСИЧКИ записани данни, но ще запази таблиците, схемата, RLS правилата, миграциите и настройките. Продължаваме ли?")) return;
+    const phrase = prompt('Напиши ИЗТРИЙ ВСИЧКО за потвърждение.');
+    if (phrase !== "ИЗТРИЙ ВСИЧКО") return;
     setBusy(true);
     const r = await fetch("/api/admin/data", {
       method: "DELETE",
       headers: { ...authHeaders(), "content-type": "application/json" },
-      body: JSON.stringify({ deleteTokenData: target }),
+      body: JSON.stringify({ purgeAll: true }),
     });
     const j = await r.json();
     setBusy(false);
     if (!r.ok) { setStatus(`Грешка: ${j.error}`); return; }
-    setStatus("Данните за токена са изтрити.");
-    await load();
+    setRows([]); setCount(0); setUsage(null);
+    setStatus("Всички данни са изчистени безопасно. Структурата на базата е запазена.");
   }
 
   return <main className="admin-page">
@@ -107,8 +101,31 @@ export default function AdminPage() {
     <section className="admin-controls">
       <label><span>ADMIN_SECRET</span><input type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="Администраторска тайна" /></label>
       <label className="admin-mint"><span>Филтър по mint</span><input value={mint} onChange={(e) => setMint(e.target.value)} placeholder="Solana mint адрес (по избор)" /></label>
-      <button onClick={() => load()} disabled={busy}>Обнови</button>
-      <button className="danger" onClick={deleteTokenData} disabled={busy || !mint.trim()}>Изтрий целия токен</button>
+      <button onClick={() => { load(); loadUsage(); }} disabled={busy}>Обнови</button>
+      <button className="danger" onClick={purgeAll} disabled={busy || !secret}>Изчисти всички данни</button>
+    </section>
+
+    <section className="usage-cards">
+      <div>
+        <span>Solscan оставащи CU</span>
+        <b>{usage?.solscan?.remaining_cus != null ? Number(usage.solscan.remaining_cus).toLocaleString() : "—"}</b>
+        <small>{usage?.solscanError ? `Грешка: ${usage.solscanError}` : usage?.solscan?.renew_date ? `Обновяване: ${new Date(usage.solscan.renew_date).toLocaleDateString("bg-BG")}` : "Натисни Обнови"}</small>
+      </div>
+      <div>
+        <span>Solscan CU използвани</span>
+        <b>{usage?.solscan?.usage_cus != null ? Number(usage.solscan.usage_cus).toLocaleString() : "—"}</b>
+        <small>{usage?.solscan?.total_requests_24h != null ? `${Number(usage.solscan.total_requests_24h).toLocaleString()} заявки / 24ч.` : "—"}</small>
+      </div>
+      <div>
+        <span>Helius наблюдаван трафик</span>
+        <b>{usage?.helius?.observedSwaps24h != null ? Number(usage.helius.observedSwaps24h).toLocaleString() : "—"}</b>
+        <small>on-chain swaps, записани от нас за 24ч.</small>
+      </div>
+      <div>
+        <span>Helius оставащи кредити</span>
+        <b>—</b>
+        <small>{usage?.helius?.note || "Helius не дава надежден публичен usage endpoint за точния остатък."}</small>
+      </div>
     </section>
 
     <nav className="admin-tabs">
@@ -119,14 +136,13 @@ export default function AdminPage() {
 
     <section className="admin-table-wrap">
       <table className="admin-table">
-        <thead><tr>{columns.map((c) => <th key={c}>{c}</th>)}<th>Действие</th></tr></thead>
+        <thead><tr>{columns.map((c) => <th key={c}>{c}</th>)}</tr></thead>
         <tbody>{rows.map((row) => <tr key={rowKey(table, row)}>
           {columns.map((c) => <td key={c} title={String(row[c] ?? "")}>{typeof row[c] === "object" ? JSON.stringify(row[c]) : String(row[c] ?? "")}</td>)}
-          <td><button className="danger small" onClick={() => del(row)} disabled={busy}>Изтрий</button></td>
         </tr>)}</tbody>
       </table>
     </section>
 
-    <p className="admin-note">ADMIN_SECRET се пази само в sessionStorage на този браузърен таб. Изтриването на ред от <b>tokens</b> каскадно изтрива свързаните данни за токена.</p>
+    <p className="admin-note">ADMIN_SECRET се пази само в sessionStorage на този браузърен таб. Единственият бутон за изтриване премахва само редовете с данни. Таблиците, схемата, миграциите, RLS правилата и environment настройките остават непокътнати.</p>
   </main>;
 }
