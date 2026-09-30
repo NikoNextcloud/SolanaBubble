@@ -2,18 +2,79 @@
 export type Link = {
   a: string;
   b: string;
-  kind: "funder" | "timing";
+  kind: "funder" | "timing" | "transfer";
   signal_count?: number;
 };
 
+export type GraphEdge = {
+  from_wallet: string;
+  to_wallet: string;
+  kind: "swap" | "transfer";
+  tx_count?: number;
+};
+
 /**
- * Union-find clustering.
- * - common funder = strong signal
- * - timing = weak/probable signal, but one stored timing row is already a real
- *   observed co-buy event. Repeated observations increase signal_count.
- *
- * Cluster ids are deterministic for a given set of members so colors do not
- * randomly change after every webhook.
+ * Адреси с много swap counterparties и двупосочен поток най-често са
+ * liquidity pool / router / aggregator accounts. Изключваме ги от wallet
+ * clustering, за да не оцветим половината карта като една група.
+ */
+export function detectGraphHubs(edges: GraphEdge[], minDegree = 6): Set<string> {
+  const peers = new Map<string, Set<string>>();
+  const incoming = new Map<string, number>();
+  const outgoing = new Map<string, number>();
+
+  for (const e of edges) {
+    if (e.kind !== "swap" || !e.from_wallet || !e.to_wallet || e.from_wallet === e.to_wallet) continue;
+    const a = peers.get(e.from_wallet) ?? new Set<string>();
+    const b = peers.get(e.to_wallet) ?? new Set<string>();
+    a.add(e.to_wallet); b.add(e.from_wallet);
+    peers.set(e.from_wallet, a); peers.set(e.to_wallet, b);
+    outgoing.set(e.from_wallet, (outgoing.get(e.from_wallet) ?? 0) + 1);
+    incoming.set(e.to_wallet, (incoming.get(e.to_wallet) ?? 0) + 1);
+  }
+
+  const hubs = new Set<string>();
+  for (const [wallet, set] of peers) {
+    const bothDirections = (incoming.get(wallet) ?? 0) > 0 && (outgoing.get(wallet) ?? 0) > 0;
+    if (bothDirections && set.size >= minDegree) hubs.add(wallet);
+  }
+  return hubs;
+}
+
+/**
+ * Изгражда само връзки, които са полезни за ownership-style клъстери.
+ * - common funder: силен сигнал
+ * - timing: вероятен сигнал, но pool/router адресите се изключват
+ * - direct TRANSFER между два текущи holder-а: директен on-chain flow сигнал
+ * SWAP edges не се union-ват директно, защото обикновено минават през pool/router.
+ */
+export function buildClusterLinks(
+  walletLinks: Link[],
+  graphEdges: GraphEdge[],
+  currentHolders: Set<string>,
+): { links: Link[]; hubs: Set<string> } {
+  const hubs = detectGraphHubs(graphEdges);
+  const links: Link[] = [];
+
+  for (const l of walletLinks) {
+    if (!currentHolders.has(l.a) || !currentHolders.has(l.b) || l.a === l.b) continue;
+    if (l.kind === "timing" && (hubs.has(l.a) || hubs.has(l.b))) continue;
+    links.push(l);
+  }
+
+  for (const e of graphEdges) {
+    if (e.kind !== "transfer") continue;
+    if (!currentHolders.has(e.from_wallet) || !currentHolders.has(e.to_wallet)) continue;
+    if (hubs.has(e.from_wallet) || hubs.has(e.to_wallet) || e.from_wallet === e.to_wallet) continue;
+    links.push({ a: e.from_wallet, b: e.to_wallet, kind: "transfer", signal_count: Number(e.tx_count ?? 1) });
+  }
+
+  return { links, hubs };
+}
+
+/**
+ * Union-find clustering with deterministic ids, so cluster colors remain
+ * stable between webhook updates.
  */
 export function computeClusters(links: Link[]): Map<string, number> {
   const parent = new Map<string, string>();
@@ -34,12 +95,6 @@ export function computeClusters(links: Link[]): Map<string, number> {
 
   for (const l of links) {
     if (!l.a || !l.b || l.a === l.b) continue;
-    if (l.kind === "funder") {
-      union(l.a, l.b);
-      continue;
-    }
-    // Previously this required two duplicate DB rows, but wallet_links has a
-    // primary key on (token, pair, kind), so that condition could never happen.
     if ((l.signal_count ?? 1) >= 1) union(l.a, l.b);
   }
 
