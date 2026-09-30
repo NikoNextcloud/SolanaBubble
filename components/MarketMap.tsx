@@ -55,7 +55,7 @@ function flowColor(t: MarketToken) {
 export default function MarketMap() {
   const router = useRouter();
   const wrap = useRef<HTMLDivElement>(null);
-  const sim = useRef<Simulation<Node, undefined> | null>(null);
+  const sim = useRef<Simulation<any, any> | null>(null);
   const nodeMap = useRef(new Map<string, Node>());
   const [tick, setTick] = useState(0);
   const [size, setSize] = useState({ w: 1000, h: 700 });
@@ -83,10 +83,10 @@ export default function MarketMap() {
   }, []);
 
   useEffect(() => {
-    const s = forceSimulation<Node>()
+    const s = forceSimulation<any>()
       .alphaDecay(0.025)
       .velocityDecay(0.35)
-      .force("charge", forceManyBody<Node>().strength(-12))
+      .force("charge", forceManyBody().strength(-12))
       .on("tick", () => setTick((x) => x + 1));
     sim.current = s;
     return () => s.stop();
@@ -98,15 +98,15 @@ export default function MarketMap() {
     const nodes = [...nodeMap.current.values()];
     s.nodes(nodes);
     s.force("center", forceCenter(size.w / 2, size.h / 2).strength(0.04));
-    s.force("x", forceX<Node>((d) => {
+    s.force("x", forceX<any>((d) => {
       const imbalance = (d.buys1h - d.sells1h) / Math.max(1, d.buys1h + d.sells1h);
       return size.w / 2 + imbalance * size.w * 0.25;
     }).strength(0.055));
-    s.force("y", forceY<Node>((d) => {
+    s.force("y", forceY<any>((d) => {
       const activityRank = Math.min(1, Math.log10(Math.max(1, d.volume1h)) / 7);
       return size.h * (0.58 - activityRank * 0.16);
     }).strength(0.045));
-    s.force("collide", forceCollide<Node>((d) => d.r + 3).strength(0.9));
+    s.force("collide", forceCollide<any>((d) => d.r + 3).strength(0.9));
     s.alpha(0.7).restart();
   }, [size, tokens]);
 
