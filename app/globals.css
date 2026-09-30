@@ -113,3 +113,6 @@ code{color:#c5cbd5}
 .flash-sell{animation:sellBubblePulse .9s ease-out}
 @keyframes buyBubblePulse{0%{transform:scale(1.08)}100%{transform:scale(1)}}
 @keyframes sellBubblePulse{0%{transform:scale(.92)}100%{transform:scale(1)}}
+
+.home-status{min-height:1.2em;margin-top:10px;color:#8f98a6;font-size:.86rem}
+.go:disabled,.addr:disabled{opacity:.6;cursor:not-allowed}
