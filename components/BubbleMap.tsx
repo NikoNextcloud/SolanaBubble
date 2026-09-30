@@ -63,9 +63,13 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const [linkedOnly, setLinkedOnly] = useState(false);
   const [showSwaps, setShowSwaps] = useState(true);
   const [showTransfers, setShowTransfers] = useState(true);
+  const [motionOn, setMotionOn] = useState(true);
+  const [motionNow, setMotionNow] = useState(0);
+  const [hovered, setHovered] = useState<string | null>(null);
   const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 });
   const [labels, setLabels] = useState<Record<string, string>>({});
   const [watched, setWatched] = useState<string[]>([]);
+  const groupsForMotionRef = useRef(new Set<string>());
 
   const visualGroups = () => {
     const map = new Map<string, number>();
@@ -207,6 +211,21 @@ export default function BubbleMap({ mint }: { mint: string }) {
   };
 
   useEffect(() => {
+    if (!motionOn || view !== "map") return;
+    let raf = 0;
+    let last = 0;
+    const tick = (now: number) => {
+      if (now - last >= 45) {
+        last = now;
+        setMotionNow(now);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [motionOn, view]);
+
+  useEffect(() => {
     try {
       setLabels(JSON.parse(localStorage.getItem(`solanabubble:labels:${mint}`) || "{}"));
       setWatched(JSON.parse(localStorage.getItem(`solanabubble:watched:${mint}`) || "[]"));
@@ -225,6 +244,21 @@ export default function BubbleMap({ mint }: { mint: string }) {
     saveWatched(watched.includes(wallet) ? watched.filter((w) => w !== wallet) : [...watched, wallet]);
   };
   const displayWallet = (wallet: string) => labels[wallet]?.trim() || short(wallet);
+
+  const motionPoint = (n: N) => {
+    if (!motionOn || !motionNow) return { ...n };
+    let seed = 0;
+    for (let i = 0; i < Math.min(10, n.wallet.length); i++) seed = (seed * 31 + n.wallet.charCodeAt(i)) >>> 0;
+    const phase = (seed % 628) / 100;
+    const speed = 1700 + (seed % 1300);
+    const amp = groupsForMotionRef.current.has(n.wallet) ? 2.2 : 1.25;
+    const t = motionNow / speed + phase;
+    return {
+      ...n,
+      x: n.x + Math.sin(t) * amp,
+      y: n.y + Math.cos(t * 0.83) * amp,
+    };
+  };
 
   const graphHubs = () => {
     const peers = new Map<string, Set<string>>();
@@ -349,6 +383,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
 
   const arr = [...nodes.current.values()];
   const groups = visualGroups();
+  groupsForMotionRef.current = new Set(groups.keys());
   const selected = sel ? nodes.current.get(sel) : null;
   const pl = selected && Number(selected.bought_usd) > 0 ? Number(selected.usd_value) + Number(selected.sold_usd) - Number(selected.bought_usd) : null;
   const groupCount = new Set(groups.values()).size;
@@ -467,6 +502,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
               <label className="check-control"><input type="checkbox" checked={linkedOnly} onChange={(e) => setLinkedOnly(e.target.checked)} /> linked only</label>
               <label className="check-control"><input type="checkbox" checked={showSwaps} onChange={(e) => setShowSwaps(e.target.checked)} /> swaps</label>
               <label className="check-control"><input type="checkbox" checked={showTransfers} onChange={(e) => setShowTransfers(e.target.checked)} /> transfers</label>
+              <label className="check-control motion-control"><input type="checkbox" checked={motionOn} onChange={(e) => setMotionOn(e.target.checked)} /> жива карта</label>
               <span className="shown-count">{visibleNodes.length} shown</span>
             </div>
 
@@ -518,8 +554,8 @@ export default function BubbleMap({ mint }: { mint: string }) {
               <g transform={`translate(${transform.x} ${transform.y}) scale(${transform.k})`}>
                 {visibleLinks.map((l: any, i) => {
                   if (l.source?.x === undefined || l.target?.x === undefined) return null;
-                  const source = l.source as N;
-                  const target = l.target as N;
+                  const source = motionPoint(l.source as N);
+                  const target = motionPoint(l.target as N);
                   const flow = l.kind.startsWith("flow-");
                   const directed = flow || l.kind === "direct-transfer";
                   const sourceGroup = groups.get(source.wallet);
@@ -551,25 +587,61 @@ export default function BubbleMap({ mint }: { mint: string }) {
                   ><title>{title}</title></line>;
                 })}
 
+                {motionOn && visibleLinks.slice(0, 90).map((l: any, i) => {
+                  if (l.source?.x === undefined || l.target?.x === undefined) return null;
+                  const directed = l.kind.startsWith("flow-") || l.kind === "direct-transfer";
+                  if (!directed) return null;
+                  const source = motionPoint(l.source as N);
+                  const target = motionPoint(l.target as N);
+                  const p = linkEndpoints(source, target, 7);
+                  const progress = ((motionNow / (1500 + (i % 5) * 170)) + i * 0.137) % 1;
+                  const x = p.x1 + (p.x2 - p.x1) * progress;
+                  const y = p.y1 + (p.y2 - p.y1) * progress;
+                  const gid = groups.get(source.wallet) ?? groups.get(target.wallet) ?? l.group;
+                  return <circle
+                    key={`particle:${i}`}
+                    className="flow-particle"
+                    cx={x} cy={y} r={1.8}
+                    fill={gid ? groupColor(gid) : "#a9b6c8"}
+                    pointerEvents="none"
+                  />;
+                })}
+
                 {visibleNodes.map((n) => {
                   const gid = groups.get(n.wallet);
                   const color = gid ? groupColor(gid) : "#69717f";
                   const active = sel === n.wallet;
-                  return <circle
-                    key={`${n.wallet}:${n.fk ?? 0}`}
-                    className={`bubble insight-bubble ${n.flash ? `flash-${n.flash}` : ""}`}
-                    cx={n.x} cy={n.y} r={n.r}
-                    fill={gid ? color : "#171a21"}
-                    fillOpacity={gid ? 0.18 : 0.46}
-                    stroke={active ? "#f4f7fb" : watched.includes(n.wallet) ? "#ffd166" : color}
-                    strokeWidth={active ? 3 : watched.includes(n.wallet) ? 2.8 : gid ? 2.2 : 1.35}
-                    strokeDasharray={!gid && n.r <= 9 ? "2 2" : undefined}
-                    tabIndex={0}
-                    onClick={() => setSel(n.wallet)}
-                    onKeyDown={(e) => e.key === "Enter" && setSel(n.wallet)}
-                  >
-                    <title>{displayWallet(n.wallet)} · {Number(n.pct_supply).toFixed(2)}%{watched.includes(n.wallet) ? " · watched" : ""}</title>
-                  </circle>;
+                  const over = hovered === n.wallet;
+                  const p = motionPoint(n);
+                  return <g key={`${n.wallet}:${n.fk ?? 0}`} className="live-node">
+                    {gid && <circle
+                      className="node-halo"
+                      cx={p.x} cy={p.y} r={n.r + 4}
+                      fill="none" stroke={color} strokeWidth={1}
+                      pointerEvents="none"
+                    />}
+                    {n.flash && <circle
+                      className={`activity-ring activity-${n.flash}`}
+                      cx={p.x} cy={p.y} r={n.r + 2}
+                      fill="none" pointerEvents="none"
+                    />}
+                    <circle
+                      className={`bubble insight-bubble ${n.flash ? `flash-${n.flash}` : ""}`}
+                      cx={p.x} cy={p.y} r={n.r + (over ? 2 : 0)}
+                      fill={gid ? color : "#171a21"}
+                      fillOpacity={gid ? 0.2 : 0.46}
+                      stroke={active ? "#f4f7fb" : watched.includes(n.wallet) ? "#ffd166" : color}
+                      strokeWidth={active ? 3 : watched.includes(n.wallet) ? 2.8 : gid ? 2.2 : 1.35}
+                      strokeDasharray={!gid && n.r <= 9 ? "2 2" : undefined}
+                      tabIndex={0}
+                      onPointerEnter={() => setHovered(n.wallet)}
+                      onPointerLeave={() => setHovered(null)}
+                      onClick={() => setSel(n.wallet)}
+                      onKeyDown={(e) => e.key === "Enter" && setSel(n.wallet)}
+                    >
+                      <title>{displayWallet(n.wallet)} · {Number(n.pct_supply).toFixed(2)}%{watched.includes(n.wallet) ? " · наблюдаван" : ""}</title>
+                    </circle>
+                  </g>;
                 })}
               </g>
             </svg>
