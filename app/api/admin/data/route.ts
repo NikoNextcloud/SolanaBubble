@@ -49,10 +49,31 @@ export async function DELETE(req: Request) {
     table?: string;
     filters?: Record<string, string | number | null>;
     deleteTokenData?: string;
+    purgeAll?: boolean;
   };
   if (!body) return NextResponse.json({ error: "invalid_body" }, { status: 400 });
 
   const db = admin();
+
+  if (body.purgeAll) {
+    // Safe data-only purge: rows are removed, but tables, schema, RLS,
+    // migrations and environment configuration remain intact.
+    const steps = [
+      () => db.from("network_swaps").delete().neq("signature", ""),
+      () => db.from("wallet_edges").delete().neq("from_wallet", ""),
+      () => db.from("wallet_links").delete().neq("wallet_a", ""),
+      () => db.from("transactions").delete().neq("signature", ""),
+      () => db.from("exited_holders").delete().gt("id", 0),
+      () => db.from("holdings").delete().neq("wallet", ""),
+      () => db.from("tokens").delete().neq("mint", ""),
+      () => db.from("api_cache").delete().neq("cache_key", ""),
+    ];
+    for (const step of steps) {
+      const { error } = await step();
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true, purged: true });
+  }
 
   if (body.deleteTokenData) {
     const mint = String(body.deleteTokenData).trim();
