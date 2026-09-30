@@ -121,3 +121,62 @@ export async function ensureWebhookTracksMint(mint: string) {
 
   return { webhookID: webhook.webhookID, addresses: addresses.length, added: true };
 }
+
+
+export const NETWORK_DEX_PROGRAMS = [
+  // Jupiter v6
+  "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+  // Raydium AMM v4 / CPMM / CLMM
+  "675kPX9MHTjS2zt1qfr1NYHuzef8KB5pCPHqReFRk",
+  "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C",
+  "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK",
+  // Orca Whirlpool
+  "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGQMXvAWm",
+  // Meteora DLMM
+  "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+];
+
+export async function ensureNetworkProgramsTracked() {
+  const key = KEY();
+  if (!key) throw new Error("HELIUS_API_KEY is missing");
+  const secret = process.env.HELIUS_WEBHOOK_SECRET;
+  if (!secret) throw new Error("HELIUS_WEBHOOK_SECRET is missing");
+
+  const listRes = await fetch(`https://api.helius.xyz/v0/webhooks?api-key=${key}`, { cache: "no-store" });
+  if (!listRes.ok) throw new Error(`Helius webhooks list failed: ${listRes.status}`);
+  const webhooks = await listRes.json() as HeliusWebhook[];
+  const webhook =
+    webhooks.find((w) => w.webhookURL?.includes("solanabubble.vercel.app/api/webhooks/helius")) ??
+    webhooks.find((w) => w.webhookURL?.includes("/api/webhooks/helius"));
+  if (!webhook) throw new Error("No SolanaBubble Helius webhook was found");
+
+  const addresses = [...new Set([...(webhook.accountAddresses ?? []), ...NETWORK_DEX_PROGRAMS])];
+  const alreadyEnabled = NETWORK_DEX_PROGRAMS.every((id) => (webhook.accountAddresses ?? []).includes(id));
+  if (alreadyEnabled) return { added: false, addresses: addresses.length };
+
+  const body: Record<string, unknown> = {
+    webhookURL: webhook.webhookURL,
+    transactionTypes: [...new Set([...(webhook.transactionTypes ?? []), "SWAP", "TRANSFER"])],
+    accountAddresses: addresses,
+    webhookType: webhook.webhookType ?? "enhanced",
+    authHeader: secret,
+  };
+  if (webhook.encoding) body.encoding = webhook.encoding;
+  if (webhook.txnStatus) body.txnStatus = webhook.txnStatus;
+
+  const updateRes = await fetch(
+    `https://api.helius.xyz/v0/webhooks/${webhook.webhookID}?api-key=${key}`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    },
+  );
+  if (!updateRes.ok) {
+    const detail = await updateRes.text().catch(() => "");
+    throw new Error(`Helius network webhook update failed: ${updateRes.status} ${detail.slice(0, 300)}`);
+  }
+
+  return { added: true, addresses: addresses.length };
+}
