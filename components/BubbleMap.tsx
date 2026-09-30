@@ -79,6 +79,10 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 });
   const [labels, setLabels] = useState<Record<string, string>>({});
   const [watched, setWatched] = useState<string[]>([]);
+  const [hiddenWallets, setHiddenWallets] = useState<string[]>([]);
+  const [showClusters, setShowClusters] = useState(true);
+  const [showHidden, setShowHidden] = useState(false);
+  const [showOthers, setShowOthers] = useState(true);
   const groupsForMotionRef = useRef(new Set<string>());
 
   const visualGroups = () => {
@@ -216,7 +220,18 @@ export default function BubbleMap({ mint }: { mint: string }) {
     const grew = prev ? Number(h.balance) > Number(prev.balance) : false;
     const shrank = prev ? Number(h.balance) < Number(prev.balance) : false;
     Object.assign(n, h, { r: radius(Number(h.pct_supply)) });
-    if (animate && prev && (grew || shrank)) { n.flash = grew ? "buy" : "sell"; n.fk = (n.fk ?? 0) + 1; }
+    if (animate && prev && (grew || shrank)) {
+      n.flash = grew ? "buy" : "sell";
+      n.fk = (n.fk ?? 0) + 1;
+      const flashKey = n.fk;
+      window.setTimeout(() => {
+        const current = nodes.current.get(h.wallet);
+        if (current && current.fk === flashKey) {
+          current.flash = undefined;
+          bump((x) => x + 1);
+        }
+      }, 900);
+    }
     nodes.current.set(h.wallet, n);
   };
 
@@ -239,6 +254,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
     try {
       setLabels(JSON.parse(localStorage.getItem(`solanabubble:labels:${mint}`) || "{}"));
       setWatched(JSON.parse(localStorage.getItem(`solanabubble:watched:${mint}`) || "[]"));
+      setHiddenWallets(JSON.parse(localStorage.getItem(`solanabubble:hidden:${mint}`) || "[]"));
     } catch {}
   }, [mint]);
 
@@ -249,6 +265,13 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const saveWatched = (next: string[]) => {
     setWatched(next);
     localStorage.setItem(`solanabubble:watched:${mint}`, JSON.stringify(next));
+  };
+  const saveHidden = (next: string[]) => {
+    setHiddenWallets(next);
+    localStorage.setItem(`solanabubble:hidden:${mint}`, JSON.stringify(next));
+  };
+  const toggleHidden = (wallet: string) => {
+    saveHidden(hiddenWallets.includes(wallet) ? hiddenWallets.filter((w) => w !== wallet) : [...hiddenWallets, wallet]);
   };
   const toggleWatch = (wallet: string) => {
     saveWatched(watched.includes(wallet) ? watched.filter((w) => w !== wallet) : [...watched, wallet]);
@@ -508,7 +531,18 @@ export default function BubbleMap({ mint }: { mint: string }) {
     .slice(0, 10) : [];
 
   const q = walletQuery.trim().toLowerCase();
+  const hiddenSet = new Set(hiddenWallets);
+  const clusterCount = arr.filter((n) => groups.has(n.wallet) && !hiddenSet.has(n.wallet)).length;
+  const hiddenCount = arr.filter((n) => hiddenSet.has(n.wallet)).length;
+  const otherCount = arr.filter((n) => !groups.has(n.wallet) && !hiddenSet.has(n.wallet)).length;
+
   const visibleNodes = arr.filter((n) => {
+    const hidden = hiddenSet.has(n.wallet);
+    const clustered = groups.has(n.wallet) && !hidden;
+    const other = !clustered && !hidden;
+    if (clustered && !showClusters) return false;
+    if (hidden && !showHidden) return false;
+    if (other && !showOthers) return false;
     if (Number(n.pct_supply) < minPct) return false;
     if (linkedOnly && !groups.has(n.wallet)) return false;
     if (q && !n.wallet.toLowerCase().includes(q) && !(labels[n.wallet] || "").toLowerCase().includes(q)) return false;
@@ -614,6 +648,11 @@ export default function BubbleMap({ mint }: { mint: string }) {
               <label className="check-control"><input type="checkbox" checked={showSwaps} onChange={(e) => setShowSwaps(e.target.checked)} /> swaps</label>
               <label className="check-control"><input type="checkbox" checked={showTransfers} onChange={(e) => setShowTransfers(e.target.checked)} /> transfers</label>
               <label className="check-control motion-control"><input type="checkbox" checked={motionOn} onChange={(e) => setMotionOn(e.target.checked)} /> жива карта</label>
+              <div className="holder-type-controls">
+                <button className={showClusters ? "active" : ""} onClick={() => setShowClusters((v) => !v)}>Клъстери <b>{clusterCount}</b></button>
+                <button className={showHidden ? "active" : ""} onClick={() => setShowHidden((v) => !v)}>Скрити <b>{hiddenCount}</b></button>
+                <button className={showOthers ? "active" : ""} onClick={() => setShowOthers((v) => !v)}>Останали <b>{otherCount}</b></button>
+              </div>
               <span className="shown-count">{visibleNodes.length} shown</span>
             </div>
 
@@ -733,6 +772,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
                       pointerEvents="none"
                     />}
                     {n.flash && <circle
+                      key={`activity:${n.wallet}:${n.fk ?? 0}`}
                       className={`activity-ring activity-${n.flash}`}
                       cx={p.x} cy={p.y} r={n.r + 2}
                       fill="none" pointerEvents="none"
@@ -740,8 +780,8 @@ export default function BubbleMap({ mint }: { mint: string }) {
                     <circle
                       className={`bubble insight-bubble ${n.flash ? `flash-${n.flash}` : ""}`}
                       cx={p.x} cy={p.y} r={n.r + (over ? 2 : 0)}
-                      fill={gid ? color : "#171a21"}
-                      fillOpacity={gid ? 0.2 : 0.46}
+                      fill={n.flash === "buy" ? "#dfe5ed" : n.flash === "sell" ? "#352026" : gid ? color : "#171a21"}
+                      fillOpacity={n.flash === "buy" ? 0.72 : n.flash === "sell" ? 0.56 : gid ? 0.2 : 0.46}
                       stroke={active ? "#f4f7fb" : watched.includes(n.wallet) ? "#ffd166" : color}
                       strokeWidth={active ? 3 : watched.includes(n.wallet) ? 2.8 : gid ? 2.2 : 1.35}
                       strokeDasharray={!gid && n.r <= 9 ? "2 2" : undefined}
@@ -889,6 +929,11 @@ export default function BubbleMap({ mint }: { mint: string }) {
               <button className={watched.includes(selected.wallet) ? "watch-button active" : "watch-button"} onClick={() => toggleWatch(selected.wallet)}>{watched.includes(selected.wallet) ? "★ Watching" : "☆ Watch"}</button>
             </div>
             <p className="mint-full">{selected.wallet}</p>
+            <div className="wallet-actions">
+              <button className={hiddenWallets.includes(selected.wallet) ? "wallet-action active" : "wallet-action"} onClick={() => toggleHidden(selected.wallet)}>
+                {hiddenWallets.includes(selected.wallet) ? "Покажи на картата" : "Скрий от картата"}
+              </button>
+            </div>
             <label className="wallet-label-editor"><span>Label</span><input value={labels[selected.wallet] || ""} placeholder="e.g. deployer, whale, team wallet" onChange={(e) => saveLabels({ ...labels, [selected.wallet]: e.target.value })} /></label>
           </div>
 
