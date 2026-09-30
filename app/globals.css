@@ -92,3 +92,18 @@ code{color:#c5cbd5}
 
 .insight-bubble{cursor:grab;touch-action:none}
 .insight-bubble[data-dragging="true"]{cursor:grabbing;filter:drop-shadow(0 0 9px rgba(255,255,255,.42))}
+
+.insight-map{
+  background:
+    radial-gradient(circle at 50% 48%,rgba(105,114,128,.19) 0%,rgba(71,79,92,.11) 22%,rgba(34,39,48,.04) 45%,transparent 66%),
+    linear-gradient(180deg,#111318 0%,#0e1015 100%)!important;
+}
+.holder-type-controls{display:flex;gap:4px;align-items:center}
+.holder-type-controls button{height:28px;border:1px solid #2c333d;border-radius:6px;background:#12161c;color:#7f8896;padding:0 7px;font-size:.67rem;cursor:pointer}
+.holder-type-controls button.active{background:#202631;color:#f0f3f8;border-color:#46505e}
+.holder-type-controls b{font-size:.64rem;font-weight:600;color:#9ba4b2;margin-left:3px}
+.wallet-actions{margin-top:8px}
+.wallet-action{height:30px;border:1px solid #343b46;border-radius:7px;background:#151a21;color:#9ba4b2;padding:0 9px;font-size:.72rem;cursor:pointer}
+.wallet-action.active{border-color:#685230;color:#ffd166;background:rgba(255,209,102,.07)}
+.flash-buy{filter:drop-shadow(0 0 8px rgba(235,241,248,.55))}
+.flash-sell{filter:drop-shadow(0 0 6px rgba(255,100,115,.24))}
