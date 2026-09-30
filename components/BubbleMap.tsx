@@ -49,6 +49,8 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const [showSwaps, setShowSwaps] = useState(true);
   const [showTransfers, setShowTransfers] = useState(true);
   const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 });
+  const [labels, setLabels] = useState<Record<string, string>>({});
+  const [watched, setWatched] = useState<string[]>([]);
 
   const visualGroups = () => {
     const map = new Map<string, number>();
@@ -123,6 +125,26 @@ export default function BubbleMap({ mint }: { mint: string }) {
   };
 
   useEffect(() => {
+    try {
+      setLabels(JSON.parse(localStorage.getItem(`solanabubble:labels:${mint}`) || "{}"));
+      setWatched(JSON.parse(localStorage.getItem(`solanabubble:watched:${mint}`) || "[]"));
+    } catch {}
+  }, [mint]);
+
+  const saveLabels = (next: Record<string, string>) => {
+    setLabels(next);
+    localStorage.setItem(`solanabubble:labels:${mint}`, JSON.stringify(next));
+  };
+  const saveWatched = (next: string[]) => {
+    setWatched(next);
+    localStorage.setItem(`solanabubble:watched:${mint}`, JSON.stringify(next));
+  };
+  const toggleWatch = (wallet: string) => {
+    saveWatched(watched.includes(wallet) ? watched.filter((w) => w !== wallet) : [...watched, wallet]);
+  };
+  const displayWallet = (wallet: string) => labels[wallet]?.trim() || short(wallet);
+
+  useEffect(() => {
     const el = wrap.current;
     if (!el) return;
     const ro = new ResizeObserver(([e]) => setSize({ w: e.contentRect.width, h: e.contentRect.height }));
@@ -147,7 +169,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
       ] = await Promise.all([
         db.from("tokens").select("mint,symbol,name,supply,price_usd,decimals").eq("mint", mint).maybeSingle(),
         db.from("holdings").select("*").eq("token_mint", mint).order("balance", { ascending: false }).limit(MAX_NODES),
-        db.from("wallet_links").select("wallet_a,wallet_b,kind").eq("token_mint", mint),
+        db.from("wallet_links").select("wallet_a,wallet_b,kind,signal_count").eq("token_mint", mint),
         db.from("wallet_edges").select("from_wallet,to_wallet,kind,amount,usd_value,tx_count,last_seen").eq("token_mint", mint),
         db.from("transactions").select("signature,wallet,side,amount,usd_value,block_time").eq("token_mint", mint).gte("block_time", since).order("block_time", { ascending: false }).limit(1000),
         db.from("holdings").select("*", { count: "exact", head: true }).eq("token_mint", mint),
@@ -249,7 +271,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const visibleNodes = arr.filter((n) => {
     if (Number(n.pct_supply) < minPct) return false;
     if (linkedOnly && !groups.has(n.wallet)) return false;
-    if (q && !n.wallet.toLowerCase().includes(q)) return false;
+    if (q && !n.wallet.toLowerCase().includes(q) && !(labels[n.wallet] || "").toLowerCase().includes(q)) return false;
     return true;
   });
   const visibleWallets = new Set(visibleNodes.map((n) => n.wallet));
@@ -422,14 +444,14 @@ export default function BubbleMap({ mint }: { mint: string }) {
                     cx={n.x} cy={n.y} r={n.r}
                     fill={gid ? color : "#171a21"}
                     fillOpacity={gid ? 0.18 : 0.46}
-                    stroke={active ? "#f4f7fb" : color}
-                    strokeWidth={active ? 3 : gid ? 2.2 : 1.35}
+                    stroke={active ? "#f4f7fb" : watched.includes(n.wallet) ? "#ffd166" : color}
+                    strokeWidth={active ? 3 : watched.includes(n.wallet) ? 2.8 : gid ? 2.2 : 1.35}
                     strokeDasharray={!gid && n.r <= 9 ? "2 2" : undefined}
                     tabIndex={0}
                     onClick={() => setSel(n.wallet)}
                     onKeyDown={(e) => e.key === "Enter" && setSel(n.wallet)}
                   >
-                    <title>{short(n.wallet)} · {Number(n.pct_supply).toFixed(2)}%</title>
+                    <title>{displayWallet(n.wallet)} · {Number(n.pct_supply).toFixed(2)}%{watched.includes(n.wallet) ? " · watched" : ""}</title>
                   </circle>;
                 })}
               </g>
@@ -439,6 +461,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
               <span><i className="legend-normal" />holder</span>
               <span><i className="legend-linked" />linked wallets</span>
               <span><i className="legend-flow" />token flow</span>
+              <span><i className="legend-watch" />watchlist</span>
             </div>
           </div>}
 
@@ -451,10 +474,11 @@ export default function BubbleMap({ mint }: { mint: string }) {
               </div>
             </div>
             <div className="table-wrap"><table className="data-table">
-              <thead><tr><th>#</th><th>Wallet</th><th>Balance</th><th>Value</th><th>% supply</th><th>Group</th><th>Last activity</th></tr></thead>
+              <thead><tr><th>#</th><th>★</th><th>Wallet</th><th>Balance</th><th>Value</th><th>% supply</th><th>Group</th><th>Last activity</th></tr></thead>
               <tbody>{[...visibleNodes].sort((a, b) => Number(b.balance) - Number(a.balance)).map((h, i) => <tr key={h.wallet} onClick={() => setSel(h.wallet)}>
                 <td>{i + 1}</td>
-                <td><a href={`https://solscan.io/account/${h.wallet}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>{short(h.wallet)}</a></td>
+                <td><button className={watched.includes(h.wallet) ? "watch-star active" : "watch-star"} onClick={(e) => { e.stopPropagation(); toggleWatch(h.wallet); }}>{watched.includes(h.wallet) ? "★" : "☆"}</button></td>
+                <td><a href={`https://solscan.io/account/${h.wallet}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>{displayWallet(h.wallet)}</a></td>
                 <td>{Number(h.balance).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                 <td>{usd(Number(h.usd_value))}</td>
                 <td>{Number(h.pct_supply).toFixed(3)}%</td>
@@ -530,10 +554,17 @@ export default function BubbleMap({ mint }: { mint: string }) {
             <span className="eyebrow">Live activity</span>
             <ul className="activity-list">{feedTxs.slice(0, 8).map((t) => <li key={`${t.signature}:${t.wallet}`}>
               <span className={t.side === "buy" || t.side === "transfer_in" ? "activity-dot buy-bg" : "activity-dot sell-bg"} />
-              <button onClick={() => setSel(t.wallet)}>{short(t.wallet)}</button>
+              <button onClick={() => setSel(t.wallet)}>{displayWallet(t.wallet)}</button>
               <span>{usd(Number(t.usd_value))}</span>
             </li>)}</ul>
           </div>
+          {watched.length > 0 && <div className="side-section">
+            <span className="eyebrow">Watchlist</span>
+            <ul className="watch-list">{watched.map((wallet) => <li key={wallet}>
+              <button onClick={() => setSel(wallet)}>{displayWallet(wallet)}</button>
+              <button className="watch-remove" onClick={() => toggleWatch(wallet)}>×</button>
+            </li>)}</ul>
+          </div>}
           <div className="side-section">
             <span className="eyebrow">How links work</span>
             <p className="note">Цветните групи са вероятни on-chain връзки. Общ funder, синхронни покупки или token flow между няколко wallet-а са сигнали, но не доказват общ собственик.</p>
@@ -542,8 +573,12 @@ export default function BubbleMap({ mint }: { mint: string }) {
           <div className="side-section">
             <button className="back-link" onClick={() => setSel(null)}>← Token overview</button>
             <span className="eyebrow">Wallet inspector</span>
-            <h2><a href={`https://solscan.io/account/${selected.wallet}`} target="_blank" rel="noreferrer">{short(selected.wallet)} ↗</a></h2>
+            <div className="wallet-heading">
+              <h2><a href={`https://solscan.io/account/${selected.wallet}`} target="_blank" rel="noreferrer">{displayWallet(selected.wallet)} ↗</a></h2>
+              <button className={watched.includes(selected.wallet) ? "watch-button active" : "watch-button"} onClick={() => toggleWatch(selected.wallet)}>{watched.includes(selected.wallet) ? "★ Watching" : "☆ Watch"}</button>
+            </div>
             <p className="mint-full">{selected.wallet}</p>
+            <label className="wallet-label-editor"><span>Label</span><input value={labels[selected.wallet] || ""} placeholder="e.g. deployer, whale, team wallet" onChange={(e) => saveLabels({ ...labels, [selected.wallet]: e.target.value })} /></label>
           </div>
 
           <div className="side-section">
@@ -565,7 +600,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
               const other = outgoing ? e.to_wallet : e.from_wallet;
               return <li key={`${e.from_wallet}:${e.to_wallet}:${e.kind}`}>
                 <span>{outgoing ? "→" : "←"}</span>
-                <button onClick={() => setSel(other)}>{short(other)}</button>
+                <button onClick={() => setSel(other)}>{displayWallet(other)}</button>
                 <small>{e.kind} · {usd(Number(e.usd_value))}</small>
               </li>;
             })}</ul>
