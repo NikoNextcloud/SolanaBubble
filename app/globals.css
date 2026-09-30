@@ -159,3 +159,32 @@ code{color:#c5cbd5}
 .source-switch{border:1px solid #2c3440;border-radius:7px;background:#141920;color:#8d97a5;padding:6px 9px;font-size:.7rem;cursor:pointer}.source-switch:hover{color:#e6ebf1;border-color:#465261}
 .usage-cards{display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:10px;padding:14px 18px}.usage-cards>div{border:1px solid #272e38;border-radius:10px;background:#11151b;padding:12px 13px}.usage-cards span{display:block;color:#7d8795;font-size:.69rem;margin-bottom:6px}.usage-cards b{display:block;font-size:1.05rem;color:#e8edf4}.usage-cards small{display:block;margin-top:6px;color:#687381;font-size:.63rem;line-height:1.35}
 @media(max-width:760px){.source-options{grid-template-columns:1fr}.usage-cards{grid-template-columns:repeat(2,1fr)}}
+
+/* AlphaBook project palette */
+:root{
+  --paper:oklch(0.172 0.006 260);
+  --panel:oklch(0.193 0.006 260);
+  --ink:oklch(0.94 0.005 260);
+  --mute:oklch(0.59 0.01 260);
+  --line:oklch(0.29 0.007 260);
+  --buy:oklch(0.72 0.16 150);
+  --sell:oklch(0.68 0.19 28);
+  --accent:oklch(0.69 0.225 31);
+}
+body,.market-shell,.source-gate,.admin-page,.workspace{background:var(--paper)!important;color:var(--ink)!important}
+.market-topbar,.dash-topbar,.market-side,.source-card,.admin-controls,.usage-cards>div,.admin-table th{background:var(--panel)!important}
+.market-map,.insight-map{
+  background:
+    radial-gradient(ellipse at 50% 48%,oklch(0.235 0.007 260),var(--panel) 72%)!important;
+}
+.source-card,.source-options button,.market-topbar,.market-side,.admin-controls,.admin-table-wrap,.usage-cards>div{border-color:var(--line)!important}
+.source-options button{background:oklch(0.205 0.007 260)!important}
+.source-options button:hover{background:oklch(0.245 0.008 260)!important;border-color:oklch(0.34 0.007 260)!important}
+.source-brand,.market-subtitle,.market-stats span,.market-map-head span,.market-side>p,.market-rank small,.admin-status,.admin-note,.usage-cards span,.usage-cards small{color:var(--mute)!important}
+.go-live-control{color:var(--buy)!important;background:color-mix(in oklab,var(--buy) 12%,transparent)!important;border-color:color-mix(in oklab,var(--buy) 22%,transparent)!important}
+.go-live-control.is-live{color:var(--buy)!important;background:color-mix(in oklab,var(--buy) 20%,transparent)!important}
+.market-pause-orb{border-color:var(--accent)!important;background:color-mix(in oklab,var(--accent) 20%,transparent)!important;color:var(--accent)!important}
+.market-pause-orb.paused{border-color:var(--buy)!important;background:color-mix(in oklab,var(--buy) 16%,transparent)!important;color:var(--buy)!important}
+.market-live i,.market-buy-dot{background:var(--buy)!important}
+.market-sell-dot{background:var(--sell)!important}
+.open-token-button,.source-switch,.admin-controls button,.admin-tabs button{background:oklch(0.245 0.008 260)!important;border-color:oklch(0.34 0.007 260)!important}
