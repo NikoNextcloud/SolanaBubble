@@ -95,6 +95,7 @@ export default function MarketMap() {
   const [flows, setFlows] = useState<Flow[]>([]);
   const [motionNow, setMotionNow] = useState(0);
   const [updated, setUpdated] = useState<string | null>(null);
+  const [networkSwaps1h, setNetworkSwaps1h] = useState(0);
   const [selected, setSelected] = useState<MarketToken | null>(null);
   const [loadingMint, setLoadingMint] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -186,6 +187,7 @@ export default function MarketMap() {
         setTokens(list);
         setFlows(nextFlows);
         setUpdated(j.fetchedAt ?? new Date().toISOString());
+        setNetworkSwaps1h(Number(j.network?.swaps1h ?? 0));
         setError("");
 
         for (const t of list) {
@@ -295,13 +297,14 @@ export default function MarketMap() {
         <div><span>1ч. обем</span><b>{fmtUsd(totals.volume)}</b></div>
         <div><span>Покупки / продажби</span><b>{totals.buys} / {totals.sells}</b></div>
         <div><span>Ликвидност</span><b>{fmtUsd(totals.liquidity)}</b></div>
+        <div><span>On-chain swaps 1ч.</span><b>{networkSwaps1h.toLocaleString()}</b></div>
       </section>
 
       <section className="market-workspace">
         <div className="market-map" ref={wrap}>
           <div className="market-map-head">
             <div>
-              <strong>Live Solana traffic</strong>
+              <strong>Live Solana DEX traffic</strong>
               <span>Размер = активност · стрелките показват посоката на капиталовия поток между quote asset и токена</span>
             </div>
             <span>{updated ? `обновено ${new Date(updated).toLocaleTimeString("bg-BG")}` : "зареждане…"}</span>
