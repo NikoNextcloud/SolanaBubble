@@ -45,7 +45,6 @@ const TEXT: Record<string, string> = {
   "Time": "Час",
   "Side": "Тип",
   "Amount": "Количество",
-  "Last activity": "Последна активност",
 };
 
 function prettyPrice(n: number) {
