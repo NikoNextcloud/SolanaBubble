@@ -5,7 +5,7 @@ import { browserDb } from "@/lib/supabase-browser";
 
 type H = { wallet: string; balance: number; usd_value: number; pct_supply: number; cluster_id: number | null; funder: string | null; first_activity: string | null; last_activity: string | null; bought_usd: number; sold_usd: number };
 type N = H & { x: number; y: number; vx?: number; vy?: number; r: number; flash?: "buy" | "sell"; fk?: number };
-type L = { source: string | N; target: string | N; kind: string; group?: number };
+type L = { source: string | N; target: string | N; kind: string; group?: number; signalCount?: number };
 type E = { from_wallet: string; to_wallet: string; kind: "swap" | "transfer"; amount: number; usd_value: number; tx_count: number; last_seen: string };
 type Tx = { signature: string; wallet: string; side: string; amount: number; usd_value: number; block_time: string };
 type TokenMeta = { mint: string; symbol: string | null; name: string | null; supply: number | null; price_usd: number | null; decimals: number };
@@ -98,8 +98,10 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const rebuildLinks = () => {
     const groups = visualGroups();
     const fanIn: L[] = [];
+    const directTransfers: L[] = [];
     const hubs = graphHubs();
     const inbound = new Map<string, Set<string>>();
+    const seen = new Set<string>();
 
     for (const e of edges.current) {
       if (!nodes.current.has(e.from_wallet) || !nodes.current.has(e.to_wallet)) continue;
@@ -107,20 +109,38 @@ export default function BubbleMap({ mint }: { mint: string }) {
       const set = inbound.get(e.to_wallet) ?? new Set<string>();
       set.add(e.from_wallet);
       inbound.set(e.to_wallet, set);
+
+      // Direct wallet-to-wallet TRANSFER relations are useful cluster evidence
+      // and should always be visible between current holders, not only in fan-in.
+      if (e.kind === "transfer") {
+        const sg = groups.get(e.from_wallet);
+        const tg = groups.get(e.to_wallet);
+        directTransfers.push({
+          source: e.from_wallet,
+          target: e.to_wallet,
+          kind: "direct-transfer",
+          group: sg && sg === tg ? sg : tg ?? sg,
+          signalCount: Number(e.tx_count ?? 1),
+        });
+        seen.add(`${e.from_wallet}>${e.to_wallet}:transfer`);
+      }
     }
 
     for (const e of edges.current) {
       const sources = inbound.get(e.to_wallet);
       if (!sources || sources.size < FAN_IN_MIN_SOURCES) continue;
+      const key = `${e.from_wallet}>${e.to_wallet}:${e.kind}`;
+      if (e.kind === "transfer" && seen.has(key)) continue;
       fanIn.push({
         source: e.from_wallet,
         target: e.to_wallet,
         kind: e.kind === "swap" ? "flow-swap" : "flow-transfer",
         group: groups.get(e.to_wallet),
+        signalCount: Number(e.tx_count ?? 1),
       });
     }
 
-    links.current = [...baseLinks.current, ...fanIn];
+    links.current = [...baseLinks.current, ...directTransfers, ...fanIn];
   };
 
   const restart = () => {
@@ -222,7 +242,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
       (hs ?? []).forEach((h: any) => put(h, false));
       baseLinks.current = (ls ?? [])
         .filter((l: any) => nodes.current.has(l.wallet_a) && nodes.current.has(l.wallet_b))
-        .map((l: any) => ({ source: l.wallet_a, target: l.wallet_b, kind: l.kind }));
+        .map((l: any) => ({ source: l.wallet_a, target: l.wallet_b, kind: l.kind, signalCount: Number(l.signal_count ?? 1) }));
       edges.current = (es ?? []) as E[];
       restart();
     })();
@@ -242,7 +262,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "wallet_links", filter: `token_mint=eq.${mint}` }, (p: any) => {
         if (nodes.current.has(p.new.wallet_a) && nodes.current.has(p.new.wallet_b)) {
-          baseLinks.current.push({ source: p.new.wallet_a, target: p.new.wallet_b, kind: p.new.kind });
+          baseLinks.current.push({ source: p.new.wallet_a, target: p.new.wallet_b, kind: p.new.kind, signalCount: Number(p.new.signal_count ?? 1) });
           restart();
         }
       })
@@ -320,7 +340,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
     const target = l.target?.wallet ?? l.target;
     if (!visibleWallets.has(source) || !visibleWallets.has(target)) return false;
     if (l.kind === "flow-swap" && !showSwaps) return false;
-    if (l.kind === "flow-transfer" && !showTransfers) return false;
+    if ((l.kind === "flow-transfer" || l.kind === "direct-transfer") && !showTransfers) return false;
     return true;
   });
 
@@ -467,22 +487,34 @@ export default function BubbleMap({ mint }: { mint: string }) {
                   const source = l.source as N;
                   const target = l.target as N;
                   const flow = l.kind.startsWith("flow-");
+                  const directed = flow || l.kind === "direct-transfer";
                   const sourceGroup = groups.get(source.wallet);
                   const targetGroup = groups.get(target.wallet);
                   const sharedGroup = sourceGroup && sourceGroup === targetGroup ? sourceGroup : l.group;
                   const color = sharedGroup ? groupColor(sharedGroup) : "#46505f";
-                  const p = linkEndpoints(source, target, flow ? 6 : 5);
+                  const count = Math.max(1, Number(l.signalCount ?? 1));
+                  const confidence =
+                    l.kind === "funder" ? 0.96 :
+                    l.kind === "direct-transfer" ? Math.min(0.92, 0.68 + Math.log2(count + 1) * 0.08) :
+                    l.kind === "timing" ? Math.min(0.82, 0.48 + Math.log2(count + 1) * 0.08) :
+                    Math.min(0.88, 0.58 + Math.log2(count + 1) * 0.07);
+                  const p = linkEndpoints(source, target, directed ? 6 : 5);
+                  const title =
+                    l.kind === "funder" ? `Общ финансиращ адрес · висока увереност` :
+                    l.kind === "timing" ? `Синхронна покупка · ${count} сигнал(а) · ${Math.round(confidence * 100)}% увереност` :
+                    l.kind === "direct-transfer" ? `Директен трансфер · ${count} tx · ${Math.round(confidence * 100)}% увереност` :
+                    `Token flow · ${count} tx · ${Math.round(confidence * 100)}% увереност`;
                   return <line
                     key={i}
                     x1={p.x1} y1={p.y1}
                     x2={p.x2} y2={p.y2}
                     stroke={color}
-                    strokeWidth={flow ? 1.8 : l.kind === "funder" ? 1.55 : 1.25}
-                    strokeOpacity={flow ? 0.9 : l.kind === "funder" ? 0.78 : 0.62}
+                    strokeWidth={1 + confidence * 1.15}
+                    strokeOpacity={0.34 + confidence * 0.62}
                     strokeDasharray={flow ? "5 5" : l.kind === "timing" ? "3 4" : undefined}
-                    markerStart={!flow ? "url(#relationArrow)" : undefined}
+                    markerStart={!directed ? "url(#relationArrow)" : undefined}
                     markerEnd={flow ? "url(#flowArrow)" : "url(#relationArrow)"}
-                  />;
+                  ><title>{title}</title></line>;
                 })}
 
                 {visibleNodes.map((n) => {
