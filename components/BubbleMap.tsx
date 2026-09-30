@@ -59,9 +59,11 @@ export default function BubbleMap({ mint }: { mint: string }) {
       if (n.cluster_id) map.set(n.wallet, n.cluster_id);
     }
 
+    const hubs = graphHubs();
     const inbound = new Map<string, Set<string>>();
     for (const e of edges.current) {
       if (!nodes.current.has(e.from_wallet) || !nodes.current.has(e.to_wallet)) continue;
+      if (hubs.has(e.from_wallet) || hubs.has(e.to_wallet)) continue;
       const set = inbound.get(e.to_wallet) ?? new Set<string>();
       set.add(e.from_wallet);
       inbound.set(e.to_wallet, set);
@@ -81,10 +83,12 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const rebuildLinks = () => {
     const groups = visualGroups();
     const fanIn: L[] = [];
+    const hubs = graphHubs();
     const inbound = new Map<string, Set<string>>();
 
     for (const e of edges.current) {
       if (!nodes.current.has(e.from_wallet) || !nodes.current.has(e.to_wallet)) continue;
+      if (hubs.has(e.from_wallet) || hubs.has(e.to_wallet)) continue;
       const set = inbound.get(e.to_wallet) ?? new Set<string>();
       set.add(e.from_wallet);
       inbound.set(e.to_wallet, set);
@@ -143,6 +147,26 @@ export default function BubbleMap({ mint }: { mint: string }) {
     saveWatched(watched.includes(wallet) ? watched.filter((w) => w !== wallet) : [...watched, wallet]);
   };
   const displayWallet = (wallet: string) => labels[wallet]?.trim() || short(wallet);
+
+  const graphHubs = () => {
+    const peers = new Map<string, Set<string>>();
+    const incoming = new Map<string, number>();
+    const outgoing = new Map<string, number>();
+    for (const e of edges.current) {
+      if (e.kind !== "swap" || e.from_wallet === e.to_wallet) continue;
+      const a = peers.get(e.from_wallet) ?? new Set<string>();
+      const b = peers.get(e.to_wallet) ?? new Set<string>();
+      a.add(e.to_wallet); b.add(e.from_wallet);
+      peers.set(e.from_wallet, a); peers.set(e.to_wallet, b);
+      outgoing.set(e.from_wallet, (outgoing.get(e.from_wallet) ?? 0) + 1);
+      incoming.set(e.to_wallet, (incoming.get(e.to_wallet) ?? 0) + 1);
+    }
+    const hubs = new Set<string>();
+    for (const [wallet, set] of peers) {
+      if (set.size >= 6 && (incoming.get(wallet) ?? 0) > 0 && (outgoing.get(wallet) ?? 0) > 0) hubs.add(wallet);
+    }
+    return hubs;
+  };
 
   useEffect(() => {
     const el = wrap.current;
@@ -259,6 +283,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const selected = sel ? nodes.current.get(sel) : null;
   const pl = selected && Number(selected.bought_usd) > 0 ? Number(selected.usd_value) + Number(selected.sold_usd) - Number(selected.bought_usd) : null;
   const groupCount = new Set(groups.values()).size;
+  const ignoredHubCount = graphHubs().size;
   const volume24h = feedTxs.reduce((a, t) => a + Number(t.usd_value || 0), 0) / 2;
   const buys24h = feedTxs.filter((t) => t.side === "buy").length;
   const sells24h = feedTxs.filter((t) => t.side === "sell").length;
@@ -342,6 +367,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
           <div><span>24h tracked volume</span><b>{usd(volume24h)}</b></div>
           <div><span>Buy / Sell</span><b><em className="buy">{buys24h}</em> / <em className="sell">{sells24h}</em></b></div>
           <div><span>Linked groups</span><b>{groupCount}</b></div>
+          <div><span>Ignored pools/routers</span><b>{ignoredHubCount}</b></div>
           <div><span>24h net flow</span><b className={netFlow24h >= 0 ? "buy" : "sell"}>{netFlow24h >= 0 ? "+" : ""}{usd(netFlow24h)}</b></div>
         </div>
 
@@ -548,6 +574,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
               <dt>Supply</dt><dd>{num(Number(meta?.supply ?? 0))}</dd>
               <dt>Holders</dt><dd>{holderCount.toLocaleString()}</dd>
               <dt>Linked groups</dt><dd>{groupCount}</dd>
+              <dt>Ignored pools/routers</dt><dd>{ignoredHubCount}</dd>
             </dl>
           </div>
           <div className="side-section">
@@ -567,7 +594,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
           </div>}
           <div className="side-section">
             <span className="eyebrow">How links work</span>
-            <p className="note">Цветните групи са вероятни on-chain връзки. Общ funder, синхронни покупки или token flow между няколко wallet-а са сигнали, но не доказват общ собственик.</p>
+            <p className="note">Цветните групи са вероятни on-chain връзки. Общ funder, синхронни покупки и директни transfer-и между текущи holders са сигнали. Адреси, които приличат на pool/router по многото двупосочни swap връзки, се изключват от ownership клъстерите.</p>
           </div>
         </> : <>
           <div className="side-section">
