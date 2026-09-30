@@ -4,7 +4,7 @@ import { admin } from "@/lib/db";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const TABLES = ["tokens", "holdings", "exited_holders", "transactions", "wallet_links", "wallet_edges"] as const;
+const TABLES = ["tokens", "holdings", "exited_holders", "transactions", "wallet_links", "wallet_edges", "network_swaps"] as const;
 type Table = (typeof TABLES)[number];
 
 function authorized(req: Request) {
@@ -31,7 +31,7 @@ export async function GET(req: Request) {
   let query: any = db.from(table).select("*", { count: "exact" }).limit(limit);
 
   if (mint) query = table === "tokens" ? query.eq("mint", mint) : query.eq("token_mint", mint);
-  if (table === "transactions") query = query.order("block_time", { ascending: false });
+  if (table === "transactions" || table === "network_swaps") query = query.order("block_time", { ascending: false });
   if (table === "exited_holders") query = query.order("exited_at", { ascending: false });
   if (table === "wallet_links" || table === "wallet_edges") query = query.order("last_seen", { ascending: false });
   if (table === "holdings") query = query.order("balance", { ascending: false });
@@ -71,6 +71,7 @@ export async function DELETE(req: Request) {
     transactions: ["signature", "wallet", "token_mint"],
     wallet_links: ["token_mint", "wallet_a", "wallet_b", "kind"],
     wallet_edges: ["token_mint", "from_wallet", "to_wallet", "kind"],
+    network_swaps: ["signature"],
   };
 
   const filters = body.filters ?? {};
