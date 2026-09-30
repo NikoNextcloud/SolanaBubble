@@ -10,47 +10,126 @@ const TIMING_WINDOW_S = 10;
 /** Обработва Helius enhanced транзакция. Идемпотентно по (signature, wallet, mint). */
 export async function ingestTx(tx: any) {
   const db = admin();
-  const mints = [...new Set<string>((tx.tokenTransfers ?? []).map((t: any) => t.mint))];
+  const transfers: any[] = tx.tokenTransfers ?? [];
+  const mints = [...new Set<string>(transfers.map((t: any) => t.mint).filter(Boolean))];
   if (!mints.length) return;
+
   const { data: tracked } = await db.from("tokens").select("*").in("mint", mints);
   for (const token of tracked ?? []) {
     const deltas = new Map<string, number>();
-    for (const t of tx.tokenTransfers) {
-      if (t.mint !== token.mint || !t.tokenAmount) continue;
-      if (t.toUserAccount) deltas.set(t.toUserAccount, (deltas.get(t.toUserAccount) ?? 0) + t.tokenAmount);
-      if (t.fromUserAccount) deltas.set(t.fromUserAccount, (deltas.get(t.fromUserAccount) ?? 0) - t.tokenAmount);
-    }
     const price = (await fetchPriceUsd(token.mint)) || Number(token.price_usd) || 0;
-    if (price) await db.from("tokens").update({ price_usd: price }).eq("mint", token.mint);
     const when = new Date((tx.timestamp ?? Date.now() / 1000) * 1000).toISOString();
     const isSwap = tx.type === "SWAP";
+
+    for (const t of transfers) {
+      if (t.mint !== token.mint || !t.tokenAmount) continue;
+
+      if (t.toUserAccount) {
+        deltas.set(t.toUserAccount, (deltas.get(t.toUserAccount) ?? 0) + t.tokenAmount);
+      }
+      if (t.fromUserAccount) {
+        deltas.set(t.fromUserAccount, (deltas.get(t.fromUserAccount) ?? 0) - t.tokenAmount);
+      }
+
+      // Keep a directed graph of token flow. The UI only highlights useful
+      // fan-in patterns (one wallet receiving from 2+ distinct wallets), so
+      // ordinary pool traffic does not turn the whole map into one cluster.
+      if (t.fromUserAccount && t.toUserAccount && t.fromUserAccount !== t.toUserAccount) {
+        await upsertWalletEdge(
+          token.mint,
+          t.fromUserAccount,
+          t.toUserAccount,
+          isSwap ? "swap" : "transfer",
+          Number(t.tokenAmount),
+          Number(t.tokenAmount) * price,
+          when,
+          tx.signature,
+        );
+      }
+    }
+
+    if (price) await db.from("tokens").update({ price_usd: price }).eq("mint", token.mint);
 
     for (const [wallet, delta] of deltas) {
       if (Math.abs(delta) < 1e-9) continue;
       const side = delta > 0 ? (isSwap ? "buy" : "transfer_in") : (isSwap ? "sell" : "transfer_out");
       const usd = Math.abs(delta) * price;
-      const { error } = await db.from("transactions").insert({ signature: tx.signature, token_mint: token.mint, wallet, side, amount: Math.abs(delta), usd_value: usd, block_time: when });
-      if (error?.code === "23505") continue; // повторен webhook
+      const { error } = await db.from("transactions").insert({
+        signature: tx.signature,
+        token_mint: token.mint,
+        wallet,
+        side,
+        amount: Math.abs(delta),
+        usd_value: usd,
+        block_time: when,
+      });
+      if (error?.code === "23505") continue;
 
-      const { data: cur } = await db.from("holdings").select("*").eq("token_mint", token.mint).eq("wallet", wallet).maybeSingle();
+      const { data: cur } = await db
+        .from("holdings")
+        .select("*")
+        .eq("token_mint", token.mint)
+        .eq("wallet", wallet)
+        .maybeSingle();
+
       const balance = Number(cur?.balance ?? 0) + delta;
       if (balance <= 1e-9) {
-        if (cur) await db.from("holdings").delete().eq("token_mint", token.mint).eq("wallet", wallet); // EXIT
+        if (cur) await db.from("holdings").delete().eq("token_mint", token.mint).eq("wallet", wallet);
       } else {
         await db.from("holdings").upsert({
-          token_mint: token.mint, wallet, balance, usd_value: balance * price,
+          token_mint: token.mint,
+          wallet,
+          balance,
+          usd_value: balance * price,
           pct_supply: token.supply ? (balance / Number(token.supply)) * 100 : 0,
-          cluster_id: cur?.cluster_id ?? null, funder: cur?.funder ?? null,
-          first_activity: cur?.first_activity ?? when, last_activity: when,
+          cluster_id: cur?.cluster_id ?? null,
+          funder: cur?.funder ?? null,
+          first_activity: cur?.first_activity ?? when,
+          last_activity: when,
           bought_usd: Number(cur?.bought_usd ?? 0) + (side === "buy" ? usd : 0),
           sold_usd: Number(cur?.sold_usd ?? 0) + (side === "sell" ? usd : 0),
         });
         if (!cur) await linkByFunder(token.mint, wallet);
       }
+
       await notify(token, wallet, side, usd, balance, tx.signature, !cur);
       if (side === "buy") await linkByTiming(token.mint, wallet, when);
     }
   }
+}
+
+async function upsertWalletEdge(
+  mint: string,
+  fromWallet: string,
+  toWallet: string,
+  kind: "swap" | "transfer",
+  amount: number,
+  usdValue: number,
+  when: string,
+  signature: string,
+) {
+  const db = admin();
+  const { data: cur } = await db
+    .from("wallet_edges")
+    .select("amount,usd_value,tx_count,first_seen")
+    .eq("token_mint", mint)
+    .eq("from_wallet", fromWallet)
+    .eq("to_wallet", toWallet)
+    .eq("kind", kind)
+    .maybeSingle();
+
+  await db.from("wallet_edges").upsert({
+    token_mint: mint,
+    from_wallet: fromWallet,
+    to_wallet: toWallet,
+    kind,
+    amount: Number(cur?.amount ?? 0) + amount,
+    usd_value: Number(cur?.usd_value ?? 0) + usdValue,
+    tx_count: Number(cur?.tx_count ?? 0) + 1,
+    first_seen: cur?.first_seen ?? when,
+    last_seen: when,
+    last_signature: signature,
+  });
 }
 
 async function linkByFunder(mint: string, wallet: string) {
