@@ -415,17 +415,18 @@ export default function BubbleMap({ mint }: { mint: string }) {
 
     const n = nodes.current.get(d.wallet);
     if (n) {
-      // Release the grabbed bubble back into physics with a small amount of
-      // momentum. Connected bubbles keep following through the spring links.
-      n.fx = null;
-      n.fy = null;
-      n.vx = clamp(d.vx * 1.15, -18, 18);
-      n.vy = clamp(d.vy * 1.15, -18, 18);
+      // Keep the grabbed bubble pinned exactly where the user dropped it.
+      // Connected bubbles remain free and continue following it through the
+      // spring/link forces.
+      n.fx = n.x;
+      n.fy = n.y;
+      n.vx = 0;
+      n.vy = 0;
     }
 
     d.active = false;
     setDraggingWallet(null);
-    sim.current?.alpha(0.72).alphaTarget(0).restart();
+    sim.current?.alpha(0.5).alphaTarget(0).restart();
     bump((x) => x + 1);
   };
 
@@ -686,7 +687,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
               <button onClick={() => zoomBy(1.2)} title="Zoom in">+</button>
               <button onClick={() => zoomBy(1 / 1.2)} title="Zoom out">−</button>
               <button onClick={resetView} title="Нулирай изгледа">↺</button>
-              <button onClick={releasePinnedNodes} title="Освободи ръчно преместените балончета">⌁</button>
+              <button onClick={releasePinnedNodes} title="Освободи всички фиксирани балончета">⌁</button>
               <span>{Math.round(transform.k * 100)}%</span>
             </div>
 
