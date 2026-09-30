@@ -107,3 +107,9 @@ code{color:#c5cbd5}
 .wallet-action.active{border-color:#685230;color:#ffd166;background:rgba(255,209,102,.07)}
 .flash-buy{filter:drop-shadow(0 0 8px rgba(235,241,248,.55))}
 .flash-sell{filter:drop-shadow(0 0 6px rgba(255,100,115,.24))}
+
+.insight-bubble{transform-box:fill-box;transform-origin:center;transition:r .65s cubic-bezier(.2,.8,.2,1),fill .28s ease,fill-opacity .28s ease,stroke-width .2s ease,filter .2s ease}
+.flash-buy{animation:buyBubblePulse .9s ease-out}
+.flash-sell{animation:sellBubblePulse .9s ease-out}
+@keyframes buyBubblePulse{0%{transform:scale(1.08)}100%{transform:scale(1)}}
+@keyframes sellBubblePulse{0%{transform:scale(.92)}100%{transform:scale(1)}}
