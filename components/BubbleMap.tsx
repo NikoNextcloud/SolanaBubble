@@ -75,6 +75,9 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const [showSwaps, setShowSwaps] = useState(true);
   const [showTransfers, setShowTransfers] = useState(true);
   const [motionOn, setMotionOn] = useState(true);
+  const [streamLive, setStreamLive] = useState<boolean | null>(null);
+  const [autoPaused, setAutoPaused] = useState(false);
+  const idleRef = useRef(Date.now());
   const [motionNow, setMotionNow] = useState(0);
   const [hovered, setHovered] = useState<string | null>(null);
   const [draggingWallet, setDraggingWallet] = useState<string | null>(null);
@@ -238,7 +241,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
   };
 
   useEffect(() => {
-    if (!motionOn || view !== "map") return;
+    if (!motionOn || streamLive !== true || view !== "map") return;
     let raf = 0;
     let last = 0;
     const tick = (now: number) => {
@@ -250,7 +253,49 @@ export default function BubbleMap({ mint }: { mint: string }) {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [motionOn, view]);
+  }, [motionOn, streamLive, view]);
+
+  async function changeStreamLive(next: boolean, automatic = false) {
+    try {
+      const r = await fetch("/api/live-mode", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ live: next }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "live mode");
+      setStreamLive(next);
+      setAutoPaused(automatic && !next);
+      idleRef.current = Date.now();
+      if (next) sim.current?.alpha(0.45).restart();
+      else sim.current?.stop();
+    } catch {}
+  }
+
+  useEffect(() => {
+    fetch("/api/live-mode", { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((j) => { if (j && typeof j.live === "boolean") setStreamLive(j.live); })
+      .catch(() => setStreamLive(true));
+  }, []);
+
+  useEffect(() => {
+    const activity = () => {
+      idleRef.current = Date.now();
+      if (autoPaused) setAutoPaused(false);
+    };
+    const events = ["pointerdown", "keydown", "wheel", "touchstart"] as const;
+    for (const name of events) window.addEventListener(name, activity, { passive: true });
+    const timer = window.setInterval(() => {
+      if (streamLive === true && Date.now() - idleRef.current >= 2 * 60 * 1000) {
+        changeStreamLive(false, true);
+      }
+    }, 10000);
+    return () => {
+      for (const name of events) window.removeEventListener(name, activity);
+      window.clearInterval(timer);
+    };
+  }, [streamLive, autoPaused]);
 
   useEffect(() => {
     try {
@@ -658,7 +703,23 @@ export default function BubbleMap({ mint }: { mint: string }) {
           {view === "map" && <div className="map insight-map" ref={wrap}>
             {missing && <div className="map-message">Токенът не се следи. Стартирай bootstrap за {mint}.</div>}
 
-            <div className="graph-toolbar">
+            <div className="insight-live-bar holder-live-bar">
+              <button className="ghost-control">☷ Holders</button>
+              <button className="ghost-control">↕ Filters</button>
+              <button
+                className={`go-live-control ${streamLive === true ? "is-live" : ""}`}
+                onClick={() => changeStreamLive(streamLive !== true)}
+              >{streamLive === true ? "◉ Live" : "◉ Go Live"}</button>
+            </div>
+            <button
+              className={`market-pause-orb holder-pause-orb ${streamLive === false ? "paused" : ""}`}
+              onClick={() => changeStreamLive(streamLive !== true)}
+              title={streamLive === true ? "Пауза на Helius network stream и Solscan обновяванията" : "Пусни live режима"}
+            >{streamLive === true ? "Ⅱ" : "▶"}</button>
+            {streamLive === false && <div className="pause-banner holder-pause-banner">
+              {autoPaused ? "Автоматична пауза след 2 мин. без активност" : "Live режимът е на пауза"}
+            </div>}
+            <div className="graph-toolbar holder-graph-toolbar">
               <input value={walletQuery} onChange={(e) => setWalletQuery(e.target.value)} placeholder="Find wallet…" aria-label="Find wallet" />
               <label>Min %
                 <select value={String(minPct)} onChange={(e) => setMinPct(Number(e.target.value))}>
