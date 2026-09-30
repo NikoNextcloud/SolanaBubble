@@ -1,0 +1,8 @@
+# За локална Supabase CLI работа (по избор — миграцията работи и без CLI, директно през SQL Editor).
+project_id = "solana-bubbles"
+
+[db]
+port = 54322
+
+[api]
+port = 54321

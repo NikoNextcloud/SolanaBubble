@@ -1,0 +1,100 @@
+import { admin } from "./db";
+import { findFunder, fetchPriceUsd } from "./helius";
+import { computeClusters, type Link } from "./cluster";
+import { alert, short } from "./telegram";
+
+const BIG = () => Number(process.env.ALERT_BIG_TRADE_USD ?? 5000);
+const WHALE = () => Number(process.env.ALERT_WHALE_PCT ?? 1);
+const TIMING_WINDOW_S = 10;
+
+/** Обработва Helius enhanced транзакция. Идемпотентно по (signature, wallet, mint). */
+export async function ingestTx(tx: any) {
+  const db = admin();
+  const mints = [...new Set<string>((tx.tokenTransfers ?? []).map((t: any) => t.mint))];
+  if (!mints.length) return;
+  const { data: tracked } = await db.from("tokens").select("*").in("mint", mints);
+  for (const token of tracked ?? []) {
+    const deltas = new Map<string, number>();
+    for (const t of tx.tokenTransfers) {
+      if (t.mint !== token.mint || !t.tokenAmount) continue;
+      if (t.toUserAccount) deltas.set(t.toUserAccount, (deltas.get(t.toUserAccount) ?? 0) + t.tokenAmount);
+      if (t.fromUserAccount) deltas.set(t.fromUserAccount, (deltas.get(t.fromUserAccount) ?? 0) - t.tokenAmount);
+    }
+    const price = (await fetchPriceUsd(token.mint)) || Number(token.price_usd) || 0;
+    if (price) await db.from("tokens").update({ price_usd: price }).eq("mint", token.mint);
+    const when = new Date((tx.timestamp ?? Date.now() / 1000) * 1000).toISOString();
+    const isSwap = tx.type === "SWAP";
+
+    for (const [wallet, delta] of deltas) {
+      if (Math.abs(delta) < 1e-9) continue;
+      const side = delta > 0 ? (isSwap ? "buy" : "transfer_in") : (isSwap ? "sell" : "transfer_out");
+      const usd = Math.abs(delta) * price;
+      const { error } = await db.from("transactions").insert({ signature: tx.signature, token_mint: token.mint, wallet, side, amount: Math.abs(delta), usd_value: usd, block_time: when });
+      if (error?.code === "23505") continue; // повторен webhook
+
+      const { data: cur } = await db.from("holdings").select("*").eq("token_mint", token.mint).eq("wallet", wallet).maybeSingle();
+      const balance = Number(cur?.balance ?? 0) + delta;
+      if (balance <= 1e-9) {
+        if (cur) await db.from("holdings").delete().eq("token_mint", token.mint).eq("wallet", wallet); // EXIT
+      } else {
+        await db.from("holdings").upsert({
+          token_mint: token.mint, wallet, balance, usd_value: balance * price,
+          pct_supply: token.supply ? (balance / Number(token.supply)) * 100 : 0,
+          cluster_id: cur?.cluster_id ?? null, funder: cur?.funder ?? null,
+          first_activity: cur?.first_activity ?? when, last_activity: when,
+          bought_usd: Number(cur?.bought_usd ?? 0) + (side === "buy" ? usd : 0),
+          sold_usd: Number(cur?.sold_usd ?? 0) + (side === "sell" ? usd : 0),
+        });
+        if (!cur) await linkByFunder(token.mint, wallet);
+      }
+      await notify(token, wallet, side, usd, balance, tx.signature, !cur);
+      if (side === "buy") await linkByTiming(token.mint, wallet, when);
+    }
+  }
+}
+
+async function linkByFunder(mint: string, wallet: string) {
+  const db = admin();
+  const funder = await findFunder(wallet);
+  if (!funder) return;
+  await db.from("holdings").update({ funder }).eq("token_mint", mint).eq("wallet", wallet);
+  const { data: sibs } = await db.from("holdings").select("wallet").eq("token_mint", mint).eq("funder", funder).neq("wallet", wallet);
+  for (const s of sibs ?? []) {
+    const [a, b] = [wallet, s.wallet].sort();
+    await db.from("wallet_links").upsert({ token_mint: mint, wallet_a: a, wallet_b: b, kind: "funder", evidence: `общ funder ${funder}` });
+  }
+  if (sibs?.length) await recluster(mint);
+}
+
+async function linkByTiming(mint: string, wallet: string, when: string) {
+  const db = admin();
+  const from = new Date(new Date(when).getTime() - TIMING_WINDOW_S * 1000).toISOString();
+  const { data } = await db.from("transactions").select("wallet").eq("token_mint", mint).eq("side", "buy").gte("block_time", from).neq("wallet", wallet);
+  const others = [...new Set((data ?? []).map(r => r.wallet))];
+  for (const o of others) {
+    const [a, b] = [wallet, o].sort();
+    await db.from("wallet_links").upsert({ token_mint: mint, wallet_a: a, wallet_b: b, kind: "timing", evidence: `BUY в рамките на ${TIMING_WINDOW_S}s` });
+  }
+  if (others.length) await recluster(mint);
+}
+
+export async function recluster(mint: string) {
+  const db = admin();
+  const { data } = await db.from("wallet_links").select("wallet_a,wallet_b,kind").eq("token_mint", mint);
+  const map = computeClusters((data ?? []).map(l => ({ a: l.wallet_a, b: l.wallet_b, kind: l.kind }) as Link));
+  const { data: hs } = await db.from("holdings").select("wallet,cluster_id").eq("token_mint", mint);
+  for (const h of hs ?? []) {
+    const next = map.get(h.wallet) ?? null;
+    if (next !== h.cluster_id) await db.from("holdings").update({ cluster_id: next }).eq("token_mint", mint).eq("wallet", h.wallet);
+  }
+}
+
+async function notify(token: any, wallet: string, side: string, usd: number, balance: number, sig: string, isNew: boolean) {
+  const sym = token.symbol ?? short(token.mint);
+  const pct = token.supply ? (Math.max(balance, 0) / Number(token.supply)) * 100 : 0;
+  const tx = `<a href="https://solscan.io/tx/${sig}">tx</a>`;
+  const sell = side === "sell" || side === "transfer_out";
+  if (isNew && !sell) await alert(`🆕 Нов holder ${short(wallet)} в <b>${sym}</b> · $${usd.toFixed(0)} · ${tx}`);
+  if (usd >= BIG()) await alert(`${sell ? "🔴 Голям SELL" : "🟢 Голям BUY"} <b>${sym}</b> · ${short(wallet)} · $${usd.toFixed(0)} · ${tx}`);
+  if (pct >= WHALE()) await alert(`🐋 ${short(wallet)} държи ${pct.toFixed(2)}% от <b>${sym}</b>`);
+}
