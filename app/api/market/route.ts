@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { admin } from "@/lib/db";
-import { ensureNetworkProgramsTracked } from "@/lib/helius";
 import { getNetworkLive } from "@/lib/runtime-state";
 
 export const dynamic = "force-dynamic";
@@ -34,8 +33,6 @@ async function getJson<T>(url: string): Promise<T | null> {
   }
 }
 
-let lastNetworkEnsure = 0;
-
 export async function GET() {
   const db = admin();
   const live = await getNetworkLive();
@@ -55,11 +52,6 @@ export async function GET() {
       { ...(cachedRow.payload as object), cached: true, live },
       { headers: { "cache-control": "no-store, max-age=0" } },
     );
-  }
-
-  if (live && Date.now() - lastNetworkEnsure > 5 * 60 * 1000) {
-    lastNetworkEnsure = Date.now();
-    ensureNetworkProgramsTracked().catch(() => null);
   }
 
   const [profiles, boosts] = await Promise.all([
