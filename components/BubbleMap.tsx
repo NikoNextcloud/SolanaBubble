@@ -52,7 +52,9 @@ export default function BubbleMap({ mint }: { mint: string }) {
     wallet: "",
     lastX: 0,
     lastY: 0,
-    members: [] as string[],
+    lastAt: 0,
+    vx: 0,
+    vy: 0,
     moved: false,
   });
 
@@ -345,27 +347,30 @@ export default function BubbleMap({ mint }: { mint: string }) {
 
   const beginNodeDrag = (e: React.PointerEvent<SVGCircleElement>, wallet: string) => {
     e.stopPropagation();
-    const members = connectedWallets(wallet);
-    for (const id of members) {
-      const n = nodes.current.get(id);
-      if (!n) continue;
-      n.fx = n.x;
-      n.fy = n.y;
-      n.vx = 0;
-      n.vy = 0;
-    }
+    const n = nodes.current.get(wallet);
+    if (!n) return;
+
+    // Only the grabbed bubble is pinned to the pointer. Connected bubbles stay
+    // physically free, so the d3 link forces pull them after it like springs.
+    n.fx = n.x;
+    n.fy = n.y;
+    n.vx = 0;
+    n.vy = 0;
+
     drag.current = {
       active: true,
       pointerId: e.pointerId,
       wallet,
       lastX: e.clientX,
       lastY: e.clientY,
-      members,
+      lastAt: performance.now(),
+      vx: 0,
+      vy: 0,
       moved: false,
     };
     setDraggingWallet(wallet);
     e.currentTarget.setPointerCapture(e.pointerId);
-    sim.current?.alphaTarget(0.12).restart();
+    sim.current?.alpha(0.78).alphaTarget(0.24).restart();
     bump((x) => x + 1);
   };
 
@@ -373,22 +378,32 @@ export default function BubbleMap({ mint }: { mint: string }) {
     const d = drag.current;
     if (!d.active || d.pointerId !== e.pointerId) return;
     e.stopPropagation();
+
+    const now = performance.now();
+    const dt = Math.max(8, now - d.lastAt);
     const dx = (e.clientX - d.lastX) / transform.k;
     const dy = (e.clientY - d.lastY) / transform.k;
     if (Math.abs(dx) + Math.abs(dy) > 0.15) d.moved = true;
+
+    // Track pointer speed so release can keep a little momentum.
+    d.vx = (dx / dt) * 16.67;
+    d.vy = (dy / dt) * 16.67;
     d.lastX = e.clientX;
     d.lastY = e.clientY;
+    d.lastAt = now;
 
-    for (const id of d.members) {
-      const n = nodes.current.get(id);
-      if (!n) continue;
-      n.fx = (n.fx ?? n.x) + dx;
-      n.fy = (n.fy ?? n.y) + dy;
-      n.x = n.fx;
-      n.y = n.fy;
-      n.vx = 0;
-      n.vy = 0;
-    }
+    const n = nodes.current.get(d.wallet);
+    if (!n) return;
+    n.fx = (n.fx ?? n.x) + dx;
+    n.fy = (n.fy ?? n.y) + dy;
+    n.x = n.fx;
+    n.y = n.fy;
+    n.vx = 0;
+    n.vy = 0;
+
+    // Keep the simulation hot while dragging. Link forces make connected
+    // wallets lag and then catch up instead of moving as one rigid block.
+    sim.current?.alpha(0.72).restart();
     bump((x) => x + 1);
   };
 
@@ -397,9 +412,20 @@ export default function BubbleMap({ mint }: { mint: string }) {
     if (!d.active || d.pointerId !== e.pointerId) return;
     e.stopPropagation();
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+
+    const n = nodes.current.get(d.wallet);
+    if (n) {
+      // Release the grabbed bubble back into physics with a small amount of
+      // momentum. Connected bubbles keep following through the spring links.
+      n.fx = null;
+      n.fy = null;
+      n.vx = clamp(d.vx * 1.15, -18, 18);
+      n.vy = clamp(d.vy * 1.15, -18, 18);
+    }
+
     d.active = false;
     setDraggingWallet(null);
-    sim.current?.alphaTarget(0);
+    sim.current?.alpha(0.72).alphaTarget(0).restart();
     bump((x) => x + 1);
   };
 
@@ -410,7 +436,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
     }
     drag.current.active = false;
     setDraggingWallet(null);
-    sim.current?.alpha(0.55).alphaTarget(0).restart();
+    sim.current?.alpha(0.65).alphaTarget(0).restart();
     bump((x) => x + 1);
   };
 
