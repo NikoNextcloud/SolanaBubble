@@ -1,6 +1,6 @@
 import { admin } from "./db";
 import { findFunder, fetchPriceUsd } from "./helius";
-import { computeClusters, type Link } from "./cluster";
+import { buildClusterLinks, computeClusters, type GraphEdge, type Link } from "./cluster";
 import { alert, short } from "./telegram";
 
 const BIG = () => Number(process.env.ALERT_BIG_TRADE_USD ?? 5000);
@@ -95,6 +95,10 @@ export async function ingestTx(tx: any) {
       await notify(token, wallet, side, usd, balance, tx.signature, !cur);
       if (side === "buy") await linkByTiming(token.mint, wallet, when);
     }
+
+    // Recompute once per processed token transaction. This also picks up
+    // direct TRANSFER relations and clears stale pool/router clusters.
+    await recluster(token.mint);
   }
 }
 
@@ -153,7 +157,6 @@ async function linkByFunder(mint: string, wallet: string) {
       last_seen: now,
     });
   }
-  if (sibs?.length) await recluster(mint);
 }
 
 async function linkByTiming(mint: string, wallet: string, when: string) {
@@ -175,22 +178,38 @@ async function linkByTiming(mint: string, wallet: string, when: string) {
       last_seen: when,
     });
   }
-  if (others.length) await recluster(mint);
 }
 
 export async function recluster(mint: string) {
   const db = admin();
-  const { data } = await db.from("wallet_links").select("wallet_a,wallet_b,kind,signal_count").eq("token_mint", mint);
-  const map = computeClusters((data ?? []).map(l => ({
+  const [{ data: rawLinks }, { data: rawEdges }, { data: hs }] = await Promise.all([
+    db.from("wallet_links").select("wallet_a,wallet_b,kind,signal_count").eq("token_mint", mint),
+    db.from("wallet_edges").select("from_wallet,to_wallet,kind,tx_count").eq("token_mint", mint),
+    db.from("holdings").select("wallet,cluster_id").eq("token_mint", mint),
+  ]);
+
+  const holders = new Set((hs ?? []).map((h: any) => h.wallet));
+  const walletLinks = (rawLinks ?? []).map((l: any) => ({
     a: l.wallet_a,
     b: l.wallet_b,
     kind: l.kind,
     signal_count: Number(l.signal_count ?? 1),
-  }) as Link));
-  const { data: hs } = await db.from("holdings").select("wallet,cluster_id").eq("token_mint", mint);
+  }) as Link);
+  const graphEdges = (rawEdges ?? []).map((e: any) => ({
+    from_wallet: e.from_wallet,
+    to_wallet: e.to_wallet,
+    kind: e.kind,
+    tx_count: Number(e.tx_count ?? 1),
+  }) as GraphEdge);
+
+  const { links } = buildClusterLinks(walletLinks, graphEdges, holders);
+  const map = computeClusters(links);
+
   for (const h of hs ?? []) {
     const next = map.get(h.wallet) ?? null;
-    if (next !== h.cluster_id) await db.from("holdings").update({ cluster_id: next }).eq("token_mint", mint).eq("wallet", h.wallet);
+    if (next !== h.cluster_id) {
+      await db.from("holdings").update({ cluster_id: next }).eq("token_mint", mint).eq("wallet", h.wallet);
+    }
   }
 }
 
