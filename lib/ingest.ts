@@ -74,7 +74,24 @@ export async function ingestTx(tx: any) {
 
       const balance = Number(cur?.balance ?? 0) + delta;
       if (balance <= 1e-9) {
-        if (cur) await db.from("holdings").delete().eq("token_mint", token.mint).eq("wallet", wallet);
+        if (cur) {
+          // Keep a permanent exit record, then remove the wallet from active
+          // holdings so it disappears from the live bubble map immediately.
+          await db.from("exited_holders").insert({
+            token_mint: token.mint,
+            wallet,
+            bought_usd: Number(cur.bought_usd ?? 0) + (side === "buy" ? usd : 0),
+            sold_usd: Number(cur.sold_usd ?? 0) + (side === "sell" ? usd : 0),
+            first_activity: cur.first_activity ?? when,
+            last_activity: when,
+            exited_at: when,
+            last_signature: tx.signature,
+            exit_side: side,
+            funder: cur.funder ?? null,
+            cluster_id: cur.cluster_id ?? null,
+          });
+          await db.from("holdings").delete().eq("token_mint", token.mint).eq("wallet", wallet);
+        }
       } else {
         await db.from("holdings").upsert({
           token_mint: token.mint,
