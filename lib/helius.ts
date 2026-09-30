@@ -43,3 +43,81 @@ export async function fetchPriceUsd(mint: string): Promise<number> {
     return Number(best?.priceUsd ?? 0);
   } catch { return 0; }
 }
+
+
+type HeliusWebhook = {
+  webhookID: string;
+  webhookURL: string;
+  transactionTypes?: string[];
+  accountAddresses?: string[];
+  webhookType?: string;
+  encoding?: string;
+  txnStatus?: string;
+};
+
+/**
+ * Ensures the production SolanaBubble Enhanced webhook also watches this mint.
+ * This lets newly bootstrapped tokens start receiving live SWAP/TRANSFER events
+ * without a manual Helius dashboard edit.
+ */
+export async function ensureWebhookTracksMint(mint: string) {
+  const key = KEY();
+  if (!key) throw new Error("HELIUS_API_KEY is missing");
+  const secret = process.env.HELIUS_WEBHOOK_SECRET;
+  if (!secret) throw new Error("HELIUS_WEBHOOK_SECRET is missing");
+
+  const listRes = await fetch(`https://api.helius.xyz/v0/webhooks?api-key=${key}`, {
+    cache: "no-store",
+  });
+  if (!listRes.ok) throw new Error(`Helius webhooks list failed: ${listRes.status}`);
+  const all = await listRes.json() as HeliusWebhook[];
+  const webhooks = Array.isArray(all) ? all : [];
+
+  const candidates = webhooks.filter((w) =>
+    typeof w.webhookURL === "string" && w.webhookURL.includes("/api/webhooks/helius")
+  );
+  if (!candidates.length) {
+    throw new Error("No SolanaBubble Helius webhook was found");
+  }
+
+  const webhook =
+    candidates.find((w) => w.webhookURL.includes("solanabubble.vercel.app")) ??
+    candidates[0];
+
+  const addresses = [...new Set([...(webhook.accountAddresses ?? []), mint])];
+  if ((webhook.accountAddresses ?? []).includes(mint)) {
+    return { webhookID: webhook.webhookID, addresses: addresses.length, added: false };
+  }
+
+  const transactionTypes = [...new Set([
+    ...(webhook.transactionTypes ?? []),
+    "SWAP",
+    "TRANSFER",
+  ])];
+
+  const body: Record<string, unknown> = {
+    webhookURL: webhook.webhookURL,
+    transactionTypes,
+    accountAddresses: addresses,
+    webhookType: webhook.webhookType ?? "enhanced",
+    authHeader: secret,
+  };
+  if (webhook.encoding) body.encoding = webhook.encoding;
+  if (webhook.txnStatus) body.txnStatus = webhook.txnStatus;
+
+  const updateRes = await fetch(
+    `https://api.helius.xyz/v0/webhooks/${webhook.webhookID}?api-key=${key}`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    },
+  );
+  if (!updateRes.ok) {
+    const detail = await updateRes.text().catch(() => "");
+    throw new Error(`Helius webhook update failed: ${updateRes.status} ${detail.slice(0, 300)}`);
+  }
+
+  return { webhookID: webhook.webhookID, addresses: addresses.length, added: true };
+}
