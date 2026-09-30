@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { admin } from "@/lib/db";
 import { ensureNetworkProgramsTracked } from "@/lib/helius";
+import { getNetworkLive } from "@/lib/runtime-state";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,27 @@ async function getJson<T>(url: string): Promise<T | null> {
 let lastNetworkEnsure = 0;
 
 export async function GET() {
-  if (Date.now() - lastNetworkEnsure > 5 * 60 * 1000) {
+  const db = admin();
+  const live = await getNetworkLive();
+
+  const { data: cachedRow } = await db
+    .from("api_cache")
+    .select("payload,updated_at")
+    .eq("cache_key", "market:snapshot")
+    .maybeSingle();
+
+  const cachedAge = cachedRow?.updated_at
+    ? Date.now() - new Date(cachedRow.updated_at).getTime()
+    : Number.POSITIVE_INFINITY;
+
+  if (cachedRow?.payload && (!live || cachedAge < 15_000)) {
+    return NextResponse.json(
+      { ...(cachedRow.payload as object), cached: true, live },
+      { headers: { "cache-control": "no-store, max-age=0" } },
+    );
+  }
+
+  if (live && Date.now() - lastNetworkEnsure > 5 * 60 * 1000) {
     lastNetworkEnsure = Date.now();
     ensureNetworkProgramsTracked().catch(() => null);
   }
@@ -147,7 +168,7 @@ export async function GET() {
   priceMap.set("Es9vMFrzaCERmJfrF4H2FYDgHkmPG8TbQnYQ8V4a8Qj", 1);
 
   const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const { data: recentSwaps } = await admin()
+  const { data: recentSwaps } = await db
     .from("network_swaps")
     .select("input_mint,output_mint,input_amount,output_amount,source,block_time")
     .gte("block_time", since)
@@ -203,16 +224,25 @@ export async function GET() {
     .sort((a, b) => (b.usd1h || b.trades1h * 50) - (a.usd1h || a.trades1h * 50))
     .slice(0, 180);
 
-  return NextResponse.json(
-    {
-      fetchedAt: new Date().toISOString(),
-      tokens,
-      flows,
-      network: {
-        swaps1h: recentSwaps?.length ?? 0,
-        source: "major-dex-webhook",
-      },
+  const payload = {
+    fetchedAt: new Date().toISOString(),
+    tokens,
+    flows,
+    network: {
+      swaps1h: recentSwaps?.length ?? 0,
+      source: "major-dex-webhook",
     },
+    live,
+  };
+
+  await db.from("api_cache").upsert({
+    cache_key: "market:snapshot",
+    payload,
+    updated_at: new Date().toISOString(),
+  });
+
+  return NextResponse.json(
+    { ...payload, cached: false },
     { headers: { "cache-control": "no-store, max-age=0" } },
   );
 }
