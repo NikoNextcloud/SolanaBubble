@@ -96,9 +96,13 @@ export default function MarketMap() {
   const [motionNow, setMotionNow] = useState(0);
   const [updated, setUpdated] = useState<string | null>(null);
   const [networkSwaps1h, setNetworkSwaps1h] = useState(0);
+  const [streamLive, setStreamLive] = useState<boolean | null>(null);
+  const [autoPaused, setAutoPaused] = useState(false);
   const [selected, setSelected] = useState<MarketToken | null>(null);
   const [loadingMint, setLoadingMint] = useState<string | null>(null);
+  const [solscanInfo, setSolscanInfo] = useState<any>(null);
   const [error, setError] = useState("");
+  const lastActivity = useRef(Date.now());
 
   const totals = useMemo(() => {
     return tokens.reduce((a, t) => ({
@@ -118,6 +122,7 @@ export default function MarketMap() {
   }, []);
 
   useEffect(() => {
+    if (streamLive !== true) return;
     let raf = 0;
     let last = 0;
     const loop = (now: number) => {
@@ -129,7 +134,7 @@ export default function MarketMap() {
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [streamLive]);
 
   useEffect(() => {
     const s = forceSimulation<any>()
@@ -174,85 +179,142 @@ export default function MarketMap() {
     s.alpha(0.72).restart();
   }, [size, tokens, flows]);
 
+  const applySnapshot = (j: any) => {
+    const list = (j.tokens ?? []) as MarketToken[];
+    const nextFlows = (j.flows ?? []) as Flow[];
+    setTokens(list);
+    setFlows(nextFlows);
+    setUpdated(j.fetchedAt ?? new Date().toISOString());
+    setNetworkSwaps1h(Number(j.network?.swaps1h ?? 0));
+    setError("");
+
+    for (const t of list) {
+      const prev = nodeMap.current.get(t.mint);
+      if (prev) Object.assign(prev, t, { r: radius(t), isCore: false });
+      else nodeMap.current.set(t.mint, {
+        ...t,
+        x: size.w / 2 + (Math.random() - 0.5) * 180,
+        y: size.h / 2 + (Math.random() - 0.5) * 140,
+        r: radius(t),
+        isCore: false,
+      });
+    }
+
+    const usedCore = new Set<string>();
+    for (const flow of nextFlows) {
+      if (CORE_META[flow.from]) usedCore.add(flow.from);
+      if (CORE_META[flow.to]) usedCore.add(flow.to);
+    }
+    for (const mint of usedCore) {
+      const meta = CORE_META[mint];
+      const prev = nodeMap.current.get(mint);
+      const coreNode: MarketToken = {
+        mint, name: meta.name, symbol: meta.symbol, dex: null, pairAddress: null,
+        priceUsd: meta.symbol === "USDC" || meta.symbol === "USDT" ? 1 : 0,
+        marketCap: 0, liquidityUsd: 0, volume1h: 0, volume24h: 0,
+        buys1h: 0, sells1h: 0, trades1h: 0, priceChange1h: 0,
+        priceChange24h: 0, boost: 0,
+      };
+      if (prev) Object.assign(prev, coreNode, { r: meta.symbol === "SOL" ? 42 : 34, isCore: true });
+      else nodeMap.current.set(mint, {
+        ...coreNode,
+        x: size.w / 2 + (Math.random() - 0.5) * 80,
+        y: size.h / 2 + (Math.random() - 0.5) * 80,
+        r: meta.symbol === "SOL" ? 42 : 34,
+        isCore: true,
+      });
+    }
+
+    const allowed = new Set([...list.map((x) => x.mint), ...usedCore]);
+    for (const key of [...nodeMap.current.keys()]) if (!allowed.has(key)) nodeMap.current.delete(key);
+  };
+
   useEffect(() => {
+    try {
+      const cached = localStorage.getItem("solanabubble:market-snapshot");
+      if (cached) applySnapshot(JSON.parse(cached));
+    } catch {}
+
+    fetch("/api/live-mode", { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((j) => { if (j && typeof j.live === "boolean") setStreamLive(j.live); })
+      .catch(() => setStreamLive(true));
+  }, []);
+
+  useEffect(() => {
+    if (streamLive !== true) return;
     let stopped = false;
+
     async function load() {
       try {
         const r = await fetch("/api/market", { cache: "no-store" });
         if (!r.ok) throw new Error("market");
         const j = await r.json();
         if (stopped) return;
-        const list = (j.tokens ?? []) as MarketToken[];
-        const nextFlows = (j.flows ?? []) as Flow[];
-        setTokens(list);
-        setFlows(nextFlows);
-        setUpdated(j.fetchedAt ?? new Date().toISOString());
-        setNetworkSwaps1h(Number(j.network?.swaps1h ?? 0));
-        setError("");
-
-        for (const t of list) {
-          const prev = nodeMap.current.get(t.mint);
-          if (prev) {
-            Object.assign(prev, t, { r: radius(t), isCore: false });
-          } else {
-            nodeMap.current.set(t.mint, {
-              ...t,
-              x: size.w / 2 + (Math.random() - 0.5) * 180,
-              y: size.h / 2 + (Math.random() - 0.5) * 140,
-              r: radius(t),
-              isCore: false,
-            });
-          }
-        }
-
-        const usedCore = new Set<string>();
-        for (const flow of nextFlows) {
-          if (CORE_META[flow.from]) usedCore.add(flow.from);
-          if (CORE_META[flow.to]) usedCore.add(flow.to);
-        }
-        for (const mint of usedCore) {
-          const meta = CORE_META[mint];
-          const prev = nodeMap.current.get(mint);
-          const coreNode: MarketToken = {
-            mint,
-            name: meta.name,
-            symbol: meta.symbol,
-            dex: null,
-            pairAddress: null,
-            priceUsd: meta.symbol === "USDC" || meta.symbol === "USDT" ? 1 : 0,
-            marketCap: 0,
-            liquidityUsd: 0,
-            volume1h: 0,
-            volume24h: 0,
-            buys1h: 0,
-            sells1h: 0,
-            trades1h: 0,
-            priceChange1h: 0,
-            priceChange24h: 0,
-            boost: 0,
-          };
-          if (prev) Object.assign(prev, coreNode, { r: meta.symbol === "SOL" ? 42 : 34, isCore: true });
-          else nodeMap.current.set(mint, {
-            ...coreNode,
-            x: size.w / 2 + (Math.random() - 0.5) * 80,
-            y: size.h / 2 + (Math.random() - 0.5) * 80,
-            r: meta.symbol === "SOL" ? 42 : 34,
-            isCore: true,
-          });
-        }
-
-        const allowed = new Set([...list.map((x) => x.mint), ...usedCore]);
-        for (const key of [...nodeMap.current.keys()]) {
-          if (!allowed.has(key)) nodeMap.current.delete(key);
-        }
+        applySnapshot(j);
+        try { localStorage.setItem("solanabubble:market-snapshot", JSON.stringify(j)); } catch {}
       } catch {
-        if (!stopped) setError("Не успях да заредя live пазарния поток.");
+        if (!stopped) setError("Не успях да обновя live пазарния поток. Показвам последния кеш.");
       }
     }
+
     load();
-    const id = window.setInterval(load, 10000);
+    const id = window.setInterval(load, 15000);
     return () => { stopped = true; window.clearInterval(id); };
-  }, []);
+  }, [streamLive]);
+
+  async function changeLive(next: boolean, automatic = false) {
+    setError("");
+    try {
+      const r = await fetch("/api/live-mode", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ live: next }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "live mode");
+      setStreamLive(next);
+      setAutoPaused(automatic && !next);
+      lastActivity.current = Date.now();
+      if (next) sim.current?.alpha(0.55).restart();
+      else sim.current?.stop();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Неуспешна промяна на live режима.");
+    }
+  }
+
+  useEffect(() => {
+    const activity = () => {
+      lastActivity.current = Date.now();
+      if (autoPaused) setAutoPaused(false);
+    };
+    const events = ["pointerdown", "keydown", "wheel", "touchstart"] as const;
+    for (const name of events) window.addEventListener(name, activity, { passive: true });
+
+    const timer = window.setInterval(() => {
+      if (streamLive === true && Date.now() - lastActivity.current >= 2 * 60 * 1000) {
+        changeLive(false, true);
+      }
+    }, 10000);
+
+    return () => {
+      for (const name of events) window.removeEventListener(name, activity);
+      window.clearInterval(timer);
+    };
+  }, [streamLive, autoPaused]);
+
+  useEffect(() => {
+    if (!selected || streamLive !== true) {
+      setSolscanInfo(null);
+      return;
+    }
+    let stopped = false;
+    fetch(`/api/tokens/${selected.mint}/solscan`, { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((j) => { if (!stopped && j) setSolscanInfo(j); })
+      .catch(() => null);
+    return () => { stopped = true; };
+  }, [selected?.mint, streamLive]);
 
   async function openToken(t: MarketToken) {
     setLoadingMint(t.mint);
@@ -288,7 +350,7 @@ export default function MarketMap() {
         </div>
         <div className="market-actions">
           <a href="/admin">База данни</a>
-          <span className="market-live"><i /> LIVE</span>
+          <span className={`market-live ${streamLive === false ? "paused" : ""}`}><i />{streamLive === false ? "PAUSED" : "LIVE"}</span>
         </div>
       </header>
 
@@ -302,6 +364,22 @@ export default function MarketMap() {
 
       <section className="market-workspace">
         <div className="market-map" ref={wrap}>
+          <div className="insight-live-bar">
+            <button className="ghost-control">☷ Токени</button>
+            <button className="ghost-control">↕ Филтри</button>
+            <button
+              className={`go-live-control ${streamLive === true ? "is-live" : ""}`}
+              onClick={() => changeLive(streamLive !== true)}
+            >{streamLive === true ? "◉ Live" : "◉ Go Live"}</button>
+          </div>
+          <button
+            className={`market-pause-orb ${streamLive === false ? "paused" : ""}`}
+            onClick={() => changeLive(streamLive !== true)}
+            title={streamLive === true ? "Пауза на Helius network stream и Solscan обновяванията" : "Пусни live обновяванията"}
+          >{streamLive === true ? "Ⅱ" : "▶"}</button>
+          {streamLive === false && <div className="pause-banner">
+            {autoPaused ? "Автоматична пауза след 2 мин. без активност" : "Live режимът е на пауза"} · данните са от кеша
+          </div>
           <div className="market-map-head">
             <div>
               <strong>Live Solana DEX traffic</strong>
@@ -435,7 +513,10 @@ export default function MarketMap() {
               <dt>Покупки 1ч.</dt><dd>{selected.buys1h}</dd>
               <dt>Продажби 1ч.</dt><dd>{selected.sells1h}</dd>
               <dt>Промяна 1ч.</dt><dd className={selected.priceChange1h >= 0 ? "buy" : "sell"}>{selected.priceChange1h.toFixed(2)}%</dd>
+              {solscanInfo?.meta?.holder != null && <><dt>Holders (Solscan)</dt><dd>{Number(solscanInfo.meta.holder).toLocaleString()}</dd></>}
+              {solscanInfo?.meta?.creator && <><dt>Creator</dt><dd title={solscanInfo.meta.creator}>{String(solscanInfo.meta.creator).slice(0, 6)}…{String(solscanInfo.meta.creator).slice(-4)}</dd></>}
             </dl>
+            {streamLive === true && solscanInfo && <div className="data-source-note">Solscan {solscanInfo.cached ? "кеш" : "обновено"} · Helius live stream</div>}
             <button className="open-token-button" onClick={() => openToken(selected)} disabled={loadingMint === selected.mint}>
               {loadingMint === selected.mint ? "Зареждам holders…" : "Отвори holder картата"}
             </button>
