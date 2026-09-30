@@ -764,7 +764,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
                   const active = sel === n.wallet;
                   const over = hovered === n.wallet;
                   const p = motionPoint(n);
-                  return <g key={`${n.wallet}:${n.fk ?? 0}`} className="live-node">
+                  return <g key={n.wallet} className="live-node">
                     {gid && <circle
                       className="node-halo"
                       cx={p.x} cy={p.y} r={n.r + 4}
