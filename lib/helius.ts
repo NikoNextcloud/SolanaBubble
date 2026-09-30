@@ -180,3 +180,60 @@ export async function ensureNetworkProgramsTracked() {
 
   return { added: true, addresses: addresses.length };
 }
+
+
+/**
+ * Pause/resume only the broad DEX-program subscriptions. Per-token addresses
+ * remain on the webhook so holder pages can still receive direct token updates.
+ * This removes the high-volume network stream while paused.
+ */
+export async function setNetworkStreaming(enabled: boolean) {
+  const key = KEY();
+  if (!key) throw new Error("HELIUS_API_KEY is missing");
+  const secret = process.env.HELIUS_WEBHOOK_SECRET;
+  if (!secret) throw new Error("HELIUS_WEBHOOK_SECRET is missing");
+
+  const listRes = await fetch(`https://api.helius.xyz/v0/webhooks?api-key=${key}`, { cache: "no-store" });
+  if (!listRes.ok) throw new Error(`Helius webhooks list failed: ${listRes.status}`);
+  const webhooks = await listRes.json() as HeliusWebhook[];
+  const webhook =
+    webhooks.find((w) => w.webhookURL?.includes("solanabubble.vercel.app/api/webhooks/helius")) ??
+    webhooks.find((w) => w.webhookURL?.includes("/api/webhooks/helius"));
+  if (!webhook) throw new Error("No SolanaBubble Helius webhook was found");
+
+  const current = webhook.accountAddresses ?? [];
+  const dex = new Set(NETWORK_DEX_PROGRAMS);
+  const addresses = enabled
+    ? [...new Set([...current, ...NETWORK_DEX_PROGRAMS])]
+    : current.filter((address) => !dex.has(address));
+
+  if (!addresses.length) {
+    throw new Error("Cannot pause network stream because webhook has no token addresses to keep");
+  }
+
+  const body: Record<string, unknown> = {
+    webhookURL: webhook.webhookURL,
+    transactionTypes: [...new Set([...(webhook.transactionTypes ?? []), "SWAP", "TRANSFER"])],
+    accountAddresses: addresses,
+    webhookType: webhook.webhookType ?? "enhanced",
+    authHeader: secret,
+  };
+  if (webhook.encoding) body.encoding = webhook.encoding;
+  if (webhook.txnStatus) body.txnStatus = webhook.txnStatus;
+
+  const updateRes = await fetch(
+    `https://api.helius.xyz/v0/webhooks/${webhook.webhookID}?api-key=${key}`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    },
+  );
+  if (!updateRes.ok) {
+    const detail = await updateRes.text().catch(() => "");
+    throw new Error(`Helius stream mode update failed: ${updateRes.status} ${detail.slice(0, 300)}`);
+  }
+
+  return { live: enabled, addresses: addresses.length };
+}
