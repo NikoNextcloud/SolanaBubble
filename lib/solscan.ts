@@ -1,6 +1,7 @@
 import { admin } from "./db";
 
 const BASE = "https://pro-api.solscan.io/v2.0";
+const V1 = "https://pro-api.solscan.io/v1.0";
 const KEY = () => process.env.SOLSCAN_API_KEY || "";
 
 type CacheRow<T> = { payload: T; updated_at: string };
@@ -24,10 +25,10 @@ async function saveCache(key: string, payload: unknown) {
   });
 }
 
-async function get<T>(path: string): Promise<T> {
+async function get<T>(path: string, base = BASE): Promise<T> {
   const key = KEY();
   if (!key) throw new Error("SOLSCAN_API_KEY is missing");
-  const r = await fetch(`${BASE}${path}`, {
+  const r = await fetch(`${base}${path}`, {
     headers: { accept: "application/json", token: key },
     cache: "no-store",
   });
@@ -87,5 +88,61 @@ export async function fetchSolscanHolders(
     `/token/holders?address=${encodeURIComponent(mint)}&page=${page}&page_size=${pageSize}`,
   );
   await saveCache(key, data);
+  return { data, cached: false };
+}
+
+
+export type SolscanMarketToken = {
+  address?: string;
+  tokenAddress?: string;
+  name?: string;
+  symbol?: string;
+  icon?: string;
+  price?: number;
+  market_cap?: number;
+  marketCap?: number;
+  volume_24h?: number;
+  volume?: number;
+  holder?: number;
+  price_change_24h?: number;
+};
+
+export async function fetchSolscanTokenList(maxAgeMs = 30_000) {
+  const cacheKey = "solscan:market-token-list";
+  const hit = await cached<SolscanMarketToken[]>(cacheKey, maxAgeMs);
+  if (hit) return { data: hit, cached: true };
+
+  const raw = await get<any>(
+    "/token/list?sortBy=volume&direction=desc&limit=50&offset=0",
+    V1,
+  );
+  const data: SolscanMarketToken[] = Array.isArray(raw)
+    ? raw
+    : Array.isArray(raw?.data)
+      ? raw.data
+      : Array.isArray(raw?.items)
+        ? raw.items
+        : [];
+  await saveCache(cacheKey, data);
+  return { data, cached: false };
+}
+
+export type SolscanUsage = {
+  renew_date?: string;
+  end_date?: string;
+  last_cu_reset_date?: string;
+  remaining_cus?: number;
+  usage_cus?: number;
+  total_requests_24h?: number;
+  success_rate_24h?: number;
+  total_cu_24h?: number;
+};
+
+export async function fetchSolscanUsage(maxAgeMs = 60_000) {
+  const cacheKey = "solscan:usage";
+  const hit = await cached<SolscanUsage>(cacheKey, maxAgeMs);
+  if (hit) return { data: hit, cached: true };
+  const data = await get<SolscanUsage>("/monitor/usage");
+  await saveCache(cacheKey, data);
   return { data, cached: false };
 }
