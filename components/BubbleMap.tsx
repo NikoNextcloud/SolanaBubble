@@ -143,13 +143,56 @@ export default function BubbleMap({ mint }: { mint: string }) {
     links.current = [...baseLinks.current, ...directTransfers, ...fanIn];
   };
 
+  const configureLayout = (s: Simulation<N, undefined>) => {
+    const groups = visualGroups();
+    const ids = [...new Set(groups.values())].sort((a, b) => a - b);
+    const centers = new Map<number, { x: number; y: number }>();
+
+    ids.forEach((id, i) => {
+      if (ids.length === 1) {
+        centers.set(id, { x: size.w * 0.52, y: size.h * 0.5 });
+        return;
+      }
+      const angle = -Math.PI / 2 + (i / ids.length) * Math.PI * 2;
+      centers.set(id, {
+        x: size.w / 2 + Math.cos(angle) * size.w * 0.29,
+        y: size.h / 2 + Math.sin(angle) * size.h * 0.27,
+      });
+    });
+
+    s.force("center", forceCenter(size.w / 2, size.h / 2).strength(0.025));
+    s.force("charge", forceManyBody<N>().strength((d) => groups.has(d.wallet) ? -4 : -20));
+    s.force("x", forceX<N>((d) => {
+      const g = groups.get(d.wallet);
+      return g ? (centers.get(g)?.x ?? size.w / 2) : size.w / 2;
+    }).strength((d) => groups.has(d.wallet) ? 0.2 : 0.014));
+    s.force("y", forceY<N>((d) => {
+      const g = groups.get(d.wallet);
+      return g ? (centers.get(g)?.y ?? size.h / 2) : size.h / 2;
+    }).strength((d) => groups.has(d.wallet) ? 0.2 : 0.014));
+    s.force("collide", forceCollide<N>((d) => d.r + (groups.has(d.wallet) ? 2.5 : 4.5)).strength(0.94));
+  };
+
   const restart = () => {
     const s = sim.current; if (!s) return;
     rebuildLinks();
     s.nodes([...nodes.current.values()]);
-    s.force("link", forceLink<N, any>(links.current).id((d) => d.wallet).distance((l: any) => l.kind.startsWith("flow-") ? 70 : 58).strength((l: any) => l.kind.startsWith("flow-") ? 0.28 : 0.14));
-    s.force("collide", forceCollide<N>((d) => d.r + 4).strength(0.92));
-    s.alpha(0.5).restart();
+    configureLayout(s);
+    s.force("link", forceLink<N, any>(links.current)
+      .id((d) => d.wallet)
+      .distance((l: any) =>
+        l.kind === "funder" ? 34 :
+        l.kind === "direct-transfer" ? 38 :
+        l.kind === "timing" ? 44 :
+        l.kind.startsWith("flow-") ? 54 : 48
+      )
+      .strength((l: any) =>
+        l.kind === "funder" ? 0.72 :
+        l.kind === "direct-transfer" ? 0.62 :
+        l.kind === "timing" ? 0.42 :
+        l.kind.startsWith("flow-") ? 0.34 : 0.22
+      ));
+    s.alpha(0.62).restart();
     bump((x) => x + 1);
   };
 
@@ -213,7 +256,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
 
   useEffect(() => {
     let alive = true;
-    const s = forceSimulation<N>().alphaDecay(0.035).velocityDecay(0.4).force("charge", forceManyBody().strength(-10));
+    const s = forceSimulation<N>().alphaDecay(0.032).velocityDecay(0.43);
     s.on("tick", () => bump((x) => x + 1)); sim.current = s;
 
     (async () => {
@@ -289,17 +332,8 @@ export default function BubbleMap({ mint }: { mint: string }) {
 
   useEffect(() => {
     const s = sim.current; if (!s) return;
-    const groups = visualGroups();
-    s.force("center", forceCenter(size.w / 2, size.h / 2).strength(0.04));
-    s.force("x", forceX<N>((d) => {
-      const g = groups.get(d.wallet);
-      return g ? size.w / 2 + Math.cos(g * 2.17) * size.w * 0.25 : size.w / 2;
-    }).strength((d) => groups.has(d.wallet) ? 0.08 : 0.025));
-    s.force("y", forceY<N>((d) => {
-      const g = groups.get(d.wallet);
-      return g ? size.h / 2 + Math.sin(g * 2.17) * size.h * 0.25 : size.h / 2;
-    }).strength((d) => groups.has(d.wallet) ? 0.08 : 0.025));
-    s.alpha(0.35).restart();
+    configureLayout(s);
+    s.alpha(0.42).restart();
   }, [size]);
 
   useEffect(() => {
