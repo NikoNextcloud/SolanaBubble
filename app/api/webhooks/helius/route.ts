@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ingestTx } from "@/lib/ingest";
+import { ingestNetworkSwap } from "@/lib/network-flow";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
@@ -8,6 +9,9 @@ export async function POST(req: Request) {
   if (req.headers.get("authorization") !== process.env.HELIUS_WEBHOOK_SECRET)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const body = await req.json();
-  for (const tx of Array.isArray(body) ? body : [body]) await ingestTx(tx);
+  for (const tx of Array.isArray(body) ? body : [body]) {
+    await ingestNetworkSwap(tx);
+    await ingestTx(tx);
+  }
   return NextResponse.json({ ok: true });
 }
