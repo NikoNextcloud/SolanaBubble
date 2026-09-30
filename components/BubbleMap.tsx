@@ -9,15 +9,18 @@ type L = { source: string | N; target: string | N; kind: string; group?: number 
 type E = { from_wallet: string; to_wallet: string; kind: "swap" | "transfer"; amount: number; usd_value: number; tx_count: number; last_seen: string };
 type Tx = { signature: string; wallet: string; side: string; amount: number; usd_value: number; block_time: string };
 type TokenMeta = { mint: string; symbol: string | null; name: string | null; supply: number | null; price_usd: number | null; decimals: number };
+type View = "map" | "holders" | "transactions" | "history";
 
 const MAX_NODES = 500;
 const FAN_IN_MIN_SOURCES = 2;
+const HOUR = 60 * 60 * 1000;
 const palette = ["#ff6f91", "#e56bd0", "#8b7cff", "#55c2ff", "#58d6a7", "#ffb45e", "#ff6473", "#60d4df"];
 const groupColor = (id: number) => palette[Math.abs(id) % palette.length];
 const radius = (pct: number) => Math.max(5, Math.min(74, Math.sqrt(Math.max(pct, 0)) * 30));
 const short = (w: string) => `${w.slice(0, 4)}…${w.slice(-4)}`;
 const usd = (n: number) => n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}k` : `$${n.toFixed(0)}`;
 const num = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : n.toLocaleString();
+const clamp = (n: number, a: number, b: number) => Math.max(a, Math.min(b, n));
 
 export default function BubbleMap({ mint }: { mint: string }) {
   const db = useMemo(() => browserDb(), []);
@@ -27,6 +30,8 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const edges = useRef<E[]>([]);
   const links = useRef<L[]>([]);
   const sim = useRef<Simulation<N, undefined>>(undefined);
+  const pan = useRef({ active: false, x: 0, y: 0, tx: 0, ty: 0 });
+
   const [, bump] = useState(0);
   const [size, setSize] = useState({ w: 900, h: 600 });
   const [live, setLive] = useState(false);
@@ -36,7 +41,14 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const [holderCount, setHolderCount] = useState(0);
   const [meta, setMeta] = useState<TokenMeta | null>(null);
   const [missing, setMissing] = useState(false);
-  const [view, setView] = useState<"map" | "holders" | "transactions">("map");
+  const [view, setView] = useState<View>("map");
+
+  const [walletQuery, setWalletQuery] = useState("");
+  const [minPct, setMinPct] = useState(0);
+  const [linkedOnly, setLinkedOnly] = useState(false);
+  const [showSwaps, setShowSwaps] = useState(true);
+  const [showTransfers, setShowTransfers] = useState(true);
+  const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 });
 
   const visualGroups = () => {
     const map = new Map<string, number>();
@@ -103,7 +115,8 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const put = (h: H, animate: boolean) => {
     const prev = nodes.current.get(h.wallet);
     const n: N = prev ?? { ...h, x: size.w / 2 + (Math.random() - 0.5) * 40, y: size.h / 2 + (Math.random() - 0.5) * 40, r: 0 };
-    const grew = prev ? h.balance > prev.balance : false, shrank = prev ? h.balance < prev.balance : false;
+    const grew = prev ? Number(h.balance) > Number(prev.balance) : false;
+    const shrank = prev ? Number(h.balance) < Number(prev.balance) : false;
     Object.assign(n, h, { r: radius(Number(h.pct_supply)) });
     if (animate && prev && (grew || shrank)) { n.flash = grew ? "buy" : "sell"; n.fk = (n.fk ?? 0) + 1; }
     nodes.current.set(h.wallet, n);
@@ -123,7 +136,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
     s.on("tick", () => bump((x) => x + 1)); sim.current = s;
 
     (async () => {
-      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const since = new Date(Date.now() - 24 * HOUR).toISOString();
       const [
         { data: t },
         { data: hs },
@@ -136,7 +149,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
         db.from("holdings").select("*").eq("token_mint", mint).order("balance", { ascending: false }).limit(MAX_NODES),
         db.from("wallet_links").select("wallet_a,wallet_b,kind").eq("token_mint", mint),
         db.from("wallet_edges").select("from_wallet,to_wallet,kind,amount,usd_value,tx_count,last_seen").eq("token_mint", mint),
-        db.from("transactions").select("signature,wallet,side,amount,usd_value,block_time").eq("token_mint", mint).gte("block_time", since).order("block_time", { ascending: false }).limit(250),
+        db.from("transactions").select("signature,wallet,side,amount,usd_value,block_time").eq("token_mint", mint).gte("block_time", since).order("block_time", { ascending: false }).limit(1000),
         db.from("holdings").select("*", { count: "exact", head: true }).eq("token_mint", mint),
       ]);
 
@@ -186,7 +199,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "transactions", filter: `token_mint=eq.${mint}` }, (p: any) => {
         const row = p.new as Tx;
-        setFeedTxs((cur) => [row, ...cur.filter((x) => !(x.signature === row.signature && x.wallet === row.wallet))].slice(0, 250));
+        setFeedTxs((cur) => [row, ...cur.filter((x) => !(x.signature === row.signature && x.wallet === row.wallet))].slice(0, 1000));
       })
       .subscribe((st) => setLive(st === "SUBSCRIBED"));
 
@@ -222,7 +235,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const arr = [...nodes.current.values()];
   const groups = visualGroups();
   const selected = sel ? nodes.current.get(sel) : null;
-  const pl = selected && selected.bought_usd > 0 ? selected.usd_value + selected.sold_usd - selected.bought_usd : null;
+  const pl = selected && Number(selected.bought_usd) > 0 ? Number(selected.usd_value) + Number(selected.sold_usd) - Number(selected.bought_usd) : null;
   const groupCount = new Set(groups.values()).size;
   const volume24h = feedTxs.reduce((a, t) => a + Number(t.usd_value || 0), 0) / 2;
   const buys24h = feedTxs.filter((t) => t.side === "buy").length;
@@ -231,6 +244,61 @@ export default function BubbleMap({ mint }: { mint: string }) {
     .filter((e) => e.from_wallet === selected.wallet || e.to_wallet === selected.wallet)
     .sort((a, b) => Number(b.usd_value) - Number(a.usd_value))
     .slice(0, 10) : [];
+
+  const q = walletQuery.trim().toLowerCase();
+  const visibleNodes = arr.filter((n) => {
+    if (Number(n.pct_supply) < minPct) return false;
+    if (linkedOnly && !groups.has(n.wallet)) return false;
+    if (q && !n.wallet.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  const visibleWallets = new Set(visibleNodes.map((n) => n.wallet));
+  const visibleLinks = links.current.filter((l: any) => {
+    const source = l.source?.wallet ?? l.source;
+    const target = l.target?.wallet ?? l.target;
+    if (!visibleWallets.has(source) || !visibleWallets.has(target)) return false;
+    if (l.kind === "flow-swap" && !showSwaps) return false;
+    if (l.kind === "flow-transfer" && !showTransfers) return false;
+    return true;
+  });
+
+  const nowHour = Math.floor(Date.now() / HOUR) * HOUR;
+  const historyStart = nowHour - 23 * HOUR;
+  const history = Array.from({ length: 24 }, (_, i) => ({
+    ts: historyStart + i * HOUR,
+    buyUsd: 0,
+    sellUsd: 0,
+    buys: 0,
+    sells: 0,
+    cumulative: 0,
+  }));
+  for (const t of feedTxs) {
+    const ts = new Date(t.block_time).getTime();
+    const idx = Math.floor((ts - historyStart) / HOUR);
+    if (idx < 0 || idx >= 24) continue;
+    if (t.side === "buy") { history[idx].buyUsd += Number(t.usd_value || 0); history[idx].buys += 1; }
+    if (t.side === "sell") { history[idx].sellUsd += Number(t.usd_value || 0); history[idx].sells += 1; }
+  }
+  let running = 0;
+  for (const h of history) {
+    running += h.buyUsd - h.sellUsd;
+    h.cumulative = running;
+  }
+  const historyMax = Math.max(1, ...history.map((h) => Math.abs(h.cumulative)));
+  const historyPoints = history.map((h, i) => {
+    const x = 32 + i * (936 / 23);
+    const y = 145 - (h.cumulative / historyMax) * 105;
+    return `${x},${y}`;
+  }).join(" ");
+  const netFlow24h = history.reduce((a, h) => a + h.buyUsd - h.sellUsd, 0);
+
+  const zoomBy = (factor: number) => setTransform((t) => {
+    const k = clamp(t.k * factor, 0.45, 4);
+    const cx = size.w / 2, cy = size.h / 2;
+    const ratio = k / t.k;
+    return { k, x: cx - (cx - t.x) * ratio, y: cy - (cy - t.y) * ratio };
+  });
+  const resetView = () => setTransform({ x: 0, y: 0, k: 1 });
 
   return (
     <div className="stage insight-stage">
@@ -252,61 +320,119 @@ export default function BubbleMap({ mint }: { mint: string }) {
           <div><span>24h tracked volume</span><b>{usd(volume24h)}</b></div>
           <div><span>Buy / Sell</span><b><em className="buy">{buys24h}</em> / <em className="sell">{sells24h}</em></b></div>
           <div><span>Linked groups</span><b>{groupCount}</b></div>
-          <div><span>Supply</span><b>{num(Number(meta?.supply ?? 0))}</b></div>
+          <div><span>24h net flow</span><b className={netFlow24h >= 0 ? "buy" : "sell"}>{netFlow24h >= 0 ? "+" : ""}{usd(netFlow24h)}</b></div>
         </div>
 
         <nav className="view-tabs" aria-label="Token views">
           <button className={view === "map" ? "active" : ""} onClick={() => setView("map")}>Bubble map</button>
           <button className={view === "holders" ? "active" : ""} onClick={() => setView("holders")}>Holders</button>
           <button className={view === "transactions" ? "active" : ""} onClick={() => setView("transactions")}>Transactions</button>
+          <button className={view === "history" ? "active" : ""} onClick={() => setView("history")}>Historical</button>
         </nav>
 
         <div className="work-content">
           {view === "map" && <div className="map insight-map" ref={wrap}>
             {missing && <div className="map-message">Токенът не се следи. Стартирай bootstrap за {mint}.</div>}
-            <svg role="img" aria-label="Карта на holders">
+
+            <div className="graph-toolbar">
+              <input value={walletQuery} onChange={(e) => setWalletQuery(e.target.value)} placeholder="Find wallet…" aria-label="Find wallet" />
+              <label>Min %
+                <select value={String(minPct)} onChange={(e) => setMinPct(Number(e.target.value))}>
+                  <option value="0">All</option>
+                  <option value="0.001">0.001%</option>
+                  <option value="0.01">0.01%</option>
+                  <option value="0.05">0.05%</option>
+                  <option value="0.1">0.1%</option>
+                  <option value="0.5">0.5%</option>
+                  <option value="1">1%</option>
+                </select>
+              </label>
+              <label className="check-control"><input type="checkbox" checked={linkedOnly} onChange={(e) => setLinkedOnly(e.target.checked)} /> linked only</label>
+              <label className="check-control"><input type="checkbox" checked={showSwaps} onChange={(e) => setShowSwaps(e.target.checked)} /> swaps</label>
+              <label className="check-control"><input type="checkbox" checked={showTransfers} onChange={(e) => setShowTransfers(e.target.checked)} /> transfers</label>
+              <span className="shown-count">{visibleNodes.length} shown</span>
+            </div>
+
+            <div className="zoom-controls">
+              <button onClick={() => zoomBy(1.2)} title="Zoom in">+</button>
+              <button onClick={() => zoomBy(1 / 1.2)} title="Zoom out">−</button>
+              <button onClick={resetView} title="Reset view">↺</button>
+              <span>{Math.round(transform.k * 100)}%</span>
+            </div>
+
+            <svg
+              role="img"
+              aria-label="Карта на holders"
+              style={{ touchAction: "none" }}
+              onWheel={(e) => {
+                e.preventDefault();
+                const rect = e.currentTarget.getBoundingClientRect();
+                const px = e.clientX - rect.left, py = e.clientY - rect.top;
+                setTransform((t) => {
+                  const k = clamp(t.k * (e.deltaY < 0 ? 1.12 : 1 / 1.12), 0.45, 4);
+                  const ratio = k / t.k;
+                  return { k, x: px - (px - t.x) * ratio, y: py - (py - t.y) * ratio };
+                });
+              }}
+              onPointerDown={(e) => {
+                if (e.target !== e.currentTarget) return;
+                pan.current = { active: true, x: e.clientX, y: e.clientY, tx: transform.x, ty: transform.y };
+                e.currentTarget.setPointerCapture(e.pointerId);
+              }}
+              onPointerMove={(e) => {
+                if (!pan.current.active) return;
+                setTransform((t) => ({ ...t, x: pan.current.tx + e.clientX - pan.current.x, y: pan.current.ty + e.clientY - pan.current.y }));
+              }}
+              onPointerUp={(e) => {
+                pan.current.active = false;
+                if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+              }}
+              onPointerCancel={() => { pan.current.active = false; }}
+            >
               <defs>
                 <marker id="flowArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
                   <path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" />
                 </marker>
               </defs>
 
-              {links.current.map((l: any, i) => {
-                if (l.source?.x === undefined || l.target?.x === undefined) return null;
-                const flow = l.kind.startsWith("flow-");
-                const color = flow && l.group ? groupColor(l.group) : "#3b4553";
-                return <line
-                  key={i}
-                  x1={l.source.x} y1={l.source.y}
-                  x2={l.target.x} y2={l.target.y}
-                  stroke={color}
-                  strokeWidth={flow ? 1.7 : 1}
-                  strokeOpacity={flow ? 0.82 : 0.35}
-                  strokeDasharray={flow ? "5 5" : l.kind === "timing" ? "3 4" : undefined}
-                  markerEnd={flow ? "url(#flowArrow)" : undefined}
-                />;
-              })}
+              <g transform={`translate(${transform.x} ${transform.y}) scale(${transform.k})`}>
+                {visibleLinks.map((l: any, i) => {
+                  if (l.source?.x === undefined || l.target?.x === undefined) return null;
+                  const flow = l.kind.startsWith("flow-");
+                  const color = flow && l.group ? groupColor(l.group) : "#3b4553";
+                  return <line
+                    key={i}
+                    x1={l.source.x} y1={l.source.y}
+                    x2={l.target.x} y2={l.target.y}
+                    stroke={color}
+                    strokeWidth={flow ? 1.7 : 1}
+                    strokeOpacity={flow ? 0.82 : 0.35}
+                    strokeDasharray={flow ? "5 5" : l.kind === "timing" ? "3 4" : undefined}
+                    markerEnd={flow ? "url(#flowArrow)" : undefined}
+                  />;
+                })}
 
-              {arr.map((n) => {
-                const gid = groups.get(n.wallet);
-                const color = gid ? groupColor(gid) : "#69717f";
-                const active = sel === n.wallet;
-                return <circle
-                  key={`${n.wallet}:${n.fk ?? 0}`}
-                  className={`bubble insight-bubble ${n.flash ? `flash-${n.flash}` : ""}`}
-                  cx={n.x} cy={n.y} r={n.r}
-                  fill={gid ? color : "#171a21"}
-                  fillOpacity={gid ? 0.18 : 0.46}
-                  stroke={active ? "#f4f7fb" : color}
-                  strokeWidth={active ? 3 : gid ? 2.2 : 1.35}
-                  strokeDasharray={!gid && n.r <= 9 ? "2 2" : undefined}
-                  tabIndex={0}
-                  onClick={() => setSel(n.wallet)}
-                  onKeyDown={(e) => e.key === "Enter" && setSel(n.wallet)}
-                >
-                  <title>{short(n.wallet)} · {Number(n.pct_supply).toFixed(2)}%</title>
-                </circle>;
-              })}
+                {visibleNodes.map((n) => {
+                  const gid = groups.get(n.wallet);
+                  const color = gid ? groupColor(gid) : "#69717f";
+                  const active = sel === n.wallet;
+                  return <circle
+                    key={`${n.wallet}:${n.fk ?? 0}`}
+                    className={`bubble insight-bubble ${n.flash ? `flash-${n.flash}` : ""}`}
+                    cx={n.x} cy={n.y} r={n.r}
+                    fill={gid ? color : "#171a21"}
+                    fillOpacity={gid ? 0.18 : 0.46}
+                    stroke={active ? "#f4f7fb" : color}
+                    strokeWidth={active ? 3 : gid ? 2.2 : 1.35}
+                    strokeDasharray={!gid && n.r <= 9 ? "2 2" : undefined}
+                    tabIndex={0}
+                    onClick={() => setSel(n.wallet)}
+                    onKeyDown={(e) => e.key === "Enter" && setSel(n.wallet)}
+                  >
+                    <title>{short(n.wallet)} · {Number(n.pct_supply).toFixed(2)}%</title>
+                  </circle>;
+                })}
+              </g>
             </svg>
 
             <div className="map-legend">
@@ -317,10 +443,16 @@ export default function BubbleMap({ mint }: { mint: string }) {
           </div>}
 
           {view === "holders" && <div className="data-view">
-            <div className="data-head"><h2>Top holders</h2><span>{Math.min(arr.length, MAX_NODES)} shown</span></div>
+            <div className="data-head">
+              <h2>Top holders</h2>
+              <div className="data-head-actions">
+                <input value={walletQuery} onChange={(e) => setWalletQuery(e.target.value)} placeholder="Search wallet…" />
+                <span>{visibleNodes.length} shown</span>
+              </div>
+            </div>
             <div className="table-wrap"><table className="data-table">
               <thead><tr><th>#</th><th>Wallet</th><th>Balance</th><th>Value</th><th>% supply</th><th>Group</th><th>Last activity</th></tr></thead>
-              <tbody>{[...arr].sort((a, b) => Number(b.balance) - Number(a.balance)).map((h, i) => <tr key={h.wallet} onClick={() => setSel(h.wallet)}>
+              <tbody>{[...visibleNodes].sort((a, b) => Number(b.balance) - Number(a.balance)).map((h, i) => <tr key={h.wallet} onClick={() => setSel(h.wallet)}>
                 <td>{i + 1}</td>
                 <td><a href={`https://solscan.io/account/${h.wallet}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>{short(h.wallet)}</a></td>
                 <td>{Number(h.balance).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
@@ -333,10 +465,10 @@ export default function BubbleMap({ mint }: { mint: string }) {
           </div>}
 
           {view === "transactions" && <div className="data-view">
-            <div className="data-head"><h2>Live transactions</h2><span>last 24h · up to 250 records</span></div>
+            <div className="data-head"><h2>Live transactions</h2><span>last 24h · up to 250 shown</span></div>
             <div className="table-wrap"><table className="data-table">
               <thead><tr><th>Time</th><th>Wallet</th><th>Side</th><th>Amount</th><th>USD</th><th>Tx</th></tr></thead>
-              <tbody>{feedTxs.map((t) => <tr key={`${t.signature}:${t.wallet}`} onClick={() => setSel(t.wallet)}>
+              <tbody>{feedTxs.slice(0, 250).map((t) => <tr key={`${t.signature}:${t.wallet}`} onClick={() => setSel(t.wallet)}>
                 <td>{new Date(t.block_time).toLocaleTimeString("bg-BG")}</td>
                 <td>{short(t.wallet)}</td>
                 <td><span className={t.side === "buy" || t.side === "transfer_in" ? "side-badge buy" : "side-badge sell"}>{t.side}</span></td>
@@ -345,6 +477,38 @@ export default function BubbleMap({ mint }: { mint: string }) {
                 <td><a href={`https://solscan.io/tx/${t.signature}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Solscan ↗</a></td>
               </tr>)}</tbody>
             </table></div>
+          </div>}
+
+          {view === "history" && <div className="data-view history-view">
+            <div className="data-head"><h2>Historical activity</h2><span>tracked 24h window</span></div>
+            <div className="history-cards">
+              <div><span>Buy volume</span><b className="buy">{usd(history.reduce((a, h) => a + h.buyUsd, 0))}</b></div>
+              <div><span>Sell volume</span><b className="sell">{usd(history.reduce((a, h) => a + h.sellUsd, 0))}</b></div>
+              <div><span>Net flow</span><b className={netFlow24h >= 0 ? "buy" : "sell"}>{netFlow24h >= 0 ? "+" : ""}{usd(netFlow24h)}</b></div>
+              <div><span>Tracked swaps</span><b>{buys24h + sells24h}</b></div>
+            </div>
+            <div className="history-chart">
+              <div className="chart-title"><strong>Cumulative buy − sell flow</strong><span>USD · hourly buckets</span></div>
+              <svg viewBox="0 0 1000 300" preserveAspectRatio="none" aria-label="Historical net flow chart">
+                <line x1="32" y1="145" x2="968" y2="145" className="chart-zero" />
+                {[0, 6, 12, 18, 23].map((i) => {
+                  const x = 32 + i * (936 / 23);
+                  return <g key={i}><line x1={x} y1="38" x2={x} y2="250" className="chart-grid" /><text x={x} y="275" textAnchor="middle">{new Date(history[i].ts).toLocaleTimeString("bg-BG", { hour: "2-digit", minute: "2-digit" })}</text></g>;
+                })}
+                <polyline points={historyPoints} className="history-line" />
+                {history.map((h, i) => {
+                  const x = 32 + i * (936 / 23);
+                  const y = 145 - (h.cumulative / historyMax) * 105;
+                  return <circle key={i} cx={x} cy={y} r="3" className="history-point"><title>{new Date(h.ts).toLocaleString("bg-BG")} · {usd(h.cumulative)}</title></circle>;
+                })}
+              </svg>
+              <p className="history-note">Historical data starts from the moment this token began being tracked by SolanaBubble; it is not a reconstruction of pre-bootstrap history.</p>
+            </div>
+            <div className="hourly-grid">{history.map((h) => <div key={h.ts}>
+              <span>{new Date(h.ts).toLocaleTimeString("bg-BG", { hour: "2-digit", minute: "2-digit" })}</span>
+              <b className={h.buyUsd - h.sellUsd >= 0 ? "buy" : "sell"}>{h.buyUsd - h.sellUsd >= 0 ? "+" : ""}{usd(h.buyUsd - h.sellUsd)}</b>
+              <small>{h.buys} buys · {h.sells} sells</small>
+            </div>)}</div>
           </div>}
         </div>
       </section>
@@ -355,6 +519,12 @@ export default function BubbleMap({ mint }: { mint: string }) {
             <span className="eyebrow">Token overview</span>
             <h2>{meta?.name || meta?.symbol || short(mint)}</h2>
             <p className="mint-full">{mint}</p>
+            <dl>
+              <dt>Price</dt><dd>{usd(Number(meta?.price_usd ?? 0))}</dd>
+              <dt>Supply</dt><dd>{num(Number(meta?.supply ?? 0))}</dd>
+              <dt>Holders</dt><dd>{holderCount.toLocaleString()}</dd>
+              <dt>Linked groups</dt><dd>{groupCount}</dd>
+            </dl>
           </div>
           <div className="side-section">
             <span className="eyebrow">Live activity</span>
