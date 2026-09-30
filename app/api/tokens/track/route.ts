@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { admin } from "@/lib/db";
 import { bootstrapToken } from "@/lib/bootstrap";
 import { ensureWebhookTracksMint } from "@/lib/helius";
+import { fetchSolscanTokenMeta } from "@/lib/solscan";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -19,7 +20,7 @@ export async function POST(req: Request) {
   const db = admin();
   const { data: existing, error: lookupError } = await db
     .from("tokens")
-    .select("mint,bootstrapped_at")
+    .select("mint,bootstrapped_at,metadata_updated_at")
     .eq("mint", mint)
     .maybeSingle();
 
@@ -34,6 +35,24 @@ export async function POST(req: Request) {
     const result = await bootstrapToken(mint);
     holders = result.holders;
     bootstrapped = true;
+  } else {
+    const stale = !existing.metadata_updated_at ||
+      Date.now() - new Date(existing.metadata_updated_at).getTime() > 30 * 60 * 1000;
+    if (stale) {
+      const solscan = await fetchSolscanTokenMeta(mint).catch(() => null);
+      const meta = solscan?.data;
+      if (meta) {
+        await db.from("tokens").update({
+          symbol: meta.symbol ?? null,
+          name: meta.name ?? null,
+          icon: meta.icon ?? null,
+          creator: meta.creator ?? null,
+          solscan_holder_count: meta.holder ?? null,
+          price_usd: Number(meta.price ?? 0) || undefined,
+          metadata_updated_at: new Date().toISOString(),
+        }).eq("mint", mint);
+      }
+    }
   }
 
   let webhook: { added: boolean; addresses: number } | null = null;
