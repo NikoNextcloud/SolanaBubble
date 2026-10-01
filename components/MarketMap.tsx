@@ -241,14 +241,7 @@ export default function MarketMap() {
       if (cached) applySnapshot(JSON.parse(cached));
     } catch {}
 
-    if (source === "free") {
-      fetch("/api/live-mode", { cache: "no-store" })
-        .then((r) => r.ok ? r.json() : null)
-        .then((j) => setStreamLive(typeof j?.live === "boolean" ? j.live : true))
-        .catch(() => setStreamLive(true));
-    } else {
-      setStreamLive(true);
-    }
+    setStreamLive(true);
   }
 
   useEffect(() => {
@@ -394,7 +387,7 @@ export default function MarketMap() {
         <div><span>1ч. обем</span><b>{fmtUsd(totals.volume)}</b></div>
         <div><span>Покупки / продажби</span><b>{totals.buys} / {totals.sells}</b></div>
         <div><span>Ликвидност</span><b>{fmtUsd(totals.liquidity)}</b></div>
-        <div><span>{dataSource === "free" ? "On-chain swaps 1ч." : "Solscan feed"}</span><b>{dataSource === "free" ? networkSwaps1h.toLocaleString() : "ACTIVE"}</b></div>
+        <div><span>{dataSource === "free" ? "Пазарни потоци 1ч." : "Solscan feed"}</span><b>{dataSource === "free" ? networkSwaps1h.toLocaleString() : "ACTIVE"}</b></div>
       </section>
 
       <section className="market-workspace">
@@ -417,7 +410,7 @@ export default function MarketMap() {
           </div>}
           <div className="market-map-head">
             <div>
-              <strong>{dataSource === "free" ? "Live Solana DEX traffic" : "Solscan market map"}</strong>
+              <strong>{dataSource === "free" ? "Solana RPC + DexScreener market flow" : "Solscan market map"}</strong>
               <span>Размер = активност · стрелките показват посоката на капиталовия поток между quote asset и токена</span>
             </div>
             <span>{updated ? `обновено ${new Date(updated).toLocaleTimeString("bg-BG")}` : "зареждане…"}</span>
