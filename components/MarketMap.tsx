@@ -92,8 +92,9 @@ function radius(t: MarketToken) {
 }
 
 function marketMapRadius(t: MarketToken) {
-  const scale = Math.log10(Math.max(1, t.marketCap || t.volume24h || t.liquidityUsd) + 1);
-  return Math.max(18, Math.min(46, 12 + scale * 4.25));
+  const hype = hypeScore(t);
+  const marketWeight = Math.log10(Math.max(1, t.marketCap || t.volume24h || t.liquidityUsd) + 1);
+  return Math.max(13, Math.min(62, 13 + hype * 0.43 + Math.min(6, marketWeight * 0.65)));
 }
 
 function flowColor(t: MarketToken) {
@@ -745,16 +746,6 @@ export default function MarketMap() {
           {streamLive === false && <div className="pause-banner">
             {autoPaused ? "Автоматична пауза след 2 мин. без активност" : "Live режимът е на пауза"} · данните са от кеша
           </div>}
-          <div className="market-map-head reference-map-head">
-            <div>
-              <strong>{viewMode === "map" ? "Solana Market Map" : "Solana Token List"}</strong>
-              <span>{viewMode === "map"
-                ? "Y = price change 24h · X = selected market metric · size = activity · glow = Hype strength"
-                : "Подреден списък с market, hype и traffic показатели"}</span>
-            </div>
-            <span>{updated ? `обновено ${new Date(updated).toLocaleTimeString("bg-BG")}` : "зареждане…"}</span>
-          </div>
-
           {viewMode === "list" ? <div className="market-list-view">
             <div className="market-list-header">
               <span>Token</span><span>Price</span><span>24h</span><span>24h Volume</span><span>Hype</span><span>Traffic</span>
@@ -871,19 +862,29 @@ export default function MarketMap() {
                 style={{ ["--node-pulse-duration" as any]: `${pulseDuration}s` }}
               >
                 <circle
-                  r={n.r + 8}
+                  r={n.r + 6 + hype * .045}
                   className="market-hype-glow"
-                  strokeWidth={1.2 + hype * .032}
-                  strokeOpacity={Math.min(.92, .12 + hype / 112)}
-                  style={{ ["--hype-strength" as any]: Math.max(.08, hype / 100) }}
+                  strokeWidth={1 + hype * .038}
+                  strokeOpacity={Math.min(.96, .10 + hype / 108)}
+                  style={{
+                    ["--hype-strength" as any]: Math.max(.08, hype / 100),
+                    ["--hype-color" as any]: traffic.cls === "in" ? "#66d39a" : traffic.cls === "out" ? "#ee746c" : "#a9afb7",
+                    ["--hype-blur" as any]: `${4 + hype * .12}px`,
+                    ["--hype-duration" as any]: `${Math.max(1.25, 4.4 - hype * .028)}s`,
+                  }}
                   pointerEvents="none"
                 />
-                {hype >= 55 && <circle
-                  r={n.r + 14 + hype * .07}
+                {hype >= 48 && <circle
+                  r={n.r + 12 + hype * .075}
                   className="market-hype-glow market-hype-glow-outer"
-                  strokeWidth={.8 + hype * .018}
-                  strokeOpacity={Math.min(.58, .08 + hype / 190)}
-                  style={{ ["--hype-strength" as any]: hype / 100 }}
+                  strokeWidth={.8 + hype * .02}
+                  strokeOpacity={Math.min(.68, .08 + hype / 165)}
+                  style={{
+                    ["--hype-strength" as any]: hype / 100,
+                    ["--hype-color" as any]: traffic.cls === "in" ? "#66d39a" : traffic.cls === "out" ? "#ee746c" : "#c7cbd0",
+                    ["--hype-blur" as any]: `${8 + hype * .16}px`,
+                    ["--hype-duration" as any]: `${Math.max(1.45, 5.2 - hype * .03)}s`,
+                  }}
                   pointerEvents="none"
                 />}
                 <circle
