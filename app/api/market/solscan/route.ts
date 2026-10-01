@@ -38,8 +38,18 @@ export async function GET() {
       network: { swaps1h: 0, source: "solscan" },
     }, { headers: { "cache-control": "no-store, max-age=0" } });
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Solscan market error";
+    const planRestricted = /upgrade your api key level|unauthorized/i.test(message);
+
     return NextResponse.json({
-      error: error instanceof Error ? error.message : "Solscan market error",
-    }, { status: 502 });
+      error: message,
+      planRestricted,
+      fallback: planRestricted ? "rpc+dexscreener" : null,
+      message: planRestricted
+        ? "Solscan Level 1 не разрешава този Token API endpoint. Използвай Free mode (Solana RPC + DexScreener) или по-висок Solscan API plan."
+        : "Solscan временно не е достъпен.",
+      tokens: [],
+      flows: [],
+    }, { status: planRestricted ? 403 : 502 });
   }
 }
