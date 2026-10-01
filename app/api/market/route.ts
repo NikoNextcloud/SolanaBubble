@@ -45,7 +45,7 @@ export async function GET() {
     ? Date.now() - new Date(cachedRow.updated_at).getTime()
     : Number.POSITIVE_INFINITY;
 
-  if (cachedRow?.payload && cachedAge < 15_000) {
+  if (cachedRow?.payload && cachedAge < 45_000) {
     return NextResponse.json(
       { ...(cachedRow.payload as object), cached: true, live: true },
       { headers: { "cache-control": "no-store, max-age=0" } },
@@ -78,7 +78,7 @@ export async function GET() {
   for (const b of boosts ?? []) if (b.chainId === "solana") push(b.tokenAddress);
   for (const p of profiles ?? []) if (p.chainId === "solana") push(p.tokenAddress);
 
-  const picked = addresses.slice(0, 90);
+  const picked = addresses.slice(0, 60);
   const chunks: string[][] = [];
   for (let i = 0; i < picked.length; i += 30) chunks.push(picked.slice(i, i + 30));
 
@@ -129,7 +129,7 @@ export async function GET() {
   })
   .filter((t) => t.marketCap > 0 || t.liquidityUsd > 0 || t.volume1h > 0)
   .sort((a, b) => (b.volume1h + b.trades1h * 30 + b.boost * 50) - (a.volume1h + a.trades1h * 30 + a.boost * 50))
-  .slice(0, 80);
+  .slice(0, 60);
 
   const maxTrades = Math.max(1, ...tokens.map((t) => t.trades1h));
   const maxBoost = Math.max(1, ...tokens.map((t) => t.boost));
