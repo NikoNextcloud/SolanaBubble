@@ -897,8 +897,13 @@ export default function MarketMap() {
               const traffic = trafficState(n);
               const buys = Math.max(0, n.buys1h);
               const incoming = Math.max(0, Number(n.netFlowUsd1h ?? 0));
+              const totalTrades = Math.max(1, n.buys1h + n.sells1h);
+              const buyPressure = Math.max(0, (n.buys1h - n.sells1h) / totalTrades);
+              const trafficStrength = Math.log10(Math.max(1, incoming + buys * 55 + n.volume1h * .12));
               const activityStrength = Math.log10(Math.max(1, buys * 35 + incoming + n.volume1h * .08));
-              const cometCount = Math.max(0, Math.min(7, Math.round((hype / 24) + activityStrength / 2.2)));
+              const cometCount = Math.max(0, Math.min(10, Math.round(
+                (hype / 22) + activityStrength / 2.4 + trafficStrength / 2.2 + buyPressure * 3.2
+              )));
               if (!cometCount) return [];
 
               return Array.from({ length: cometCount }).map((_, cometIndex) => {
@@ -915,30 +920,43 @@ export default function MarketMap() {
                 const cx = mx + Math.cos(angle + Math.PI / 2) * bend;
                 const cy = my + Math.sin(angle + Math.PI / 2) * bend;
                 const d = `M ${sx} ${sy} Q ${cx} ${cy} ${tx} ${ty}`;
-                const duration = Math.max(2.8, 7.2 - hype / 28 - Math.min(1.3, activityStrength * .18));
+                const duration = Math.max(2.35, 8.4 - hype / 22 - Math.min(1.65, trafficStrength * .24));
                 const delay = -(((duration / Math.max(1, cometCount)) * cometIndex) + (nodeIndex % 5) * .21);
                 const size = hype >= 75 ? 3.1 : hype >= 45 ? 2.55 : 2.05;
                 const tailId = hype >= 70 ? "cometTailHot" : traffic.cls === "in" ? "cometTailIn" : "cometTailWarm";
 
-                return <g
-                  key={`holder-comet:${n.mint}:${cometIndex}`}
-                  className="holder-comet"
-                  pointerEvents="none"
-                  style={{ ["--comet-duration" as any]: `${duration}s`, ["--comet-delay" as any]: `${delay}s` }}
-                >
-                  <path d="M -56 0 C -40 0 -22 0 -4 0" stroke={`url(#${tailId})`} strokeWidth={size * 1.6} strokeLinecap="round" fill="none" className="holder-comet-tail" />
-                  <path d="M 6 0 C 17 -1.5 30 1.2 48 0" className="holder-comet-future" />
-                  <ellipse cx="-1.5" cy="0" rx={size * 2.2} ry={size * 1.32} className="holder-comet-aura" />
-                  <circle r={size} className="holder-comet-head" />
-                  <circle r={Math.max(.8, size * .34)} className="holder-comet-core" />
-                  <animateMotion
-                    dur={`${duration}s`}
-                    begin={`${delay}s`}
-                    repeatCount="indefinite"
-                    path={d}
-                    rotate="auto"
-                  />
-                  <title>{`Incoming holder activity → ${n.symbol || n.name || n.mint.slice(0, 6)} · Hype ${hype}`}</title>
+                return <g key={`holder-comet-wrap:${n.mint}:${cometIndex}`} pointerEvents="none">
+                  <g
+                    className="holder-comet"
+                    style={{ ["--comet-duration" as any]: `${duration}s`, ["--comet-delay" as any]: `${delay}s` }}
+                  >
+                    <path d="M -56 0 C -40 0 -22 0 -4 0" stroke={`url(#${tailId})`} strokeWidth={size * 1.6} strokeLinecap="round" fill="none" className="holder-comet-tail" />
+                    <path d="M 6 0 C 17 -1.5 30 1.2 48 0" className="holder-comet-future" />
+                    <ellipse cx="-1.5" cy="0" rx={size * 2.2} ry={size * 1.32} className="holder-comet-aura" />
+                    <circle r={size} className="holder-comet-head" />
+                    <circle r={Math.max(.8, size * .34)} className="holder-comet-core" />
+                    <animateMotion
+                      dur={`${duration}s`}
+                      begin={`${delay}s`}
+                      repeatCount="indefinite"
+                      path={d}
+                      rotate="auto"
+                    />
+                    <title>{`Incoming holder activity → ${n.symbol || n.name || n.mint.slice(0, 6)} · Hype ${hype}`}</title>
+                  </g>
+                  <g
+                    transform={`translate(${tx} ${ty})`}
+                    className="holder-impact"
+                    style={{
+                      ["--impact-duration" as any]: `${duration}s`,
+                      ["--impact-delay" as any]: `${delay}s`,
+                      ["--impact-power" as any]: Math.max(.45, Math.min(1.35, .45 + hype / 105 + trafficStrength / 15))
+                    }}
+                  >
+                    <circle r={size * 2.2} className="holder-impact-core" />
+                    <circle r={size * 5.3} className="holder-impact-ring holder-impact-ring-a" />
+                    <circle r={size * 7.4} className="holder-impact-ring holder-impact-ring-b" />
+                  </g>
                 </g>;
               });
             })}
