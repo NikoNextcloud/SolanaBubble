@@ -47,8 +47,8 @@ export async function POST(req: Request) {
     bootstrapped = true;
   } else {
     holders = holdingCount ?? 0;
-    const stale = !existing.metadata_updated_at ||
-      Date.now() - new Date(existing.metadata_updated_at).getTime() > 30 * 60 * 1000;
+    const stale = !existing!.metadata_updated_at ||
+      Date.now() - new Date(existing!.metadata_updated_at).getTime() > 30 * 60 * 1000;
 
     if (stale) {
       const market = await fetchDexScreenerToken(mint).catch(() => null);
