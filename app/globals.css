@@ -305,3 +305,28 @@ body{background:#1b2025!important}
 @media(max-width:900px){
   .holder-bubble-value{font-size:9px}
 }
+
+
+/* Global token search */
+.alpha-token-search{position:relative;padding:12px 10px 2px;z-index:20}
+.alpha-search-input-wrap{height:38px;display:flex;align-items:center;gap:8px;padding:0 10px;border:1px solid #394149;border-radius:8px;background:#242a2f}
+.alpha-search-input-wrap>span{font-size:16px;color:#aab2ba}
+.alpha-search-input-wrap input{min-width:0;flex:1;border:0;outline:0;background:transparent;color:#f4f6f8;font-size:12px}
+.alpha-search-input-wrap input::placeholder{color:#858e97}
+.alpha-search-spinner{width:12px;height:12px;border:2px solid #626c75;border-top-color:#ff6847;border-radius:50%;animation:alphaSpin .7s linear infinite}
+@keyframes alphaSpin{to{transform:rotate(360deg)}}
+.alpha-search-results{position:absolute;left:10px;right:10px;top:54px;border:1px solid #3b444c;border-radius:9px;background:#20262b;box-shadow:0 16px 44px rgba(0,0,0,.32);overflow:hidden;max-height:360px}
+.alpha-search-results button{width:100%;display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:9px;align-items:center;padding:9px 10px;border:0;border-bottom:1px solid #30383f;background:transparent;color:#edf1f4;text-align:left;cursor:pointer}
+.alpha-search-results button:last-child{border-bottom:0}.alpha-search-results button:hover{background:#2a3137}
+.alpha-search-token-icon{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;overflow:hidden;background:#30383f;color:#dce1e5;font-size:10px;font-weight:700}
+.alpha-search-token-icon img{width:100%;height:100%;object-fit:cover}
+.alpha-search-token-main{min-width:0}.alpha-search-token-main strong,.alpha-search-token-main small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.alpha-search-token-main strong{font-size:11px}.alpha-search-token-main small{margin-top:2px;color:#8f99a2;font-size:9px}
+.alpha-search-token-price{font-size:9px;color:#bcc4cb;font-variant-numeric:tabular-nums}
+.alpha-search-empty{padding:12px;color:#8f99a2;font-size:10px}
+
+/* Holder filter dropdown */
+.holder-filter-menu{position:absolute;z-index:12;top:48px;left:92px;width:210px;padding:7px;border:1px solid #3a434b;border-radius:9px;background:#22282e;box-shadow:0 14px 36px rgba(0,0,0,.28)}
+.holder-filter-menu label{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:6px;color:#d8dde1;font-size:11px;cursor:pointer}
+.holder-filter-menu label:hover{background:#2b3238}.holder-filter-menu input{width:15px;height:15px;accent-color:#ff6242}
+.holder-live-bar .ghost-control.active{background:#30373e;color:#fff}
