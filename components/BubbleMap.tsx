@@ -222,7 +222,21 @@ export default function BubbleMap({ mint }: { mint: string }) {
 
   const put = (h: H, animate: boolean) => {
     const prev = nodes.current.get(h.wallet);
-    const n: N = prev ?? { ...h, x: size.w / 2 + (Math.random() - 0.5) * 40, y: size.h / 2 + (Math.random() - 0.5) * 40, r: 0 };
+    let pin: { x: number; y: number } | null = null;
+    if (!prev) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(`solanabubble:pinned:${mint}`) || "{}");
+        pin = saved[h.wallet] ?? null;
+      } catch {}
+    }
+    const n: N = prev ?? {
+      ...h,
+      x: pin?.x ?? size.w / 2 + (Math.random() - 0.5) * 40,
+      y: pin?.y ?? size.h / 2 + (Math.random() - 0.5) * 40,
+      fx: pin?.x ?? null,
+      fy: pin?.y ?? null,
+      r: 0,
+    };
     const grew = prev ? Number(h.balance) > Number(prev.balance) : false;
     const shrank = prev ? Number(h.balance) < Number(prev.balance) : false;
     Object.assign(n, h, { r: radius(Number(h.pct_supply)) });
@@ -487,6 +501,14 @@ export default function BubbleMap({ mint }: { mint: string }) {
       n.vy = 0;
     }
 
+    try {
+      const pinned: Record<string, { x: number; y: number }> = {};
+      for (const node of nodes.current.values()) {
+        if (node.fx != null && node.fy != null) pinned[node.wallet] = { x: node.fx, y: node.fy };
+      }
+      localStorage.setItem(`solanabubble:pinned:${mint}`, JSON.stringify(pinned));
+    } catch {}
+
     d.active = false;
     setDraggingWallet(null);
     sim.current?.alpha(0.5).alphaTarget(0).restart();
@@ -498,6 +520,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
       n.fx = null;
       n.fy = null;
     }
+    try { localStorage.removeItem(`solanabubble:pinned:${mint}`); } catch {}
     drag.current.active = false;
     setDraggingWallet(null);
     sim.current?.alpha(0.65).alphaTarget(0).restart();
@@ -766,7 +789,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
               <button onClick={() => zoomBy(1.2)} title="Zoom in">+</button>
               <button onClick={() => zoomBy(1 / 1.2)} title="Zoom out">−</button>
               <button onClick={resetView} title="Нулирай изгледа">↺</button>
-              <button onClick={releasePinnedNodes} title="Освободи всички фиксирани балончета">⌁</button>
+              <button className="reset-pins-button" onClick={releasePinnedNodes} title="Нулирай фиксираните позиции">↺ Позиции</button>
               <span>{Math.round(transform.k * 100)}%</span>
             </div>
 
