@@ -160,7 +160,7 @@ export default function MarketMap() {
 
     s.nodes(nodes);
     s.force("center", forceCenter(size.w / 2, size.h / 2).strength(0.025));
-    s.force("charge", forceManyBody().strength((d: any) => d.isCore ? -190 : -30));
+    s.force("charge", forceManyBody().strength((d: any) => d.isCore ? -230 : -48));
     s.force("x", forceX<any>((d) => {
       if (d.isCore) {
         if (d.symbol === "SOL") return size.w * 0.5;
@@ -177,9 +177,9 @@ export default function MarketMap() {
     }).strength((d: any) => d.isCore ? 0.18 : 0.04));
     s.force("link", forceLink<any, any>(links)
       .id((d: any) => d.mint)
-      .distance((l: any) => 110 + Math.max(0, 90 - Math.log10(Math.max(1, l.usd1h)) * 10))
+      .distance((l: any) => 135 + Math.max(0, 100 - Math.log10(Math.max(1, l.usd1h)) * 10))
       .strength((l: any) => Math.min(0.32, 0.06 + Math.log10(Math.max(1, l.usd1h)) * 0.03)));
-    s.force("collide", forceCollide<any>((d) => d.r + (d.isCore ? 14 : 9)).strength(0.96));
+    s.force("collide", forceCollide<any>((d) => d.r + (d.isCore ? 20 : 15)).strength(0.98));
     s.alpha(0.72).restart();
   }, [size, tokens, flows]);
 
