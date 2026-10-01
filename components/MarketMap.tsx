@@ -173,6 +173,7 @@ export default function MarketMap() {
   const wrap = useRef<HTMLDivElement>(null);
   const sim = useRef<Simulation<any, any> | null>(null);
   const nodeMap = useRef(new Map<string, Node>());
+  const lastSimRender = useRef(0);
   const [tick, setTick] = useState(0);
   const [size, setSize] = useState({ w: 1000, h: 700 });
   const [tokens, setTokens] = useState<MarketToken[]>([]);
@@ -184,7 +185,6 @@ export default function MarketMap() {
   const [recentEvents, setRecentEvents] = useState<MarketEvent[]>([]);
   const [activityPulse, setActivityPulse] = useState<string[]>([]);
   const previousActivity = useRef(new Map<string, number>());
-  const [motionNow, setMotionNow] = useState(0);
   const [updated, setUpdated] = useState<string | null>(null);
   const [networkSwaps1h, setNetworkSwaps1h] = useState(0);
   const [streamLive, setStreamLive] = useState(true);
@@ -317,26 +317,16 @@ export default function MarketMap() {
   }, []);
 
   useEffect(() => {
-    if (streamLive !== true) return;
-    let raf = 0;
-    let last = 0;
-    const loop = (now: number) => {
-      if (now - last >= 50) {
-        last = now;
-        setMotionNow(now);
-      }
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [streamLive]);
-
-  useEffect(() => {
     const s = forceSimulation<any>()
       .alphaDecay(0.025)
       .velocityDecay(0.35)
       .force("charge", forceManyBody().strength(-12))
-      .on("tick", () => setTick((x) => x + 1));
+      .on("tick", () => {
+        const now = performance.now();
+        if (now - lastSimRender.current < 34) return;
+        lastSimRender.current = now;
+        setTick((x) => x + 1);
+      });
     sim.current = s;
     return () => { s.stop(); };
   }, []);
@@ -495,7 +485,7 @@ export default function MarketMap() {
     } catch {}
 
     load();
-    const id = window.setInterval(load, 20000);
+    const id = window.setInterval(load, 30000);
     return () => { stopped = true; window.clearInterval(id); };
   }, [streamLive, tabVisible]);
 
@@ -626,7 +616,12 @@ export default function MarketMap() {
   }
 
   const nodes = [...nodeMap.current.values()];
-  const renderedNodes = viewMode === "map" ? nodes.filter((n) => !n.isCore) : nodes;
+  const galaxyVisibleMints = new Set(tokens.slice(0, 60).map((t) => t.mint));
+  const renderedNodes = viewMode === "map"
+    ? nodes.filter((n) => !n.isCore)
+    : viewMode === "galaxy"
+      ? nodes.filter((n) => n.isCore || galaxyVisibleMints.has(n.mint))
+      : nodes;
   const combinedFlows = [...flows, ...expansionFlows];
   const hotFlowKeys = new Set([
     ...[...combinedFlows]
@@ -648,6 +643,17 @@ export default function MarketMap() {
     .map((f) => ({ ...f, source: nodeMap.current.get(f.from), target: nodeMap.current.get(f.to) }))
     .filter((f) => f.source && f.target)
     .slice(0, 100);
+
+  const cometNodes = viewMode === "galaxy"
+    ? renderedNodes
+        .filter((n) => !n.isCore)
+        .sort((a, b) => {
+          const scoreA = hypeScore(a) * 1.3 + Math.log10(Math.max(1, Number(a.netFlowUsd1h ?? 0) + a.volume1h + a.buys1h * 80)) * 12;
+          const scoreB = hypeScore(b) * 1.3 + Math.log10(Math.max(1, Number(b.netFlowUsd1h ?? 0) + b.volume1h + b.buys1h * 80)) * 12;
+          return scoreB - scoreA;
+        })
+        .slice(0, 28)
+    : renderedNodes.filter((n) => !n.isCore);
 
   const netFlowByMint = new Map<string, number>();
   for (const flow of combinedFlows) {
@@ -892,7 +898,7 @@ export default function MarketMap() {
               </path>;
             })}
 
-            {showHypeOverlay && renderedNodes.filter((n) => !n.isCore).flatMap((n, nodeIndex) => {
+            {showHypeOverlay && cometNodes.flatMap((n, nodeIndex) => {
               const hype = hypeScore(n);
               const traffic = trafficState(n);
               const buys = Math.max(0, n.buys1h);
@@ -901,7 +907,7 @@ export default function MarketMap() {
               const buyPressure = Math.max(0, (n.buys1h - n.sells1h) / totalTrades);
               const trafficStrength = Math.log10(Math.max(1, incoming + buys * 55 + n.volume1h * .12));
               const activityStrength = Math.log10(Math.max(1, buys * 35 + incoming + n.volume1h * .08));
-              const cometCount = Math.max(0, Math.min(10, Math.round(
+              const cometCount = Math.max(0, Math.min(5, Math.round(
                 (hype / 22) + activityStrength / 2.4 + trafficStrength / 2.2 + buyPressure * 3.2
               )));
               if (!cometCount) return [];
@@ -960,37 +966,22 @@ export default function MarketMap() {
                 </g>;
               });
             })}
-            {showTrafficOverlay && viewMode !== "galaxy" && visibleFlows.slice(0, 60).map((f, i) => {
-              const source = f.source as Node;
-              const target = f.target as Node;
-              const p = edgePoint(source, target, 6);
-              const speed = 1100 + (i % 7) * 160;
-              const progress = ((motionNow / speed) + i * .149) % 1;
-              const x = p.x1 + (p.x2 - p.x1) * progress;
-              const y = p.y1 + (p.y2 - p.y1) * progress;
-              return <circle
-                key={`particle:${f.from}:${f.to}:${i}`}
-                cx={x} cy={y}
-                r={Math.max(1.4, Math.min(3.5, 1.2 + Math.log10(Math.max(1, f.usd1h)) * .28))}
-                fill={f.kind === "rotation" ? "#ffd38a" : f.kind === "buy" ? "#8ff0bd" : "#ff9aa5"}
-                className="market-traffic-particle"
-                pointerEvents="none"
-              />;
-            })}
-
             {renderedNodes.map((n, i) => {
               const color = flowColor(n);
               const total = Math.max(1, n.buys1h + n.sells1h);
               const imbalance = (n.buys1h - n.sells1h) / total;
               const activity = Math.min(1, Math.log10(Math.max(1, n.trades1h + 1)) / 4);
-              const pulseSpeed = 1200 - activity * 900;
               const hype = hypeScore(n);
               const traffic = trafficState(n);
               const netFlow = Number.isFinite(Number(n.netFlowUsd1h)) ? Number(n.netFlowUsd1h) : (netFlowByMint.get(n.mint) ?? 0);
               const focusDimmed = Boolean(selected?.mint && !focusMints.has(n.mint) && !n.isCore);
-              const pulseAmp = n.expanded ? .025 : Math.min(.10, .018 + activity * .055 + Math.abs(imbalance) * .03 + (hype / 100) * .018);
-              const pulse = n.isCore ? 1 + Math.sin(motionNow / 900 + i) * .025 : 1 + Math.sin(motionNow / pulseSpeed + i) * pulseAmp;
-              return <g key={n.mint} transform={`translate(${n.x} ${n.y}) scale(${pulse})`}>
+              const pulseDuration = n.isCore ? 3.2 : Math.max(1.7, 4.4 - activity * 2.2 - hype / 120);
+              return <g
+                key={n.mint}
+                transform={`translate(${n.x} ${n.y})`}
+                className={`market-node-group ${streamLive ? "is-animated" : "is-paused"}`}
+                style={{ ["--node-pulse-duration" as any]: `${pulseDuration}s` }}
+              >
                 <circle
                   r={n.r + 8}
                   className={`planet-atmosphere ${planetGlowClass(n)} ${hotNodeMints.has(n.mint) ? "hot-path-node" : ""}`}
@@ -1071,13 +1062,6 @@ export default function MarketMap() {
                     className="market-token-icon"
                   />
                 </> : n.r >= 17 && <text textAnchor="middle" dy="4" className="market-symbol">{n.symbol || "?"}</text>}
-                {n.volume1h > 0 && <circle
-                  className="market-flow-dot"
-                  r="2"
-                  fill={color}
-                  cx={Math.cos(motionNow / 900 + i) * (n.r + 9)}
-                  cy={Math.sin(motionNow / 900 + i) * (n.r + 9)}
-                />}
                 {activityPulse.includes(n.mint) && !n.isCore && <>
                   <circle r={n.r + 8} className="market-shockwave shockwave-a" pointerEvents="none" />
                   <circle r={n.r + 8} className="market-shockwave shockwave-b" pointerEvents="none" />
