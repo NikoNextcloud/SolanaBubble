@@ -76,6 +76,9 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const [showTransfers, setShowTransfers] = useState(true);
   const [motionOn, setMotionOn] = useState(true);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [liveControlsPos, setLiveControlsPos] = useState({ x: 12, y: 12 });
+  const [zoomControlsPos, setZoomControlsPos] = useState({ x: 620, y: 12 });
+  const overlayDrag = useRef({ kind: "" as "" | "live" | "zoom", pointerId: -1, startX: 0, startY: 0, baseX: 0, baseY: 0 });
   const [streamLive, setStreamLive] = useState(true);
   const [tabVisible, setTabVisible] = useState(true);
   const [autoPaused, setAutoPaused] = useState(false);
@@ -712,6 +715,62 @@ export default function BubbleMap({ mint }: { mint: string }) {
   });
   const resetView = () => setTransform({ x: 0, y: 0, k: 1 });
 
+  useEffect(() => {
+    try {
+      const livePos = JSON.parse(localStorage.getItem(`solanabubble:holder-live-controls:${mint}`) || "null");
+      const zoomPos = JSON.parse(localStorage.getItem(`solanabubble:holder-zoom-controls:${mint}`) || "null");
+      if (livePos?.x != null && livePos?.y != null) setLiveControlsPos(livePos);
+      if (zoomPos?.x != null && zoomPos?.y != null) setZoomControlsPos(zoomPos);
+      else setZoomControlsPos({ x: Math.max(360, size.w - 300), y: 12 });
+    } catch {
+      setZoomControlsPos({ x: Math.max(360, size.w - 300), y: 12 });
+    }
+  }, [mint, size.w]);
+
+  const startOverlayDrag = (
+    e: React.PointerEvent<HTMLElement>,
+    kind: "live" | "zoom",
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const pos = kind === "live" ? liveControlsPos : zoomControlsPos;
+    overlayDrag.current = {
+      kind,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      baseX: pos.x,
+      baseY: pos.y,
+    };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const moveOverlayDrag = (e: React.PointerEvent<HTMLElement>) => {
+    const d = overlayDrag.current;
+    if (!d.kind || d.pointerId !== e.pointerId) return;
+    e.preventDefault();
+    const next = {
+      x: clamp(d.baseX + e.clientX - d.startX, 8, Math.max(8, size.w - 250)),
+      y: clamp(d.baseY + e.clientY - d.startY, 8, Math.max(8, size.h - 70)),
+    };
+    if (d.kind === "live") setLiveControlsPos(next);
+    else setZoomControlsPos(next);
+  };
+
+  const endOverlayDrag = (e: React.PointerEvent<HTMLElement>) => {
+    const d = overlayDrag.current;
+    if (!d.kind || d.pointerId !== e.pointerId) return;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    try {
+      const pos = d.kind === "live" ? liveControlsPos : zoomControlsPos;
+      localStorage.setItem(
+        d.kind === "live" ? `solanabubble:holder-live-controls:${mint}` : `solanabubble:holder-zoom-controls:${mint}`,
+        JSON.stringify(pos),
+      );
+    } catch {}
+    overlayDrag.current.kind = "";
+  };
+
   return (
     <div className="stage insight-stage">
       <section className="workspace">
@@ -740,14 +799,24 @@ export default function BubbleMap({ mint }: { mint: string }) {
           <button className={view === "map" ? "active" : ""} onClick={() => setView("map")}>Bubble map</button>
           <button className={view === "holders" ? "active" : ""} onClick={() => setView("holders")}>Holders</button>
           <button className={view === "transactions" ? "active" : ""} onClick={() => setView("transactions")}>Transactions</button>
-          <button className={view === "history" ? "active" : ""} onClick={() => setView("history")}>Historical</button>
         </nav>
 
         <div className="work-content">
           {view === "map" && <div className="map insight-map" ref={wrap}>
             {missing && <div className="map-message">Токенът не се следи. Стартирай bootstrap за {mint}.</div>}
 
-            <div className="insight-live-bar holder-live-bar">
+            <div
+              className="insight-live-bar holder-live-bar movable-control"
+              style={{ left: liveControlsPos.x, top: liveControlsPos.y, right: "auto" }}
+            >
+              <span
+                className="panel-drag-handle"
+                title="Премести контролите"
+                onPointerDown={(e) => startOverlayDrag(e, "live")}
+                onPointerMove={moveOverlayDrag}
+                onPointerUp={endOverlayDrag}
+                onPointerCancel={endOverlayDrag}
+              >⋮⋮</span>
               <button className="ghost-control" onClick={() => setView("holders")}>☷ Holders</button>
               <button
                 className={`ghost-control ${filtersOpen ? "active" : ""}`}
@@ -758,13 +827,13 @@ export default function BubbleMap({ mint }: { mint: string }) {
                 onClick={() => changeStreamLive(streamLive !== true)}
               >{streamLive === true ? "◉ Live" : "◉ Go Live"}</button>
             </div>
-            {filtersOpen && <div className="holder-filter-menu">
+            {filtersOpen && <div className="holder-filter-menu" style={{ left: liveControlsPos.x + 62, top: liveControlsPos.y + 42 }}>
               <label><input type="checkbox" checked={linkedOnly} onChange={(e) => setLinkedOnly(e.target.checked)} /><span>Само свързани</span></label>
               <label><input type="checkbox" checked={showSwaps} onChange={(e) => setShowSwaps(e.target.checked)} /><span>Swap връзки</span></label>
               <label><input type="checkbox" checked={showTransfers} onChange={(e) => setShowTransfers(e.target.checked)} /><span>Transfer връзки</span></label>
               <label><input type="checkbox" checked={motionOn} onChange={(e) => setMotionOn(e.target.checked)} /><span>Жива карта</span></label>
             </div>}
-            {selected && <div className="holder-quick-card">
+            {selected && <div className="holder-quick-card" style={{ left: liveControlsPos.x, top: liveControlsPos.y + 46 }}>
               <div className="holder-quick-head">
                 <span className="holder-quick-rank">{selectedRank || "—"}</span>
                 <span className="holder-quick-avatar">◈</span>
@@ -824,7 +893,18 @@ export default function BubbleMap({ mint }: { mint: string }) {
               <span className="shown-count">{visibleNodes.length} shown</span>
             </div>
 
-            <div className="zoom-controls">
+            <div
+              className="zoom-controls movable-control"
+              style={{ left: zoomControlsPos.x, top: zoomControlsPos.y, right: "auto" }}
+            >
+              <span
+                className="panel-drag-handle"
+                title="Премести контролите"
+                onPointerDown={(e) => startOverlayDrag(e, "zoom")}
+                onPointerMove={moveOverlayDrag}
+                onPointerUp={endOverlayDrag}
+                onPointerCancel={endOverlayDrag}
+              >⋮⋮</span>
               <button onClick={() => zoomBy(1.2)} title="Zoom in">+</button>
               <button onClick={() => zoomBy(1 / 1.2)} title="Zoom out">−</button>
               <button onClick={resetView} title="Нулирай изгледа">↺</button>
