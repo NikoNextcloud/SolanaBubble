@@ -346,10 +346,10 @@ export default function MarketMap() {
       <header className="market-topbar">
         <div>
           <a className="brand" href="/">SolanaBubble</a>
-          <span className="market-subtitle">Източник: {dataSource === "free" ? "Solana RPC + DexScreener" : "Solscan"}</span>
+          <span className="market-subtitle">Източник: {dataSource === "free" ? "RPC + DexScreener" : "Solscan"}</span>
         </div>
         <div className="market-actions">
-          <button className="source-switch" onClick={() => { setDataSource(null); setStreamLive(null); sim.current?.stop(); }}>Смени източника</button>
+          <button className="source-switch" onClick={() => chooseSource(dataSource === "free" ? "solscan" : "free")}>Смени източника</button>
           <a href="/admin">База данни</a>
           <span className={`market-live ${streamLive === false ? "paused" : ""}`}><i />{streamLive === false ? "PAUSED" : "LIVE"}</span>
         </div>
