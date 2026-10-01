@@ -188,7 +188,7 @@ export default function MarketMap() {
   const [updated, setUpdated] = useState<string | null>(null);
   const [networkSwaps1h, setNetworkSwaps1h] = useState(0);
   const [streamLive, setStreamLive] = useState(true);
-  const [viewMode, setViewMode] = useState<MarketViewMode>("map");
+  const [viewMode, setViewMode] = useState<MarketViewMode>("galaxy");
   const [xAxis, setXAxis] = useState<MarketAxis>("marketCap");
   const [showTrafficOverlay, setShowTrafficOverlay] = useState(true);
   const [showHypeOverlay, setShowHypeOverlay] = useState(true);
@@ -346,7 +346,7 @@ export default function MarketMap() {
     if (!s) return;
     const nodes = [...nodeMap.current.values()];
     for (const node of nodes) {
-      if (node.isCore) node.r = node.symbol === "SOL" ? 42 : 34;
+      if (node.isCore) node.r = node.symbol === "SOL" ? (viewMode === "galaxy" ? 58 : 42) : 34;
       else node.r = viewMode === "map" ? marketMapRadius(node) : radius(node);
     }
     const links = [...flows, ...expansionFlows]
@@ -355,7 +355,7 @@ export default function MarketMap() {
 
     s.nodes(nodes);
     s.force("center", forceCenter(size.w / 2, size.h / 2).strength(viewMode === "map" ? 0.005 : 0.025));
-    s.force("charge", forceManyBody().strength((d: any) => viewMode === "map" ? (d.isCore ? -20 : -18) : (d.isCore ? -230 : -48)));
+    s.force("charge", forceManyBody().strength((d: any) => viewMode === "map" ? (d.isCore ? -20 : -18) : (d.isCore ? -310 : -72)));
     s.force("x", forceX<any>((d) => {
       if (viewMode === "map") {
         if (d.isCore) return size.w / 2;
@@ -366,8 +366,8 @@ export default function MarketMap() {
       }
       if (d.isCore) {
         if (d.symbol === "SOL") return size.w * 0.5;
-        if (d.symbol === "USDC") return size.w * 0.28;
-        return size.w * 0.72;
+        if (d.symbol === "USDC") return size.w * 0.22;
+        return size.w * 0.78;
       }
       const imbalance = (d.buys1h - d.sells1h) / Math.max(1, d.buys1h + d.sells1h);
       return size.w / 2 + imbalance * size.w * 0.28;
@@ -378,15 +378,15 @@ export default function MarketMap() {
         const pct = (Number(d.priceChange24h || 0) + axisStats.changeAbs) / (axisStats.changeAbs * 2);
         return Math.max(84, Math.min(size.h - 72, 70 + (1 - Math.max(0, Math.min(1, pct))) * Math.max(120, size.h - 150)));
       }
-      if (d.isCore) return size.h * 0.52;
+      if (d.isCore) return d.symbol === "SOL" ? size.h * 0.52 : size.h * 0.48;
       const activityRank = Math.min(1, Math.log10(Math.max(1, d.volume1h)) / 7);
-      return size.h * (0.6 - activityRank * 0.19);
+      return size.h * (0.58 - activityRank * 0.24);
     }).strength((d: any) => viewMode === "map" ? (d.isCore ? .02 : .5) : (d.isCore ? 0.18 : 0.04)));
     s.force("link", forceLink<any, any>(viewMode === "map" && !showTrafficOverlay ? [] : links)
       .id((d: any) => d.mint)
       .distance((l: any) => 135 + Math.max(0, 100 - Math.log10(Math.max(1, l.usd1h)) * 10))
       .strength((l: any) => Math.min(0.32, 0.06 + Math.log10(Math.max(1, l.usd1h)) * 0.03)));
-    s.force("collide", forceCollide<any>((d) => d.r + (viewMode === "map" ? 24 : d.isCore ? 20 : 15)).strength(0.98));
+    s.force("collide", forceCollide<any>((d) => d.r + (viewMode === "map" ? 24 : d.isCore ? 28 : 22)).strength(0.99));
     s.alpha(viewMode === "map" ? .58 : .72).restart();
   }, [size, tokens, flows, expansionFlows, viewMode, xAxis, showTrafficOverlay, axisStats]);
 
@@ -696,13 +696,20 @@ export default function MarketMap() {
 
       <section className="market-workspace reference-market-workspace">
         <div className="market-map" ref={wrap}>
-          <div className="reference-map-toolbar">
+          <div className="reference-map-toolbar neon-map-toolbar">
             <div className="market-view-switch">
               <button className={viewMode === "map" ? "active" : ""} onClick={() => setViewMode("map")}>▦ Map</button>
               <button className={viewMode === "galaxy" ? "active" : ""} onClick={() => setViewMode("galaxy")}>✦ Galaxy</button>
               <button className={viewMode === "list" ? "active" : ""} onClick={() => setViewMode("list")}>☷ List</button>
             </div>
+            <div className="market-galaxy-filters">
+              <button className="sector-control">◉ All Sectors⌄</button>
+              <div className="timeframe-switch">
+                <button>1H</button><button>6H</button><button className="active">24H</button><button>7D</button>
+              </div>
+            </div>
             <div className="market-toolbar-actions">
+              <div className="market-inline-search">⌕ <span>Search tokens, wallets, or narratives…</span></div>
               {viewMode === "map" && <select value={xAxis} onChange={(e) => setXAxis(e.target.value as MarketAxis)} aria-label="Хоризонтална ос">
                 <option value="marketCap">Market cap</option>
                 <option value="liquidityUsd">Liquidity</option>
@@ -727,11 +734,11 @@ export default function MarketMap() {
           </div>}
           <div className="market-map-head reference-map-head">
             <div>
-              <strong>{viewMode === "map" ? "Solana Market Map" : viewMode === "galaxy" ? "Solana Traffic Galaxy" : "Solana Token List"}</strong>
+              <strong>{viewMode === "map" ? "Solana Market Map" : viewMode === "galaxy" ? "Live Market Galaxy" : "Solana Token List"}</strong>
               <span>{viewMode === "map"
                 ? "Y = price change 24h · X = selected market metric · size = activity · color = price movement"
                 : viewMode === "galaxy"
-                  ? "Жива network карта с traffic, hype и hot path връзки"
+                  ? "Real-time hype flow между Solana токени · comet trails показват посоката на интереса"
                   : "Подреден списък с market, hype и traffic показатели"}</span>
             </div>
             <span>{updated ? `обновено ${new Date(updated).toLocaleTimeString("bg-BG")}` : "зареждане…"}</span>
@@ -1053,6 +1060,10 @@ export default function MarketMap() {
             })}
           </svg>}
 
+          <div className="market-zoom-controls">
+            <button>−</button><span>100%</span><button>＋</button><button>⛶</button>
+          </div>
+          <div className="hype-flow-legend"><span>☄</span><b>Hype Flow</b><small>Low</small><i /><small>High</small></div>
           <div className="market-legend">
             <span><i className="market-buy-dot" />капитал към токена</span>
             <span><i className="market-neutral-dot" />SOL / USDC / USDT центрове</span>
