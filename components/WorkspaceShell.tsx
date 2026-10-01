@@ -140,10 +140,12 @@ export default function WorkspaceShell({
   return (
     <main className="alpha-shell">
       <aside className="alpha-sidebar">
-        <a className="alpha-logo" href="/">
-          <span className="alpha-logo-mark">✦</span>
-          <strong>SolanaBubble</strong>
-          <small>/ SOL</small>
+        <a className="alpha-logo neon-brand" href="/">
+          <span className="alpha-logo-orbit" aria-hidden="true"><i /><b /></span>
+          <span className="alpha-logo-copy">
+            <strong>Solana<span>Bubble</span></strong>
+            <small>REAL-TIME MARKET INTELLIGENCE<br/>ON SOLANA</small>
+          </span>
         </a>
 
         <div className="alpha-token-search" ref={searchBox}>
@@ -187,19 +189,27 @@ export default function WorkspaceShell({
           </div>}
         </div>
 
-        <div className="alpha-side-section">
-          <span className="alpha-side-label">WORKSPACE</span>
+        <div className="alpha-side-section visual-nav">
           <a className={`alpha-nav ${isMarket ? "active" : ""}`} href="/">
-            <span className="alpha-nav-icon">▦</span>
-            <span>Market overview</span>
+            <span className="alpha-nav-icon">◎</span><span>Live Market Map</span>
           </a>
-        </div>
-
-        <div className="alpha-side-section">
-          <span className="alpha-side-label">TOOLS</span>
+          <button className="alpha-nav visual-nav-button" type="button">
+            <span className="alpha-nav-icon">☆</span><span>Watchlist</span>
+          </button>
+          <button className="alpha-nav visual-nav-button" type="button">
+            <span className="alpha-nav-icon">▥</span><span>Top Movers</span>
+          </button>
+          <button className="alpha-nav visual-nav-button" type="button">
+            <span className="alpha-nav-icon">▤</span><span>Narratives</span>
+          </button>
+          <button className="alpha-nav visual-nav-button" type="button">
+            <span className="alpha-nav-icon">♧</span><span>Alerts</span><b className="alpha-alert-badge">3</b>
+          </button>
+          <button className="alpha-nav visual-nav-button" type="button">
+            <span className="alpha-nav-icon">◔</span><span>Portfolio</span>
+          </button>
           <a className={`alpha-nav ${isDatabase ? "active" : ""}`} href="/admin">
-            <span className="alpha-nav-icon">▤</span>
-            <span>Database</span>
+            <span className="alpha-nav-icon">▣</span><span>Research / DB</span>
           </a>
         </div>
 
@@ -225,22 +235,18 @@ export default function WorkspaceShell({
           </div>
         </div>
 
-        <div className="alpha-network">
-          <span><i /> Solana network</span>
-          <small>LIVE DATA</small>
+        <div className="alpha-network neon-network-card">
+          <div className="neon-network-market">
+            <span className="mini-sol-mark">≋</span>
+            <div><strong>SOL</strong><small>Live market</small></div>
+            <b>↗</b>
+          </div>
+          <span><i /> Live Data</span>
+          <small>Connected</small>
         </div>
       </aside>
 
-      <section className="alpha-app">
-        <header className="alpha-topbar">
-          <div className="alpha-breadcrumb">
-            <span>Workspace</span><b>›</b><strong>{section}</strong>
-          </div>
-          <div className="alpha-top-actions">
-            <span className="alpha-chain-dot"><i /> SOLANA</span>
-            <span className="alpha-avatar">SB</span>
-          </div>
-        </header>
+      <section className="alpha-app neon-app">
         <div className="alpha-shell-content">{children}</div>
       </section>
     </main>
