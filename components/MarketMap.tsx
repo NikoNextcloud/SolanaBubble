@@ -24,6 +24,8 @@ type MarketToken = {
   quoteSymbol?: string | null;
   imageUrl?: string | null;
   expanded?: boolean;
+  depth?: number;
+  parentMint?: string | null;
 };
 
 type Node = MarketToken & {
@@ -69,6 +71,23 @@ function flowColor(t: MarketToken) {
   if (ratio > 0.18) return "#46d58d";
   if (ratio < -0.18) return "#ff6473";
   return "#76808e";
+}
+
+function hypeScore(t: MarketToken) {
+  const tradeScore = Math.min(35, Math.log10(Math.max(1, t.trades1h) + 1) * 11);
+  const buyRatio = t.buys1h / Math.max(1, t.buys1h + t.sells1h);
+  const buyScore = Math.max(0, (buyRatio - 0.45) * 55);
+  const momentum = Math.max(0, Math.min(18, t.priceChange1h * 0.6 + 7));
+  const boostScore = Math.min(12, Math.log10(Math.max(1, t.boost) + 1) * 4);
+  return Math.max(0, Math.min(100, Math.round(tradeScore + buyScore + momentum + boostScore)));
+}
+
+function trafficState(t: MarketToken) {
+  const total = Math.max(1, t.buys1h + t.sells1h);
+  const imbalance = (t.buys1h - t.sells1h) / total;
+  if (imbalance > 0.16) return { label: "IN", symbol: "↑", cls: "in" };
+  if (imbalance < -0.16) return { label: "OUT", symbol: "↓", cls: "out" };
+  return { label: "FLAT", symbol: "•", cls: "flat" };
 }
 
 const CORE_META: Record<string, { symbol: string; name: string }> = {
@@ -279,6 +298,7 @@ export default function MarketMap() {
         const pin = pinned[t.mint];
         nodeMap.current.set(t.mint, {
           ...t,
+          depth: t.depth ?? 0,
           x: pin?.x ?? size.w / 2 + (Math.random() - 0.5) * 180,
           y: pin?.y ?? size.h / 2 + (Math.random() - 0.5) * 140,
           fx: pin?.x ?? null,
@@ -307,6 +327,7 @@ export default function MarketMap() {
       if (prev) Object.assign(prev, coreNode, { r: meta.symbol === "SOL" ? 42 : 34, isCore: true });
       else nodeMap.current.set(mint, {
         ...coreNode,
+        depth: 0,
         x: size.w / 2 + (Math.random() - 0.5) * 80,
         y: size.h / 2 + (Math.random() - 0.5) * 80,
         r: meta.symbol === "SOL" ? 42 : 34,
@@ -385,7 +406,8 @@ export default function MarketMap() {
   }, [streamLive, autoPaused]);
 
   async function expandToken(t: Node) {
-    if (t.isCore || expandedMints.includes(t.mint) || expansionLoading === t.mint) return;
+    const currentDepth = t.depth ?? 0;
+    if (t.isCore || currentDepth >= 3 || expandedMints.includes(t.mint) || expansionLoading === t.mint) return;
     setExpansionLoading(t.mint);
     try {
       const r = await fetch(`/api/market/expand?mint=${encodeURIComponent(t.mint)}`, { cache: "no-store" });
@@ -397,7 +419,12 @@ export default function MarketMap() {
       additions.forEach((token, i) => {
         const prev = nodeMap.current.get(token.mint);
         if (prev) {
-          Object.assign(prev, token, { expanded: true, r: Math.max(10, radius(token) * 0.8) });
+          Object.assign(prev, token, {
+            expanded: true,
+            depth: Math.max(prev.depth ?? 0, currentDepth + 1),
+            parentMint: prev.parentMint ?? t.mint,
+            r: Math.max(10, radius(token) * 0.8),
+          });
           return;
         }
         const angle = (Math.PI * 2 * i) / Math.max(1, additions.length) + Math.random() * 0.25;
@@ -405,6 +432,8 @@ export default function MarketMap() {
         nodeMap.current.set(token.mint, {
           ...token,
           expanded: true,
+          depth: currentDepth + 1,
+          parentMint: t.mint,
           x: (center?.x ?? size.w / 2) + Math.cos(angle) * distance,
           y: (center?.y ?? size.h / 2) + Math.sin(angle) * distance,
           r: Math.max(10, radius(token) * 0.8),
@@ -460,6 +489,17 @@ export default function MarketMap() {
     .map((f) => ({ ...f, source: nodeMap.current.get(f.from), target: nodeMap.current.get(f.to) }))
     .filter((f) => f.source && f.target)
     .slice(0, 100);
+
+  const netFlowByMint = new Map<string, number>();
+  for (const flow of combinedFlows) {
+    netFlowByMint.set(flow.from, (netFlowByMint.get(flow.from) ?? 0) - flow.usd1h);
+    netFlowByMint.set(flow.to, (netFlowByMint.get(flow.to) ?? 0) + flow.usd1h);
+  }
+
+  const hottest = [...nodes]
+    .filter((n) => !n.isCore)
+    .sort((a, b) => hypeScore(b) - hypeScore(a))
+    .slice(0, 5);
   void tick;
 
   return (
@@ -569,7 +609,10 @@ export default function MarketMap() {
               const imbalance = (n.buys1h - n.sells1h) / total;
               const activity = Math.min(1, Math.log10(Math.max(1, n.trades1h + 1)) / 4);
               const pulseSpeed = 1200 - activity * 900;
-              const pulseAmp = n.expanded ? .025 : Math.min(.09, .018 + activity * .055 + Math.abs(imbalance) * .03);
+              const hype = hypeScore(n);
+              const traffic = trafficState(n);
+              const netFlow = netFlowByMint.get(n.mint) ?? 0;
+              const pulseAmp = n.expanded ? .025 : Math.min(.10, .018 + activity * .055 + Math.abs(imbalance) * .03 + (hype / 100) * .018);
               const pulse = n.isCore ? 1 + Math.sin(motionNow / 900 + i) * .025 : 1 + Math.sin(motionNow / pulseSpeed + i) * pulseAmp;
               return <g key={n.mint} transform={`translate(${n.x} ${n.y}) scale(${pulse})`}>
                 <circle
@@ -625,6 +668,33 @@ export default function MarketMap() {
                   cx={Math.cos(motionNow / 900 + i) * (n.r + 9)}
                   cy={Math.sin(motionNow / 900 + i) * (n.r + 9)}
                 />}
+                {!n.isCore && <g className="market-node-indicators" pointerEvents="none">
+                  <rect
+                    x={-n.r}
+                    y={-n.r - 18}
+                    width={Math.max(38, n.r * 1.25)}
+                    height="14"
+                    rx="7"
+                    className={`market-hype-pill ${hype >= 70 ? "hot" : hype >= 45 ? "warm" : ""}`}
+                  />
+                  <text
+                    x={-n.r + 7}
+                    y={-n.r - 8}
+                    className="market-hype-text"
+                  >H {hype}</text>
+                  <text
+                    x={n.r - 3}
+                    y={-n.r - 8}
+                    textAnchor="end"
+                    className={`market-traffic-text ${traffic.cls}`}
+                  >{traffic.symbol}</text>
+                  {(n.depth ?? 0) > 0 && <text
+                    x={0}
+                    y={n.r + 16}
+                    textAnchor="middle"
+                    className="market-depth-label"
+                  >L{n.depth}/3 · {netFlow >= 0 ? "+" : ""}{fmtUsd(netFlow)}</text>}
+                </g>}
               </g>;
             })}
           </svg>
@@ -641,6 +711,18 @@ export default function MarketMap() {
             <h2>Пазарен поток</h2>
             <p>Кликни токен, за да разшириш мрежата около него. Double click отваря holder картата.</p>
             {expansionLoading && <div className="market-expanding">Разгръщам wallet връзките…</div>}
+            <div className="market-hot-list">
+              <strong>Hype / Traffic</strong>
+              {hottest.map((t, i) => {
+                const traffic = trafficState(t);
+                return <button key={t.mint} onClick={() => { setSelected(t); expandToken(t); }}>
+                  <span>{i + 1}</span>
+                  <strong>{t.symbol || t.name || t.mint.slice(0, 6)}</strong>
+                  <b>H {hypeScore(t)}</b>
+                  <i className={traffic.cls}>{traffic.symbol}</i>
+                </button>;
+              })}
+            </div>
             <div className="market-rank">
               {tokens.slice(0, 12).map((t, i) => <button key={t.mint} onClick={() => setSelected(t)}>
                 <span>{i + 1}</span>
@@ -663,7 +745,9 @@ export default function MarketMap() {
               <dt>Покупки 1ч.</dt><dd>{selected.buys1h}</dd>
               <dt>Продажби 1ч.</dt><dd>{selected.sells1h}</dd>
               <dt>Промяна 1ч.</dt><dd className={selected.priceChange1h >= 0 ? "buy" : "sell"}>{selected.priceChange1h.toFixed(2)}%</dd>
-              <dt>Мрежа</dt><dd>{expandedMints.includes(selected.mint) ? "разгърната" : "клик за разгръщане"}</dd>
+              <dt>Hype</dt><dd>H {hypeScore(selected)} / 100</dd>
+              <dt>Traffic</dt><dd className={trafficState(selected).cls}>{trafficState(selected).symbol} {trafficState(selected).label}</dd>
+              <dt>Мрежа</dt><dd>{expandedMints.includes(selected.mint) ? `разгърната · L${nodeMap.current.get(selected.mint)?.depth ?? 0}/3` : "клик за разгръщане"}</dd>
             </dl>
             <button className="open-token-button" onClick={() => openToken(selected)} disabled={loadingMint === selected.mint}>
               {loadingMint === selected.mint ? "Зареждам holders…" : "Отвори holder картата"}
