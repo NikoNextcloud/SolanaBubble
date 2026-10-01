@@ -38,25 +38,46 @@ export async function fetchPublicSupply(mint: string) {
   };
 }
 
+const BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+function base58(bytes: Uint8Array) {
+  let value = 0n;
+  for (const byte of bytes) value = (value << 8n) + BigInt(byte);
+  let out = "";
+  while (value > 0n) {
+    const mod = Number(value % 58n);
+    out = BASE58[mod] + out;
+    value /= 58n;
+  }
+  let leading = 0;
+  while (leading < bytes.length && bytes[leading] === 0) leading++;
+  return "1".repeat(leading) + (out || (leading ? "" : "1"));
+}
+
 async function holderAccounts(programId: string, mint: string) {
+  // Token account layout starts with mint[32], owner[32], amount[u64].
+  // Slice only owner+amount instead of downloading every full token account.
+  // This drastically reduces bandwidth and pressure on the public RPC.
   const result = await rpc<any[]>("getProgramAccounts", [
     programId,
     {
       commitment: "confirmed",
-      encoding: "jsonParsed",
+      encoding: "base64",
+      dataSlice: { offset: 32, length: 40 },
       filters: [{ memcmp: { offset: 0, bytes: mint } }],
     },
   ]);
 
   return result.flatMap((row: any) => {
-    const info = row?.account?.data?.parsed?.info;
-    const owner = info?.owner;
-    const amount = info?.tokenAmount?.amount;
-    if (!owner || amount == null) return [];
+    const encoded = Array.isArray(row?.account?.data) ? row.account.data[0] : null;
+    if (!encoded || typeof encoded !== "string") return [];
     try {
-      const raw = BigInt(String(amount));
-      if (raw <= 0n) return [];
-      return [{ wallet: String(owner), raw }];
+      const buf = Buffer.from(encoded, "base64");
+      if (buf.length < 40) return [];
+      const owner = base58(buf.subarray(0, 32));
+      const raw = buf.readBigUInt64LE(32);
+      if (!owner || raw <= 0n) return [];
+      return [{ wallet: owner, raw }];
     } catch {
       return [];
     }
