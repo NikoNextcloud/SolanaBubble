@@ -26,6 +26,9 @@ type MarketToken = {
   expanded?: boolean;
   depth?: number;
   parentMint?: string | null;
+  hypeScore?: number;
+  traffic?: "in" | "out" | "flat";
+  netFlowUsd1h?: number;
 };
 
 type Node = MarketToken & {
@@ -74,6 +77,7 @@ function flowColor(t: MarketToken) {
 }
 
 function hypeScore(t: MarketToken) {
+  if (Number.isFinite(Number(t.hypeScore))) return Number(t.hypeScore);
   const tradeScore = Math.min(35, Math.log10(Math.max(1, t.trades1h) + 1) * 11);
   const buyRatio = t.buys1h / Math.max(1, t.buys1h + t.sells1h);
   const buyScore = Math.max(0, (buyRatio - 0.45) * 55);
@@ -83,6 +87,9 @@ function hypeScore(t: MarketToken) {
 }
 
 function trafficState(t: MarketToken) {
+  if (t.traffic === "in") return { label: "IN", symbol: "↑", cls: "in" };
+  if (t.traffic === "out") return { label: "OUT", symbol: "↓", cls: "out" };
+  if (t.traffic === "flat") return { label: "FLAT", symbol: "•", cls: "flat" };
   const total = Math.max(1, t.buys1h + t.sells1h);
   const imbalance = (t.buys1h - t.sells1h) / total;
   if (imbalance > 0.16) return { label: "IN", symbol: "↑", cls: "in" };
@@ -611,7 +618,7 @@ export default function MarketMap() {
               const pulseSpeed = 1200 - activity * 900;
               const hype = hypeScore(n);
               const traffic = trafficState(n);
-              const netFlow = netFlowByMint.get(n.mint) ?? 0;
+              const netFlow = Number.isFinite(Number(n.netFlowUsd1h)) ? Number(n.netFlowUsd1h) : (netFlowByMint.get(n.mint) ?? 0);
               const pulseAmp = n.expanded ? .025 : Math.min(.10, .018 + activity * .055 + Math.abs(imbalance) * .03 + (hype / 100) * .018);
               const pulse = n.isCore ? 1 + Math.sin(motionNow / 900 + i) * .025 : 1 + Math.sin(motionNow / pulseSpeed + i) * pulseAmp;
               return <g key={n.mint} transform={`translate(${n.x} ${n.y}) scale(${pulse})`}>
