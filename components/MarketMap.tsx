@@ -91,6 +91,11 @@ function radius(t: MarketToken) {
   return Math.max(9, Math.min(50, 5 + Math.log10(activity + 10) * 7));
 }
 
+function marketMapRadius(t: MarketToken) {
+  const scale = Math.log10(Math.max(1, t.marketCap || t.volume24h || t.liquidityUsd) + 1);
+  return Math.max(18, Math.min(46, 12 + scale * 4.25));
+}
+
 function flowColor(t: MarketToken) {
   const total = Math.max(1, t.buys1h + t.sells1h);
   const ratio = (t.buys1h - t.sells1h) / total;
@@ -340,7 +345,10 @@ export default function MarketMap() {
     const s = sim.current;
     if (!s) return;
     const nodes = [...nodeMap.current.values()];
-  const renderedNodes = viewMode === "map" ? nodes.filter((n) => !n.isCore) : nodes;
+    for (const node of nodes) {
+      if (node.isCore) node.r = node.symbol === "SOL" ? 42 : 34;
+      else node.r = viewMode === "map" ? marketMapRadius(node) : radius(node);
+    }
     const links = [...flows, ...expansionFlows]
       .filter((f) => nodeMap.current.has(f.from) && nodeMap.current.has(f.to))
       .map((f) => ({ source: f.from, target: f.to, usd1h: f.usd1h }));
@@ -663,17 +671,6 @@ export default function MarketMap() {
 
   return (
     <main className="market-shell">
-      <header className="market-topbar">
-        <div>
-          <a className="brand" href="/">SolanaBubble</a>
-          <span className="market-subtitle">Източник: Solana RPC + DexScreener</span>
-        </div>
-        <div className="market-actions">
-          <a href="/admin">База данни</a>
-          <span className={`market-live ${streamLive === false ? "paused" : ""}`}><i />{streamLive === false ? "PAUSED" : "LIVE"}</span>
-        </div>
-      </header>
-
       <section className="market-stats reference-market-stats">
         <div>
           <span>MARKET SENTIMENT</span>
@@ -841,9 +838,19 @@ export default function MarketMap() {
               const color = inferred ? "#f4b860" : f.kind === "buy" ? "#46d58d" : "#ff6473";
               const width = Math.max(.7, Math.min(hot ? 5.4 : 4.2, .55 + Math.log10(Math.max(1, f.usd1h)) * .55 + (hot ? 1.1 : 0)));
               const opacity = hot ? .94 : Math.max(.18, Math.min(.82, .2 + Math.log10(Math.max(1, f.usd1h)) * .08));
-              return <line
+              const mx = (p.x1 + p.x2) / 2;
+              const my = (p.y1 + p.y2) / 2;
+              const dx = p.x2 - p.x1;
+              const dy = p.y2 - p.y1;
+              const len = Math.hypot(dx, dy) || 1;
+              const bend = Math.min(42, len * .12) * (i % 2 === 0 ? 1 : -1);
+              const cx = mx - (dy / len) * bend;
+              const cy = my + (dx / len) * bend;
+              const d = `M ${p.x1} ${p.y1} Q ${cx} ${cy} ${p.x2} ${p.y2}`;
+              return <path
                 key={`flow:${f.from}:${f.to}:${f.kind}:${i}`}
-                x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2}
+                d={d}
+                fill="none"
                 stroke={color}
                 strokeWidth={width}
                 strokeOpacity={opacity}
@@ -855,7 +862,7 @@ export default function MarketMap() {
                   ? `Вероятен wallet-overlap поток · ${f.sharedWallets ?? f.trades1h} общи wallet-а · ${Math.round((f.confidence ?? .5) * 100)}% увереност`
                   : `${f.kind === "buy" ? "Капитал към" : "Капитал от"} ${target.symbol || target.mint.slice(0, 5)} · ${fmtUsd(f.usd1h)} / 1ч. · ${f.trades1h} tx`
                 }</title>
-              </line>;
+              </path>;
             })}
 
             {showTrafficOverlay && visibleFlows.slice(0, 60).map((f, i) => {
@@ -974,7 +981,7 @@ export default function MarketMap() {
                   <circle r={n.r + 8} className="market-shockwave shockwave-a" pointerEvents="none" />
                   <circle r={n.r + 8} className="market-shockwave shockwave-b" pointerEvents="none" />
                 </>}
-                {!n.isCore && <g className="market-node-indicators" pointerEvents="none">
+                {viewMode !== "map" && !n.isCore && <g className="market-node-indicators" pointerEvents="none">
                   <rect
                     x={-n.r}
                     y={-n.r - 18}
@@ -1012,12 +1019,15 @@ export default function MarketMap() {
           </div>
         </div>
 
-        <aside className="market-side">
+        <aside className="market-side reference-market-side">
           {!selected ? <>
-            <h2>Пазарен поток</h2>
-            <p>Кликни токен, за да разшириш мрежата около него. Double click отваря holder картата.</p>
+            <div className="side-section-title">
+              <h2>Market intelligence</h2>
+              <span>LIVE</span>
+            </div>
+            <p className="side-intro">Кликни върху токен за подробности. Double click отваря holder картата.</p>
             {expansionLoading && <div className="market-expanding">Разгръщам wallet връзките…</div>}
-            <div className="market-hot-list">
+            <div className="market-hot-list reference-side-card">
               <div className="market-hot-title">
                 <strong>Galactic Hype</strong>
                 {hotPath.length > 0 && <button className="follow-hot-path" onClick={followHotPath}>Проследи Hot Path</button>}
@@ -1032,7 +1042,7 @@ export default function MarketMap() {
                 </button>;
               })}
             </div>
-            {recentEvents.length > 0 && <div className="market-activity-feed">
+            {recentEvents.length > 0 && <div className="market-activity-feed reference-side-card">
               <div className="market-hot-title">
                 <strong>Live activity</strong>
                 <span>Δ от последния snapshot</span>
@@ -1058,7 +1068,7 @@ export default function MarketMap() {
                 <b className={Number(m.hypeDelta ?? 0) >= 0 ? "in" : "out"}>{Number(m.hypeDelta ?? 0) >= 0 ? "+" : ""}{Number(m.hypeDelta ?? 0)} H</b>
               </button>)}
             </div>}
-            {hotPath.length > 0 && <div className="market-hot-path-list">
+            {hotPath.length > 0 && <div className="market-hot-path-list reference-side-card">
               <strong>Traffic Constellation</strong>
               {hotPath.slice(0, 4).map((step, i) => {
                 const from = nodeMap.current.get(step.from);
@@ -1082,9 +1092,27 @@ export default function MarketMap() {
             </div>
           </> : <>
             <button className="market-back" onClick={() => setSelected(null)}>← Всички токени</button>
-            <div className="market-token-title">
-              <span className="market-token-dot" style={{ background: flowColor(selected) }} />
-              <div><h2>{selected.symbol || selected.name || "Token"}</h2><p>{selected.name}</p></div>
+            <div className="selected-token-card">
+              <div className="selected-token-head">
+                <span className="selected-token-avatar">
+                  {selected.imageUrl ? <img src={selected.imageUrl} alt="" /> : (selected.symbol || "?").slice(0, 2)}
+                </span>
+                <div className="selected-token-copy">
+                  <h2>{selected.symbol || selected.name || "Token"}</h2>
+                  <p>{selected.name || "Solana token"}</p>
+                </div>
+                <span className={selected.priceChange24h >= 0 ? "selected-change buy" : "selected-change sell"}>
+                  {selected.priceChange24h >= 0 ? "+" : ""}{selected.priceChange24h.toFixed(1)}%
+                </span>
+              </div>
+              <div className="selected-price-row">
+                <strong>{fmtUsd(selected.priceUsd)}</strong>
+                <span className={trafficState(selected).cls}>{trafficState(selected).symbol} {trafficState(selected).label}</span>
+              </div>
+              <div className="selected-hype-row">
+                <span>Galactic Hype</span>
+                <b>{"★".repeat(hypeStarCount(hypeScore(selected)))}{"☆".repeat(5 - hypeStarCount(hypeScore(selected)))}</b>
+              </div>
             </div>
             <dl className="market-token-stats">
               <dt>Цена</dt><dd>{fmtUsd(selected.priceUsd)}</dd>
@@ -1102,7 +1130,7 @@ export default function MarketMap() {
               <dt>Мрежа</dt><dd>{expandedMints.includes(selected.mint) ? `разгърната · L${nodeMap.current.get(selected.mint)?.depth ?? 0}/3` : "клик за разгръщане"}</dd>
             </dl>
             <button className="open-token-button" onClick={() => openToken(selected)} disabled={loadingMint === selected.mint}>
-              {loadingMint === selected.mint ? "Зареждам holders…" : "Отвори holder картата"}
+              {loadingMint === selected.mint ? "Зареждам holders…" : "Отвори Holder Map →"}
             </button>
             <p className="market-mint">{selected.mint}</p>
           </>}
