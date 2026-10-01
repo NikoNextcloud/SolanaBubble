@@ -931,6 +931,14 @@ export default function BubbleMap({ mint }: { mint: string }) {
                     >
                       <title>{displayWallet(n.wallet)} · {Number(n.pct_supply).toFixed(2)}%{watched.includes(n.wallet) ? " · наблюдаван" : ""}</title>
                     </circle>
+                    <text
+                      x={p.x}
+                      y={p.y}
+                      dy="0.34em"
+                      textAnchor="middle"
+                      className="holder-bubble-value"
+                      pointerEvents="none"
+                    >{usd(Number(n.usd_value ?? 0))}</text>
                   </g>;
                 })}
               </g>
