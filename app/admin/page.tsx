@@ -110,6 +110,11 @@ export default function AdminPage() {
         <small>{usage?.supabase ? `${usage.supabase.tier} · ${usage.supabase.status}` : "Натисни Обнови"}</small>
       </div>
       <div>
+        <span>Supabase DB остава</span>
+        <b>{usage?.supabase?.databaseRemainingBytes != null ? `${(Number(usage.supabase.databaseRemainingBytes) / 1024 / 1024).toFixed(1)} MB` : "—"}</b>
+        <small>{usage?.supabase?.databaseBytes != null ? `Използвани ${(Number(usage.supabase.databaseBytes) / 1024 / 1024).toFixed(1)} MB от 500 MB (${Number(usage.supabase.databaseUsedPercent || 0).toFixed(1)}%)` : "Натисни Обнови"}</small>
+      </div>
+      <div>
         <span>Solscan оставащи CU</span>
         <b>{usage?.solscan?.remaining_cus != null ? Number(usage.solscan.remaining_cus).toLocaleString() : "—"}</b>
         <small>{usage?.solscanError ? `Грешка: ${usage.solscanError}` : usage?.solscan?.renew_date ? `Обновяване: ${new Date(usage.solscan.renew_date).toLocaleDateString("bg-BG")}` : "Натисни Обнови"}</small>
