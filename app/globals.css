@@ -1266,3 +1266,39 @@ body{background:#1b2025!important}
     grid-template-columns:minmax(0,1fr) 286px!important;
   }
 }
+
+
+/* Animated hype comets */
+.hype-comet{
+  filter:drop-shadow(0 0 6px rgba(255,255,255,.65));
+}
+.hype-comet-tail{
+  opacity:.9;
+}
+.hype-comet-aura{
+  fill:rgba(255,255,255,.16);
+  filter:drop-shadow(0 0 8px rgba(255,255,255,.55));
+}
+.hype-comet-head{
+  fill:#ffffff;
+  filter:
+    drop-shadow(0 0 4px #ffffff)
+    drop-shadow(0 0 10px rgba(101,199,255,.72));
+}
+.selected-hype-meter{
+  position:relative;
+  width:104px;
+  height:7px;
+  display:block;
+  overflow:hidden;
+  border-radius:999px;
+  background:#222b34;
+  box-shadow:inset 0 0 0 1px #34414c;
+}
+.selected-hype-meter i{
+  display:block;
+  height:100%;
+  border-radius:999px;
+  background:linear-gradient(90deg,#46d58d,#61e1ff,#a78bfa);
+  box-shadow:0 0 10px rgba(97,225,255,.4);
+}
