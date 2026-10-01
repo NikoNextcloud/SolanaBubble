@@ -618,6 +618,7 @@ export default function MarketMap() {
   }
 
   const nodes = [...nodeMap.current.values()];
+  const renderedNodes = viewMode === "map" ? nodes.filter((n) => !n.isCore) : nodes;
   const combinedFlows = [...flows, ...expansionFlows];
   const hotFlowKeys = new Set([
     ...[...combinedFlows]
