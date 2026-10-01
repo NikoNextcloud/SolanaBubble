@@ -915,9 +915,14 @@ export default function MarketMap() {
                 const size = hype >= 75 ? 3.1 : hype >= 45 ? 2.55 : 2.05;
                 const tailId = hype >= 70 ? "cometTailHot" : traffic.cls === "in" ? "cometTailIn" : "cometTailWarm";
 
-                return <g key={`holder-comet:${n.mint}:${cometIndex}`} className="holder-comet" pointerEvents="none">
+                return <g
+                  key={`holder-comet:${n.mint}:${cometIndex}`}
+                  className="holder-comet"
+                  pointerEvents="none"
+                  style={{ ["--comet-duration" as any]: `${duration}s`, ["--comet-delay" as any]: `${delay}s` }}
+                >
                   <path d="M -56 0 C -40 0 -22 0 -4 0" stroke={`url(#${tailId})`} strokeWidth={size * 1.6} strokeLinecap="round" fill="none" className="holder-comet-tail" />
-                  <path d="M 5 0 C 14 0 24 0 42 0" className="holder-comet-future" />
+                  <path d="M 6 0 C 17 -1.5 30 1.2 48 0" className="holder-comet-future" />
                   <ellipse cx="-1.5" cy="0" rx={size * 2.2} ry={size * 1.32} className="holder-comet-aura" />
                   <circle r={size} className="holder-comet-head" />
                   <circle r={Math.max(.8, size * .34)} className="holder-comet-core" />
@@ -968,6 +973,22 @@ export default function MarketMap() {
                   className={`planet-atmosphere ${planetGlowClass(n)} ${hotNodeMints.has(n.mint) ? "hot-path-node" : ""}`}
                   pointerEvents="none"
                 />
+                {!n.isCore && <>
+                  <circle
+                    r={n.r + 10 + hype * .08}
+                    className="planet-hype-aura planet-hype-aura-inner"
+                    strokeWidth={1 + hype * .018}
+                    strokeOpacity={Math.min(.82, .18 + hype / 135)}
+                    pointerEvents="none"
+                  />
+                  <circle
+                    r={n.r + 18 + hype * .13}
+                    className="planet-hype-aura planet-hype-aura-outer"
+                    strokeWidth={1 + hype * .012}
+                    strokeOpacity={Math.min(.52, .08 + hype / 220)}
+                    pointerEvents="none"
+                  />
+                </>}
                 <circle
                   r={n.r}
                   fill={n.isCore ? "#2b3138" : `url(#${planetGradientId(n)})`}
