@@ -42,6 +42,13 @@ type Node = MarketToken & {
   fy?: number | null;
 };
 
+type HotPath = {
+  from: string;
+  to: string;
+  score: number;
+  confidence?: number;
+};
+
 type Flow = {
   from: string;
   to: string;
@@ -129,6 +136,9 @@ export default function MarketMap() {
   const [expansionFlows, setExpansionFlows] = useState<Flow[]>([]);
   const [expandedMints, setExpandedMints] = useState<string[]>([]);
   const [expansionLoading, setExpansionLoading] = useState<string | null>(null);
+  const [hotPath, setHotPath] = useState<HotPath[]>([]);
+  const [activityPulse, setActivityPulse] = useState<string[]>([]);
+  const previousActivity = useRef(new Map<string, number>());
   const [motionNow, setMotionNow] = useState(0);
   const [updated, setUpdated] = useState<string | null>(null);
   const [networkSwaps1h, setNetworkSwaps1h] = useState(0);
@@ -294,6 +304,18 @@ export default function MarketMap() {
     const nextFlows = (j.flows ?? []) as Flow[];
     setTokens(list);
     setFlows(nextFlows);
+    setHotPath(Array.isArray(j.hotPath) ? j.hotPath : []);
+    const changed: string[] = [];
+    for (const t of list) {
+      const activity = t.trades1h + t.buys1h + t.sells1h;
+      const previous = previousActivity.current.get(t.mint);
+      if (previous != null && activity > previous) changed.push(t.mint);
+      previousActivity.current.set(t.mint, activity);
+    }
+    if (changed.length) {
+      setActivityPulse(changed.slice(0, 24));
+      window.setTimeout(() => setActivityPulse([]), 1800);
+    }
     setUpdated(j.fetchedAt ?? new Date().toISOString());
     setNetworkSwaps1h(Number(j.network?.swaps1h ?? 0));
     setError("");
@@ -466,6 +488,17 @@ export default function MarketMap() {
     }
   }
 
+  async function followHotPath() {
+    setError("");
+    const path = hotPath.slice(0, 3);
+    for (const step of path) {
+      const node = nodeMap.current.get(step.to) ?? nodeMap.current.get(step.from);
+      if (!node || node.isCore || (node.depth ?? 0) >= 3) continue;
+      await expandToken(node);
+    }
+    sim.current?.alpha(0.85).restart();
+  }
+
   async function openToken(t: MarketToken) {
     setLoadingMint(t.mint);
     setError("");
@@ -486,12 +519,14 @@ export default function MarketMap() {
 
   const nodes = [...nodeMap.current.values()];
   const combinedFlows = [...flows, ...expansionFlows];
-  const hotFlowKeys = new Set(
-    [...combinedFlows]
+  const hotFlowKeys = new Set([
+    ...[...combinedFlows]
       .sort((a, b) => (b.usd1h * (b.confidence ?? 1)) - (a.usd1h * (a.confidence ?? 1)))
       .slice(0, 4)
-      .map((f) => `${f.from}>${f.to}:${f.kind}`)
-  );
+      .map((f) => `${f.from}>${f.to}:${f.kind}`),
+    ...hotPath.map((p) => `${p.from}>${p.to}:rotation`),
+  ]);
+  const hotNodeMints = new Set(hotPath.flatMap((p) => [p.from, p.to]));
   const visibleFlows = combinedFlows
     .map((f) => ({ ...f, source: nodeMap.current.get(f.from), target: nodeMap.current.get(f.to) }))
     .filter((f) => f.source && f.target)
@@ -636,7 +671,11 @@ export default function MarketMap() {
                   fillOpacity={n.isCore ? ".98" : ".96"}
                   stroke={selected?.mint === n.mint ? "#ffffff" : n.isCore ? "#b8c0c8" : color}
                   strokeWidth={selected?.mint === n.mint ? 2.5 : 1.5}
-                  className={n.isCore ? "market-token-bubble market-core-bubble" : "market-token-bubble"}
+                  className={[
+                    n.isCore ? "market-token-bubble market-core-bubble" : "market-token-bubble",
+                    hotNodeMints.has(n.mint) ? "hot-path-node" : "",
+                    activityPulse.includes(n.mint) ? "trade-hit" : "",
+                  ].filter(Boolean).join(" ")}
                   onPointerDown={(e) => beginMarketDrag(e, n.mint)}
                   onPointerMove={moveMarketDrag}
                   onPointerUp={endMarketDrag}
@@ -719,7 +758,10 @@ export default function MarketMap() {
             <p>Кликни токен, за да разшириш мрежата около него. Double click отваря holder картата.</p>
             {expansionLoading && <div className="market-expanding">Разгръщам wallet връзките…</div>}
             <div className="market-hot-list">
-              <strong>Hype / Traffic</strong>
+              <div className="market-hot-title">
+                <strong>Hype / Traffic</strong>
+                {hotPath.length > 0 && <button className="follow-hot-path" onClick={followHotPath}>Проследи Hot Path</button>}
+              </div>
               {hottest.map((t, i) => {
                 const traffic = trafficState(t);
                 return <button key={t.mint} onClick={() => { setSelected(t); expandToken(t); }}>
@@ -730,6 +772,21 @@ export default function MarketMap() {
                 </button>;
               })}
             </div>
+            {hotPath.length > 0 && <div className="market-hot-path-list">
+              <strong>Hot Path сега</strong>
+              {hotPath.slice(0, 4).map((step, i) => {
+                const from = nodeMap.current.get(step.from);
+                const to = nodeMap.current.get(step.to);
+                return <button key={`${step.from}:${step.to}:${i}`} onClick={() => {
+                  if (to) { setSelected(to); expandToken(to); }
+                }}>
+                  <span>{from?.symbol || step.from.slice(0, 4)}</span>
+                  <i>→</i>
+                  <span>{to?.symbol || step.to.slice(0, 4)}</span>
+                  <b>{Math.round((step.confidence ?? .5) * 100)}%</b>
+                </button>;
+              })}
+            </div>}
             <div className="market-rank">
               {tokens.slice(0, 12).map((t, i) => <button key={t.mint} onClick={() => setSelected(t)}>
                 <span>{i + 1}</span>
