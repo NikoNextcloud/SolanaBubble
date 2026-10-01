@@ -1161,36 +1161,56 @@ export default function BubbleMap({ mint }: { mint: string }) {
 
       <aside className="side insight-side">
         {!selected ? <>
-          <div className="side-section">
+          <div className="side-section token-insight-panel">
             <span className="eyebrow">Token overview</span>
-            <h2>{meta?.name || meta?.symbol || short(mint)}</h2>
-            <p className="mint-full">{mint}</p>
-            <dl>
-              <dt>Price</dt><dd>{usd(Number(meta?.price_usd ?? 0))}</dd>
-              <dt>Supply</dt><dd>{num(Number(meta?.supply ?? 0))}</dd>
-              <dt>Holders</dt><dd>{holderCount.toLocaleString()}</dd>
-              <dt>Linked groups</dt><dd>{groupCount}</dd>
-              <dt>Ignored pools/routers</dt><dd>{ignoredHubCount}</dd>
-            </dl>
+            <div className="token-insight-title">
+              <div>
+                <h2>{meta?.name || meta?.symbol || short(mint)}</h2>
+                <p className="mint-full">{mint}</p>
+              </div>
+              <span className={live ? "token-live-badge on" : "token-live-badge"}>● LIVE</span>
+            </div>
+
+            <div className="token-insight-grid">
+              <div><span>Price</span><strong>{usd(Number(meta?.price_usd ?? 0))}</strong></div>
+              <div><span>Holders</span><strong>{holderCount.toLocaleString()}</strong></div>
+              <div><span>Supply</span><strong>{num(Number(meta?.supply ?? 0))}</strong></div>
+              <div><span>24h volume</span><strong>{usd(volume24h)}</strong></div>
+              <div><span>Buys</span><strong className="buy">+{buys24h}</strong></div>
+              <div><span>Sells</span><strong className="sell">-{sells24h}</strong></div>
+              <div><span>Net flow</span><strong className={netFlow24h >= 0 ? "buy" : "sell"}>{netFlow24h >= 0 ? "+" : ""}{usd(netFlow24h)}</strong></div>
+              <div><span>Linked groups</span><strong>{groupCount}</strong></div>
+            </div>
+
+            <div className="token-external-actions">
+              <a href="https://fomo.family" target="_blank" rel="noreferrer">FoMo ↗</a>
+              <a href={`https://gmgn.ai/sol/token/${mint}`} target="_blank" rel="noreferrer">GmGn ↗</a>
+            </div>
           </div>
-          <div className="side-section">
-            <span className="eyebrow">Live activity</span>
+
+          <div className="side-section token-activity-panel">
+            <div className="side-section-heading">
+              <span className="eyebrow">Live activity</span>
+              <span className={netFlow24h >= 0 ? "buy" : "sell"}>{netFlow24h >= 0 ? "Positive" : "Negative"}</span>
+            </div>
             <ul className="activity-list">{feedTxs.slice(0, 8).map((t) => <li key={`${t.signature}:${t.wallet}`}>
               <span className={t.side === "buy" || t.side === "transfer_in" ? "activity-dot buy-bg" : "activity-dot sell-bg"} />
               <button onClick={() => setSel(t.wallet)}>{displayWallet(t.wallet)}</button>
-              <span>{usd(Number(t.usd_value))}</span>
+              <span className={t.side === "buy" || t.side === "transfer_in" ? "buy" : "sell"}>{usd(Number(t.usd_value))}</span>
             </li>)}</ul>
           </div>
-          {watched.length > 0 && <div className="side-section">
+
+          {watched.length > 0 && <div className="side-section token-watch-panel">
             <span className="eyebrow">Watchlist</span>
             <ul className="watch-list">{watched.map((wallet) => <li key={wallet}>
               <button onClick={() => setSel(wallet)}>{displayWallet(wallet)}</button>
               <button className="watch-remove" onClick={() => toggleWatch(wallet)}>×</button>
             </li>)}</ul>
           </div>}
-          <div className="side-section">
-            <span className="eyebrow">How links work</span>
-            <p className="note">Цветните групи са вероятни on-chain връзки. Общ funder, синхронни покупки и директни transfer-и между текущи holders са сигнали. Адреси, които приличат на pool/router по многото двупосочни swap връзки, се изключват от ownership клъстерите.</p>
+
+          <div className="side-section token-link-note">
+            <span className="eyebrow">On-chain links</span>
+            <p className="note">Linked groups: {groupCount} · Ignored pool/router addresses: {ignoredHubCount}. Цветните групи показват вероятни on-chain връзки.</p>
           </div>
         </> : <>
           <div className="side-section">
