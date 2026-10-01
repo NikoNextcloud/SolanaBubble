@@ -115,16 +115,6 @@ export default function AdminPage() {
         <small>{usage?.supabase?.databaseBytes != null ? `Използвани ${(Number(usage.supabase.databaseBytes) / 1024 / 1024).toFixed(1)} MB от 500 MB (${Number(usage.supabase.databaseUsedPercent || 0).toFixed(1)}%)` : "Натисни Обнови"}</small>
       </div>
       <div>
-        <span>Solscan оставащи CU</span>
-        <b>{usage?.solscan?.remaining_cus != null ? Number(usage.solscan.remaining_cus).toLocaleString() : "—"}</b>
-        <small>{usage?.solscanError ? `Грешка: ${usage.solscanError}` : usage?.solscan?.renew_date ? `Обновяване: ${new Date(usage.solscan.renew_date).toLocaleDateString("bg-BG")}` : "Натисни Обнови"}</small>
-      </div>
-      <div>
-        <span>Solscan CU използвани</span>
-        <b>{usage?.solscan?.usage_cus != null ? Number(usage.solscan.usage_cus).toLocaleString() : "—"}</b>
-        <small>{usage?.solscan?.total_requests_24h != null ? `${Number(usage.solscan.total_requests_24h).toLocaleString()} заявки / 24ч.` : "—"}</small>
-      </div>
-      <div>
         <span>Solana Public RPC</span>
         <b>{usage?.publicRpc?.healthy ? "ONLINE" : usage ? "OFFLINE" : "—"}</b>
         <small>{usage?.publicRpc?.status || "Натисни Обнови"}</small>
