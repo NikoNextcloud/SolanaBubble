@@ -119,11 +119,33 @@ export async function GET() {
       priceChange24h: Number(p.priceChange?.h24 ?? 0),
       boost: boostMap.get(mint) ?? 0,
       imageUrl: p.info?.imageUrl ?? profileIcon.get(mint) ?? null,
+      hypeScore: 0,
+      traffic: "flat" as "in" | "out" | "flat",
+      netFlowUsd1h: 0,
     };
   })
   .filter((t) => t.marketCap > 0 || t.liquidityUsd > 0 || t.volume1h > 0)
   .sort((a, b) => (b.volume1h + b.trades1h * 30 + b.boost * 50) - (a.volume1h + a.trades1h * 30 + a.boost * 50))
   .slice(0, 80);
+
+  const maxTrades = Math.max(1, ...tokens.map((t) => t.trades1h));
+  const maxBoost = Math.max(1, ...tokens.map((t) => t.boost));
+  const maxVolume = Math.max(1, ...tokens.map((t) => t.volume1h));
+
+  for (const t of tokens) {
+    const buyRatio = t.buys1h / Math.max(1, t.trades1h);
+    const tradeNorm = Math.min(1, t.trades1h / maxTrades);
+    const volumeNorm = Math.min(1, t.volume1h / maxVolume);
+    const boostNorm = Math.min(1, t.boost / maxBoost);
+    const momentumNorm = Math.max(0, Math.min(1, (t.priceChange1h + 12) / 36));
+
+    t.hypeScore = Math.round(
+      (tradeNorm * 0.30 + buyRatio * 0.24 + momentumNorm * 0.22 + boostNorm * 0.14 + volumeNorm * 0.10) * 100
+    );
+
+    const imbalance = (t.buys1h - t.sells1h) / Math.max(1, t.trades1h);
+    t.traffic = imbalance > 0.16 ? "in" : imbalance < -0.16 ? "out" : "flat";
+  }
 
   const shown = new Set(tokens.map((t) => t.mint));
   const core = new Set([
@@ -161,9 +183,80 @@ export async function GET() {
     return out;
   });
 
-  const flows = marketFlows
-    .sort((a, b) => (b.usd1h || b.trades1h * 50) - (a.usd1h || a.trades1h * 50))
-    .slice(0, 180);
+  const byQuote = new Map<string, typeof tokens>();
+  for (const t of tokens) {
+    if (!t.quoteMint) continue;
+    const list = byQuote.get(t.quoteMint) ?? [];
+    list.push(t);
+    byQuote.set(t.quoteMint, list);
+  }
+
+  const rotationFlows: Array<{
+    from: string;
+    to: string;
+    usd1h: number;
+    trades1h: number;
+    kind: "rotation";
+    dex: string | null;
+    source: "inferred";
+    confidence: number;
+  }> = [];
+
+  for (const group of byQuote.values()) {
+    const outTokens = group
+      .filter((t) => t.sells1h > t.buys1h && t.volume1h > 100)
+      .sort((a, b) => (b.sells1h - b.buys1h) - (a.sells1h - a.buys1h))
+      .slice(0, 5);
+    const inTokens = group
+      .filter((t) => t.buys1h > t.sells1h && t.volume1h > 100)
+      .sort((a, b) => (b.buys1h - b.sells1h) - (a.buys1h - a.sells1h))
+      .slice(0, 5);
+
+    for (const from of outTokens) {
+      const sellShare = from.sells1h / Math.max(1, from.trades1h);
+      const sellUsd = from.volume1h * sellShare;
+      for (const to of inTokens) {
+        if (from.mint === to.mint) continue;
+        const buyShare = to.buys1h / Math.max(1, to.trades1h);
+        const buyUsd = to.volume1h * buyShare;
+        const usd1h = Math.min(sellUsd, buyUsd) * 0.30;
+        if (usd1h < 150) continue;
+        const confidence = Math.min(0.82, 0.42 + Math.min(sellShare, buyShare) * 0.36);
+        rotationFlows.push({
+          from: from.mint,
+          to: to.mint,
+          usd1h,
+          trades1h: Math.min(from.sells1h, to.buys1h),
+          kind: "rotation",
+          dex: to.dex,
+          source: "inferred",
+          confidence,
+        });
+      }
+    }
+  }
+
+  const flows = [...marketFlows, ...rotationFlows]
+    .sort((a, b) => (b.usd1h * ("confidence" in b ? Number(b.confidence ?? 1) : 1)) - (a.usd1h * ("confidence" in a ? Number(a.confidence ?? 1) : 1)))
+    .slice(0, 220);
+
+  const netFlow = new Map<string, number>();
+  for (const flow of flows) {
+    if (!shown.has(flow.from) || !shown.has(flow.to)) continue;
+    netFlow.set(flow.from, (netFlow.get(flow.from) ?? 0) - flow.usd1h);
+    netFlow.set(flow.to, (netFlow.get(flow.to) ?? 0) + flow.usd1h);
+  }
+  for (const token of tokens) token.netFlowUsd1h = netFlow.get(token.mint) ?? 0;
+
+  const hotPath = [...rotationFlows]
+    .sort((a, b) => (b.usd1h * b.confidence) - (a.usd1h * a.confidence))
+    .slice(0, 6)
+    .map((f) => ({
+      from: f.from,
+      to: f.to,
+      score: Math.round(f.usd1h * f.confidence),
+      confidence: f.confidence,
+    }));
 
   const observedTrades1h = tokens.reduce((sum, t) => sum + t.trades1h, 0);
 
@@ -171,6 +264,7 @@ export async function GET() {
     fetchedAt: new Date().toISOString(),
     tokens,
     flows,
+    hotPath,
     network: {
       swaps1h: observedTrades1h,
       source: "dexscreener",
