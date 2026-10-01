@@ -30,11 +30,23 @@ export async function POST(req: Request) {
   let bootstrapped = false;
   let holders: number | null = null;
 
-  if (!existing) {
+  const { count: holdingCount, error: holdingCountError } = await db
+    .from("holdings")
+    .select("*", { count: "exact", head: true })
+    .eq("token_mint", mint);
+
+  if (holdingCountError) {
+    return NextResponse.json({ error: holdingCountError.message }, { status: 500 });
+  }
+
+  const needsBootstrap = !existing || !existing.bootstrapped_at || Number(holdingCount ?? 0) === 0;
+
+  if (needsBootstrap) {
     const result = await bootstrapToken(mint);
     holders = result.holders;
     bootstrapped = true;
   } else {
+    holders = holdingCount ?? 0;
     const stale = !existing.metadata_updated_at ||
       Date.now() - new Date(existing.metadata_updated_at).getTime() > 30 * 60 * 1000;
 
