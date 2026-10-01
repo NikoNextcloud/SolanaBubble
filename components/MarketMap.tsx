@@ -588,6 +588,7 @@ export default function MarketMap() {
               <dt>Покупки 1ч.</dt><dd>{selected.buys1h}</dd>
               <dt>Продажби 1ч.</dt><dd>{selected.sells1h}</dd>
               <dt>Промяна 1ч.</dt><dd className={selected.priceChange1h >= 0 ? "buy" : "sell"}>{selected.priceChange1h.toFixed(2)}%</dd>
+            </dl>
             <button className="open-token-button" onClick={() => openToken(selected)} disabled={loadingMint === selected.mint}>
               {loadingMint === selected.mint ? "Зареждам holders…" : "Отвори holder картата"}
             </button>
