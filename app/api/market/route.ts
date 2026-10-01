@@ -122,6 +122,9 @@ export async function GET() {
       hypeScore: 0,
       traffic: "flat" as "in" | "out" | "flat",
       netFlowUsd1h: 0,
+      activityDelta: 0,
+      hypeDelta: 0,
+      volumeDelta: 0,
     };
   })
   .filter((t) => t.marketCap > 0 || t.liquidityUsd > 0 || t.volume1h > 0)
@@ -146,6 +149,54 @@ export async function GET() {
     const imbalance = (t.buys1h - t.sells1h) / Math.max(1, t.trades1h);
     t.traffic = imbalance > 0.16 ? "in" : imbalance < -0.16 ? "out" : "flat";
   }
+
+  const previousTokens = new Map<string, any>();
+  const previousPayload = cachedRow?.payload as any;
+  for (const t of Array.isArray(previousPayload?.tokens) ? previousPayload.tokens : []) {
+    if (t?.mint) previousTokens.set(String(t.mint), t);
+  }
+
+  const recentEvents: Array<{
+    mint: string;
+    symbol: string | null;
+    kind: "surge" | "cooldown" | "buy-pressure" | "sell-pressure";
+    deltaTrades: number;
+    deltaVolume: number;
+    hypeDelta: number;
+    at: string;
+  }> = [];
+
+  for (const t of tokens) {
+    const prev = previousTokens.get(t.mint);
+    if (!prev) continue;
+    const deltaTrades = t.trades1h - Number(prev.trades1h ?? 0);
+    const deltaVolume = t.volume1h - Number(prev.volume1h ?? 0);
+    const previousHype = Number(prev.hypeScore ?? 0);
+    t.activityDelta = deltaTrades;
+    t.volumeDelta = deltaVolume;
+    t.hypeDelta = t.hypeScore - previousHype;
+
+    if (deltaTrades === 0 && Math.abs(deltaVolume) < 1 && t.hypeDelta === 0) continue;
+    const kind =
+      deltaTrades > 2 || t.hypeDelta >= 5 ? "surge" :
+      deltaTrades < -2 || t.hypeDelta <= -5 ? "cooldown" :
+      t.traffic === "in" ? "buy-pressure" : "sell-pressure";
+
+    recentEvents.push({
+      mint: t.mint,
+      symbol: t.symbol,
+      kind,
+      deltaTrades,
+      deltaVolume,
+      hypeDelta: t.hypeDelta,
+      at: new Date().toISOString(),
+    });
+  }
+
+  recentEvents.sort((a, b) =>
+    (Math.abs(b.deltaTrades) * 100 + Math.abs(b.hypeDelta) * 10 + Math.abs(b.deltaVolume) / 1000) -
+    (Math.abs(a.deltaTrades) * 100 + Math.abs(a.hypeDelta) * 10 + Math.abs(a.deltaVolume) / 1000)
+  );
 
   const shown = new Set(tokens.map((t) => t.mint));
   const core = new Set([
@@ -265,6 +316,7 @@ export async function GET() {
     tokens,
     flows,
     hotPath,
+    recentEvents: recentEvents.slice(0, 12),
     network: {
       swaps1h: observedTrades1h,
       source: "dexscreener",
