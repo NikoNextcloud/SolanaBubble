@@ -26,6 +26,7 @@ export async function GET() {
       priceChange1h: 0,
       priceChange24h: Number(t.price_change_24h ?? 0),
       boost: 0,
+      imageUrl: t.icon ?? null,
     })).filter((t: any) => t.mint);
 
     return NextResponse.json({
