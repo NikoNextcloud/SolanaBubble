@@ -1,7 +1,6 @@
 import { admin } from "./db";
 
 const BASE = "https://pro-api.solscan.io/v2.0";
-const V1 = "https://pro-api.solscan.io/v1.0";
 const KEY = () => process.env.SOLSCAN_API_KEY || "";
 
 type CacheRow<T> = { payload: T; updated_at: string };
@@ -108,23 +107,17 @@ export type SolscanMarketToken = {
 };
 
 export async function fetchSolscanTokenList(maxAgeMs = 30_000) {
-  const cacheKey = "solscan:market-token-list";
+  const cacheKey = "solscan:market-token-list:v2";
   const hit = await cached<SolscanMarketToken[]>(cacheKey, maxAgeMs);
   if (hit) return { data: hit, cached: true };
 
-  const raw = await get<any>(
-    "/token/list?sortBy=volume&direction=desc&limit=50&offset=0",
-    V1,
+  // V2 API key is configured in Vercel. The v2 token/list endpoint supports
+  // sort_by=market_cap|holder|created_time (not the old v1 volume sort).
+  const data = await get<SolscanMarketToken[]>(
+    "/token/list?sort_by=market_cap&sort_order=desc&page=1&page_size=60",
   );
-  const data: SolscanMarketToken[] = Array.isArray(raw)
-    ? raw
-    : Array.isArray(raw?.data)
-      ? raw.data
-      : Array.isArray(raw?.items)
-        ? raw.items
-        : [];
-  await saveCache(cacheKey, data);
-  return { data, cached: false };
+  await saveCache(cacheKey, data ?? []);
+  return { data: data ?? [], cached: false };
 }
 
 export type SolscanUsage = {
