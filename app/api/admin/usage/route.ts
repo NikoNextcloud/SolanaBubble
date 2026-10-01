@@ -25,6 +25,12 @@ export async function GET(req: Request) {
   ]);
 
   return NextResponse.json({
+    supabase: {
+      plan: process.env.SUPABASE_PLAN || "FREE",
+      tier: process.env.SUPABASE_TIER || "tier_free",
+      projectRef: "behssggsfiydcdvhkled",
+      status: "ACTIVE_HEALTHY",
+    },
     solscan: "data" in solscan ? solscan.data : null,
     solscanCached: "cached" in solscan ? solscan.cached : false,
     solscanError: "error" in solscan ? solscan.error : null,
