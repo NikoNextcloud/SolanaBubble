@@ -28,7 +28,52 @@ export default function WorkspaceShell({
   const [searching, setSearching] = useState(false);
   const [open, setOpen] = useState(false);
   const [openingMint, setOpeningMint] = useState<string | null>(null);
+  const [wishlist, setWishlist] = useState<SearchToken[]>([]);
   const searchBox = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("solanabubble:wishlist") || "[]");
+      if (Array.isArray(saved)) setWishlist(saved.slice(0, 20));
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    const match = pathname.match(/^\/token\/([1-9A-HJ-NP-Za-km-z]{32,44})$/);
+    const mint = match?.[1];
+    if (!mint) return;
+
+    let stopped = false;
+    fetch(`/api/search/tokens?q=${encodeURIComponent(mint)}`, { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((j) => {
+        if (stopped) return;
+        const token = (j?.results || []).find((x: SearchToken) => x.mint === mint) || { mint };
+        setWishlist((prev) => {
+          const next = [token, ...prev.filter((x) => x.mint !== mint)].slice(0, 20);
+          try { localStorage.setItem("solanabubble:wishlist", JSON.stringify(next)); } catch {}
+          return next;
+        });
+      })
+      .catch(() => {
+        if (stopped) return;
+        setWishlist((prev) => {
+          const next = [{ mint }, ...prev.filter((x) => x.mint !== mint)].slice(0, 20);
+          try { localStorage.setItem("solanabubble:wishlist", JSON.stringify(next)); } catch {}
+          return next;
+        });
+      });
+
+    return () => { stopped = true; };
+  }, [pathname]);
+
+  function removeWishlist(mint: string) {
+    setWishlist((prev) => {
+      const next = prev.filter((x) => x.mint !== mint);
+      try { localStorage.setItem("solanabubble:wishlist", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -156,6 +201,28 @@ export default function WorkspaceShell({
             <span className="alpha-nav-icon">▤</span>
             <span>Database</span>
           </a>
+        </div>
+
+        <div className="alpha-side-section alpha-wishlist-section">
+          <span className="alpha-side-label">WISHLIST</span>
+          <div className="alpha-wishlist">
+            {wishlist.length === 0 ? (
+              <div className="alpha-wishlist-empty">Зареди токен, за да го запазиш тук.</div>
+            ) : wishlist.map((token) => (
+              <div className="alpha-wishlist-row" key={token.mint}>
+                <button className="alpha-wishlist-open" onClick={() => openToken(token)} title={token.name || token.mint}>
+                  <span className="alpha-wishlist-icon">
+                    {token.imageUrl ? <img src={token.imageUrl} alt="" /> : (token.symbol?.slice(0, 2) || "◎")}
+                  </span>
+                  <span className="alpha-wishlist-copy">
+                    <strong>{token.symbol || token.name || `${token.mint.slice(0, 5)}…`}</strong>
+                    <small>{token.name || `${token.mint.slice(0, 5)}…${token.mint.slice(-4)}`}</small>
+                  </span>
+                </button>
+                <button className="alpha-wishlist-remove" onClick={() => removeWishlist(token.mint)} title="Премахни">×</button>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="alpha-network">
