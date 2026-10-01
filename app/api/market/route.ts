@@ -152,74 +152,19 @@ export async function GET() {
     return out;
   });
 
-  const priceMap = new Map(tokens.map((t) => [t.mint, t.priceUsd] as const));
-  priceMap.set("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", 1);
-  priceMap.set("Es9vMFrzaCERmJfrF4H2FYDgHkmPG8TbQnYQ8V4a8Qj", 1);
-
-  const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const { data: recentSwaps } = await db
-    .from("network_swaps")
-    .select("input_mint,output_mint,input_amount,output_amount,source,block_time")
-    .gte("block_time", since)
-    .order("block_time", { ascending: false })
-    .limit(5000);
-
-  const agg = new Map<string, { from: string; to: string; usd1h: number; trades1h: number; kind: "buy" | "sell"; dex: string | null; source: string }>();
-  for (const row of recentSwaps ?? []) {
-    const inputMint = String(row.input_mint);
-    const outputMint = String(row.output_mint);
-    if (!inputMint || !outputMint || inputMint === outputMint) continue;
-
-    const inPrice = Number(priceMap.get(inputMint) ?? 0);
-    const outPrice = Number(priceMap.get(outputMint) ?? 0);
-    const estimatedUsd =
-      inPrice > 0 ? Number(row.input_amount ?? 0) * inPrice :
-      outPrice > 0 ? Number(row.output_amount ?? 0) * outPrice :
-      0;
-
-    const key = `${inputMint}>${outputMint}`;
-    const cur = agg.get(key) ?? {
-      from: inputMint,
-      to: outputMint,
-      usd1h: 0,
-      trades1h: 0,
-      kind: "buy" as const,
-      dex: row.source ? String(row.source) : null,
-      source: "chain",
-    };
-    cur.trades1h += 1;
-    cur.usd1h += Math.max(0, estimatedUsd);
-    agg.set(key, cur);
-  }
-
-  const chainFlows = [...agg.values()]
+  const flows = marketFlows
     .sort((a, b) => (b.usd1h || b.trades1h * 50) - (a.usd1h || a.trades1h * 50))
     .slice(0, 180);
 
-  const merged = new Map<string, any>();
-  for (const flow of [...marketFlows, ...chainFlows]) {
-    const key = `${flow.from}>${flow.to}`;
-    const cur = merged.get(key);
-    if (!cur) {
-      merged.set(key, { ...flow });
-      continue;
-    }
-    cur.usd1h = Math.max(Number(cur.usd1h ?? 0), Number(flow.usd1h ?? 0));
-    cur.trades1h = Math.max(Number(cur.trades1h ?? 0), Number(flow.trades1h ?? 0));
-    if (flow.source === "chain") cur.source = "chain";
-  }
-
-  const flows = [...merged.values()]
-    .sort((a, b) => (b.usd1h || b.trades1h * 50) - (a.usd1h || a.trades1h * 50))
-    .slice(0, 180);
+  const observedTrades1h = tokens.reduce((sum, t) => sum + t.trades1h, 0);
 
   const payload = {
     fetchedAt: new Date().toISOString(),
     tokens,
     flows,
     network: {
-      swaps1h: recentSwaps?.length ?? 0,
-      source: "dexscreener+cached-chain",
+      swaps1h: observedTrades1h,
+      source: "dexscreener",
     },
     live: true,
   };
