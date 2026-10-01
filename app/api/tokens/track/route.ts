@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { admin } from "@/lib/db";
 import { bootstrapToken } from "@/lib/bootstrap";
-import { fetchSolscanTokenMeta } from "@/lib/solscan";
+import { fetchDexScreenerToken } from "@/lib/solana-public";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -37,24 +37,19 @@ export async function POST(req: Request) {
   } else {
     const stale = !existing.metadata_updated_at ||
       Date.now() - new Date(existing.metadata_updated_at).getTime() > 30 * 60 * 1000;
+
     if (stale) {
-      const solscan = await fetchSolscanTokenMeta(mint).catch(() => null);
-      const meta = solscan?.data;
-      if (meta) {
+      const market = await fetchDexScreenerToken(mint).catch(() => null);
+      if (market) {
         await db.from("tokens").update({
-          symbol: meta.symbol ?? null,
-          name: meta.name ?? null,
-          icon: meta.icon ?? null,
-          creator: meta.creator ?? null,
-          solscan_holder_count: meta.holder ?? null,
-          price_usd: Number(meta.price ?? 0) || undefined,
+          symbol: market.symbol ?? null,
+          name: market.name ?? null,
+          price_usd: Number(market.priceUsd ?? 0) || undefined,
           metadata_updated_at: new Date().toISOString(),
         }).eq("mint", mint);
       }
     }
   }
-
-
 
   return NextResponse.json({
     mint,
