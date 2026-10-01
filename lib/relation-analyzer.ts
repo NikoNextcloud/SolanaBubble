@@ -206,6 +206,56 @@ export async function analyzeHolderRelations(
     }
   }
 
+  // Persist deterministic cluster ids from the evidence graph so linked
+  // holders are not only connected by lines but also share a visual cluster.
+  const adjacency = new Map<string, Set<string>>();
+  const { data: relationRows } = await db
+    .from("wallet_links")
+    .select("wallet_a,wallet_b")
+    .eq("token_mint", mint);
+
+  for (const row of relationRows ?? []) {
+    const a = String(row.wallet_a);
+    const b = String(row.wallet_b);
+    if (!currentHolders.has(a) || !currentHolders.has(b)) continue;
+    const aa = adjacency.get(a) ?? new Set<string>();
+    const bb = adjacency.get(b) ?? new Set<string>();
+    aa.add(b); bb.add(a);
+    adjacency.set(a, aa); adjacency.set(b, bb);
+  }
+  for (const edge of directTransfers.values()) {
+    const aa = adjacency.get(edge.from) ?? new Set<string>();
+    const bb = adjacency.get(edge.to) ?? new Set<string>();
+    aa.add(edge.to); bb.add(edge.from);
+    adjacency.set(edge.from, aa); adjacency.set(edge.to, bb);
+  }
+
+  const visited = new Set<string>();
+  let clusterId = 1;
+  for (const wallet of adjacency.keys()) {
+    if (visited.has(wallet)) continue;
+    const queue = [wallet];
+    const component: string[] = [];
+    visited.add(wallet);
+    while (queue.length) {
+      const cur = queue.shift()!;
+      component.push(cur);
+      for (const next of adjacency.get(cur) ?? []) {
+        if (visited.has(next)) continue;
+        visited.add(next);
+        queue.push(next);
+      }
+    }
+    if (component.length < 2) continue;
+    for (const member of component) {
+      await db.from("holdings")
+        .update({ cluster_id: clusterId })
+        .eq("token_mint", mint)
+        .eq("wallet", member);
+    }
+    clusterId++;
+  }
+
   let transfers = 0;
   for (const edge of directTransfers.values()) {
     await db.from("wallet_edges").upsert({
