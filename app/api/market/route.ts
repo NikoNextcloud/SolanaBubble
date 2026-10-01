@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { admin } from "@/lib/db";
-import { getNetworkLive } from "@/lib/runtime-state";
 
 export const dynamic = "force-dynamic";
 
@@ -35,8 +34,6 @@ async function getJson<T>(url: string): Promise<T | null> {
 
 export async function GET() {
   const db = admin();
-  const live = await getNetworkLive();
-
   const { data: cachedRow } = await db
     .from("api_cache")
     .select("payload,updated_at")
@@ -47,9 +44,9 @@ export async function GET() {
     ? Date.now() - new Date(cachedRow.updated_at).getTime()
     : Number.POSITIVE_INFINITY;
 
-  if (cachedRow?.payload && (!live || cachedAge < 15_000)) {
+  if (cachedRow?.payload && cachedAge < 15_000) {
     return NextResponse.json(
-      { ...(cachedRow.payload as object), cached: true, live },
+      { ...(cachedRow.payload as object), cached: true, live: true },
       { headers: { "cache-control": "no-store, max-age=0" } },
     );
   }
@@ -222,9 +219,9 @@ export async function GET() {
     flows,
     network: {
       swaps1h: recentSwaps?.length ?? 0,
-      source: "major-dex-webhook",
+      source: "dexscreener+cached-chain",
     },
-    live,
+    live: true,
   };
 
   await db.from("api_cache").upsert({
