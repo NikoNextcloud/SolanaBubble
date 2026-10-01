@@ -652,6 +652,16 @@ export default function MarketMap() {
 
   return (
     <main className="market-shell">
+      <div className="lovable-page-heading">
+        <div>
+          <div className="eyebrow"><i /> LIVE MARKET INTELLIGENCE</div>
+          <h1>Token map</h1>
+          <p>Discover the tokens and market activity moving across Solana.</p>
+        </div>
+        <div className="page-actions">
+          <button type="button" onClick={() => setSelected(null)}>Reset view</button>
+        </div>
+      </div>
       <section className="market-stats reference-market-stats">
         <div>
           <span>MARKET SENTIMENT</span>
