@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { admin } from "@/lib/db";
 import { bootstrapToken } from "@/lib/bootstrap";
-import { ensureWebhookTracksMint } from "@/lib/helius";
 import { fetchSolscanTokenMeta } from "@/lib/solscan";
 
 export const runtime = "nodejs";
@@ -55,21 +54,13 @@ export async function POST(req: Request) {
     }
   }
 
-  let webhook: { added: boolean; addresses: number } | null = null;
-  let webhookWarning: string | null = null;
-  try {
-    const result = await ensureWebhookTracksMint(mint);
-    webhook = { added: result.added, addresses: result.addresses };
-  } catch (error) {
-    webhookWarning = error instanceof Error ? error.message : "Неуспешно live следене.";
-  }
+
 
   return NextResponse.json({
     mint,
     tracked: true,
     bootstrapped,
     holders,
-    webhook,
-    webhookWarning,
+    source: "public-rpc+dexscreener",
   });
 }
