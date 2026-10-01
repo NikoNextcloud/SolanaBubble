@@ -448,19 +448,12 @@ export default function MarketMap() {
       <section className="market-workspace">
         <div className="market-map" ref={wrap}>
           <div className="insight-live-bar">
-            <button className="ghost-control">☷ Токени</button>
-            <button className="ghost-control">↕ Филтри</button>
             <button
               className={`go-live-control ${streamLive === true ? "is-live" : ""}`}
               onClick={() => changeLive(streamLive !== true)}
             >{streamLive === true ? "◉ Live" : "◉ Go Live"}</button>
             <button className="ghost-control reset-layout-control" onClick={resetMarketPositions}>↺ Нулирай позиции</button>
           </div>
-          <button
-            className={`market-pause-orb ${streamLive === false ? "paused" : ""}`}
-            onClick={() => changeLive(streamLive !== true)}
-            title={streamLive === true ? "Пауза на live обновяванията" : "Пусни live обновяванията"}
-          >{streamLive === true ? "Ⅱ" : "▶"}</button>
           {streamLive === false && <div className="pause-banner">
             {autoPaused ? "Автоматична пауза след 2 мин. без активност" : "Live режимът е на пауза"} · данните са от кеша
           </div>}
