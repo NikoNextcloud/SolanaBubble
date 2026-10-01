@@ -633,6 +633,8 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const groups = visualGroups();
   groupsForMotionRef.current = new Set(groups.keys());
   const selected = sel ? nodes.current.get(sel) : null;
+  const rankedWallets = [...arr].sort((a, b) => Number(b.usd_value) - Number(a.usd_value));
+  const selectedRank = selected ? rankedWallets.findIndex((n) => n.wallet === selected.wallet) + 1 : 0;
   const pl = selected && Number(selected.bought_usd) > 0 ? Number(selected.usd_value) + Number(selected.sold_usd) - Number(selected.bought_usd) : null;
   const groupCount = new Set(groups.values()).size;
   const ignoredHubCount = graphHubs().size;
@@ -761,6 +763,42 @@ export default function BubbleMap({ mint }: { mint: string }) {
               <label><input type="checkbox" checked={showSwaps} onChange={(e) => setShowSwaps(e.target.checked)} /><span>Swap връзки</span></label>
               <label><input type="checkbox" checked={showTransfers} onChange={(e) => setShowTransfers(e.target.checked)} /><span>Transfer връзки</span></label>
               <label><input type="checkbox" checked={motionOn} onChange={(e) => setMotionOn(e.target.checked)} /><span>Жива карта</span></label>
+            </div>}
+            {selected && <div className="holder-quick-card">
+              <div className="holder-quick-head">
+                <span className="holder-quick-rank">{selectedRank || "—"}</span>
+                <span className="holder-quick-avatar">◈</span>
+                <button
+                  className="holder-quick-wallet"
+                  onClick={() => navigator.clipboard?.writeText(selected.wallet)}
+                  title="Копирай адреса"
+                >
+                  {displayWallet(selected.wallet)} <span>▣</span>
+                </button>
+                <button className="holder-quick-more" onClick={() => setSel(null)} title="Затвори">•••</button>
+              </div>
+
+              <div className="holder-quick-metrics">
+                <strong><span>＄</span>{usd(Number(selected.usd_value))}</strong>
+                <strong><span>◌</span>{Number(selected.pct_supply).toFixed(2)}%</strong>
+              </div>
+
+              <div className="holder-quick-badge">Wallet</div>
+
+              <button
+                className="holder-quick-cluster"
+                onClick={() => {
+                  const gid = groups.get(selected.wallet);
+                  if (gid) {
+                    setLinkedOnly(true);
+                    setShowClusters(true);
+                  }
+                }}
+              >
+                <span>{groups.get(selected.wallet) ? `Cluster #${groups.get(selected.wallet)}` : "Без клъстер"}</span>
+                <b>{Number(selected.pct_supply).toFixed(2)}%</b>
+                <i>›</i>
+              </button>
             </div>}
             {streamLive === false && <div className="pause-banner holder-pause-banner">
               {autoPaused ? "Автоматична пауза след 2 мин. без активност" : "Live режимът е на пауза"}
