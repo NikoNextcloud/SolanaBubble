@@ -145,56 +145,16 @@ export default function WorkspaceShell({
   return (
     <main className="alpha-shell">
       <aside className="alpha-sidebar">
-        <a className="alpha-logo neon-brand" href="/">
-          <span className="alpha-logo-orbit" aria-hidden="true"><i /><b /></span>
+        <a className="alpha-logo lovable-brand" href="/">
+          <span className="lovable-brand-mark" aria-hidden="true">✿</span>
           <span className="alpha-logo-copy">
-            <strong>Solana<span>Bubble</span></strong>
-            <small>REAL-TIME MARKET INTELLIGENCE<br/>ON SOLANA</small>
+            <strong>SolanaBubble</strong>
           </span>
         </a>
 
-        <div className="alpha-token-search" ref={searchBox}>
-          <div className="alpha-search-input-wrap">
-            <span>⌕</span>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onFocus={() => query.trim().length >= 2 && setOpen(true)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") submitDirect();
-                if (e.key === "Escape") setOpen(false);
-              }}
-              placeholder="Търси токен..."
-              aria-label="Търси Solana токен"
-            />
-            {searching && <i className="alpha-search-spinner" />}
-          </div>
+        <div className="alpha-side-label workspace-label">WORKSPACE</div>
 
-          {open && <div className="alpha-search-results">
-            {results.length === 0 && !searching ? (
-              <div className="alpha-search-empty">Няма намерени токени</div>
-            ) : results.map((token) => (
-              <button
-                key={token.mint}
-                onClick={() => openToken(token)}
-                disabled={openingMint === token.mint}
-              >
-                <span className="alpha-search-token-icon">
-                  {token.imageUrl ? <img src={token.imageUrl} alt="" /> : (token.symbol?.slice(0, 2) || "?")}
-                </span>
-                <span className="alpha-search-token-main">
-                  <strong>{token.symbol || token.name || "Token"}</strong>
-                  <small>{token.name || `${token.mint.slice(0, 6)}…${token.mint.slice(-4)}`}</small>
-                </span>
-                <span className="alpha-search-token-price">
-                  {Number(token.priceUsd || 0) > 0 ? `$${Number(token.priceUsd).toPrecision(4)}` : "—"}
-                </span>
-              </button>
-            ))}
-          </div>}
-        </div>
-
-        <div className="alpha-side-section visual-nav">
+        <div className="alpha-side-section lovable-workspace-nav">
           <a className={`alpha-nav ${isMarket ? "active" : ""}`} href="/">
             <span className="alpha-nav-icon">◎</span><span>Live Market Map</span>
           </a>
@@ -240,18 +200,63 @@ export default function WorkspaceShell({
           </div>
         </div>
 
-        <div className="alpha-network neon-network-card">
-          <div className="neon-network-market">
-            <span className="mini-sol-mark">≋</span>
-            <div><strong>SOL</strong><small>Live market</small></div>
-            <b>↗</b>
-          </div>
-          <span><i /> Live Data</span>
-          <small>Connected</small>
+        <div className="alpha-network lovable-sidebar-user">
+          <span className="lovable-user-avatar">SB</span>
+          <span className="lovable-user-copy"><strong>SolanaBubble</strong><small>Live workspace</small></span>
+          <span className="lovable-live-dot" title="Live data connected" />
         </div>
       </aside>
 
-      <section className="alpha-app neon-app">
+      <section className="alpha-app lovable-app">
+        <header className="lovable-topbar">
+          <div className="lovable-breadcrumb">
+            <span>Workspace</span><b>›</b><strong>{section}</strong>
+          </div>
+          <div className="alpha-token-search lovable-header-search" ref={searchBox}>
+            <div className="alpha-search-input-wrap">
+              <span>⌕</span>
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onFocus={() => query.trim().length >= 2 && setOpen(true)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") submitDirect();
+                  if (e.key === "Escape") setOpen(false);
+                }}
+                placeholder="Search tokens or wallets..."
+                aria-label="Търси Solana токен"
+              />
+              {searching && <i className="alpha-search-spinner" />}
+              <kbd>⌘ K</kbd>
+            </div>
+            {open && <div className="alpha-search-results">
+              {results.length === 0 && !searching ? (
+                <div className="alpha-search-empty">Няма намерени токени</div>
+              ) : results.map((token) => (
+                <button
+                  key={token.mint}
+                  onClick={() => openToken(token)}
+                  disabled={openingMint === token.mint}
+                >
+                  <span className="alpha-search-token-icon">
+                    {token.imageUrl ? <img src={token.imageUrl} alt="" /> : (token.symbol?.slice(0, 2) || "?")}
+                  </span>
+                  <span className="alpha-search-token-main">
+                    <strong>{token.symbol || token.name || "Token"}</strong>
+                    <small>{token.name || `${token.mint.slice(0, 6)}…${token.mint.slice(-4)}`}</small>
+                  </span>
+                  <span className="alpha-search-token-price">
+                    {Number(token.priceUsd || 0) > 0 ? `${Number(token.priceUsd).toPrecision(4)}` : "—"}
+                  </span>
+                </button>
+              ))}
+            </div>}
+          </div>
+          <div className="lovable-top-actions">
+            <button type="button" title="Notifications">♧</button>
+            <span className="lovable-top-avatar">SB</span>
+          </div>
+        </header>
         <div className="alpha-shell-content">{children}</div>
       </section>
     </main>
