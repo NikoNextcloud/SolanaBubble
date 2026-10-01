@@ -898,7 +898,7 @@ export default function MarketMap() {
               </path>;
             })}
 
-            {showHypeOverlay && cometNodes.flatMap((n, nodeIndex) => {
+            {showHypeOverlay && streamLive && cometNodes.flatMap((n, nodeIndex) => {
               const hype = hypeScore(n);
               const traffic = trafficState(n);
               const buys = Math.max(0, n.buys1h);
@@ -961,7 +961,7 @@ export default function MarketMap() {
                   >
                     <circle r={size * 2.2} className="holder-impact-core" />
                     <circle r={size * 5.3} className="holder-impact-ring holder-impact-ring-a" />
-                    <circle r={size * 7.4} className="holder-impact-ring holder-impact-ring-b" />
+                    {hype >= 65 && <circle r={size * 7.4} className="holder-impact-ring holder-impact-ring-b" />}
                   </g>
                 </g>;
               });
@@ -987,7 +987,7 @@ export default function MarketMap() {
                   className={`planet-atmosphere ${planetGlowClass(n)} ${hotNodeMints.has(n.mint) ? "hot-path-node" : ""}`}
                   pointerEvents="none"
                 />
-                {!n.isCore && <>
+                {!n.isCore && viewMode === "galaxy" && hype >= 20 && <>
                   <circle
                     r={n.r + 10 + hype * .08}
                     className="planet-hype-aura planet-hype-aura-inner"
@@ -995,13 +995,13 @@ export default function MarketMap() {
                     strokeOpacity={Math.min(.82, .18 + hype / 135)}
                     pointerEvents="none"
                   />
-                  <circle
+                  {hype >= 60 && <circle
                     r={n.r + 18 + hype * .13}
                     className="planet-hype-aura planet-hype-aura-outer"
                     strokeWidth={1 + hype * .012}
                     strokeOpacity={Math.min(.52, .08 + hype / 220)}
                     pointerEvents="none"
-                  />
+                  />}
                 </>}
                 <circle
                   r={n.r}
