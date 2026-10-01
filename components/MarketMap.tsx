@@ -33,7 +33,7 @@ type Node = MarketToken & {
   isCore?: boolean;
 };
 
-type DataSource = "helius" | "solscan";
+type DataSource = "free" | "solscan";
 
 type Flow = {
   from: string;
@@ -241,7 +241,7 @@ export default function MarketMap() {
       if (cached) applySnapshot(JSON.parse(cached));
     } catch {}
 
-    if (source === "helius") {
+    if (source === "free") {
       fetch("/api/live-mode", { cache: "no-store" })
         .then((r) => r.ok ? r.json() : null)
         .then((j) => setStreamLive(typeof j?.live === "boolean" ? j.live : true))
@@ -257,7 +257,7 @@ export default function MarketMap() {
 
     async function load() {
       try {
-        const endpoint = dataSource === "helius" ? "/api/market" : "/api/market/solscan";
+        const endpoint = dataSource === "free" ? "/api/market" : "/api/market/solscan";
         const r = await fetch(endpoint, { cache: "no-store" });
         if (!r.ok) throw new Error("market");
         const j = await r.json();
@@ -280,7 +280,7 @@ export default function MarketMap() {
       const r = await fetch("/api/live-mode", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ live: next, source: dataSource ?? "helius" }),
+        body: JSON.stringify({ live: next, source: dataSource ?? "free" }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "live mode");
@@ -361,7 +361,7 @@ export default function MarketMap() {
           <h1>Избери източник на данни</h1>
           <p>Нищо няма да се стартира, докато не избереш източник. Така не харчим излишни API кредити.</p>
           <div className="source-options">
-            <button onClick={() => chooseSource("helius")}>
+            <button onClick={() => chooseSource("free")}>
               <strong>Helius</strong>
               <span>Live on-chain DEX поток, holder събития и webhook данни.</span>
             </button>
@@ -380,7 +380,7 @@ export default function MarketMap() {
       <header className="market-topbar">
         <div>
           <a className="brand" href="/">SolanaBubble</a>
-          <span className="market-subtitle">Източник: {dataSource === "helius" ? "Helius" : "Solscan"}</span>
+          <span className="market-subtitle">Източник: {dataSource === "free" ? "Solana RPC + DexScreener" : "Solscan"}</span>
         </div>
         <div className="market-actions">
           <button className="source-switch" onClick={() => { setDataSource(null); setStreamLive(null); sim.current?.stop(); }}>Смени източника</button>
@@ -394,7 +394,7 @@ export default function MarketMap() {
         <div><span>1ч. обем</span><b>{fmtUsd(totals.volume)}</b></div>
         <div><span>Покупки / продажби</span><b>{totals.buys} / {totals.sells}</b></div>
         <div><span>Ликвидност</span><b>{fmtUsd(totals.liquidity)}</b></div>
-        <div><span>{dataSource === "helius" ? "On-chain swaps 1ч." : "Solscan feed"}</span><b>{dataSource === "helius" ? networkSwaps1h.toLocaleString() : "ACTIVE"}</b></div>
+        <div><span>{dataSource === "free" ? "On-chain swaps 1ч." : "Solscan feed"}</span><b>{dataSource === "free" ? networkSwaps1h.toLocaleString() : "ACTIVE"}</b></div>
       </section>
 
       <section className="market-workspace">
@@ -410,14 +410,14 @@ export default function MarketMap() {
           <button
             className={`market-pause-orb ${streamLive === false ? "paused" : ""}`}
             onClick={() => changeLive(streamLive !== true)}
-            title={streamLive === true ? "Пауза на Helius network stream и Solscan обновяванията" : "Пусни live обновяванията"}
+            title={streamLive === true ? "Пауза на live обновяванията" : "Пусни live обновяванията"}
           >{streamLive === true ? "Ⅱ" : "▶"}</button>
           {streamLive === false && <div className="pause-banner">
             {autoPaused ? "Автоматична пауза след 2 мин. без активност" : "Live режимът е на пауза"} · данните са от кеша
           </div>}
           <div className="market-map-head">
             <div>
-              <strong>{dataSource === "helius" ? "Live Solana DEX traffic" : "Solscan market map"}</strong>
+              <strong>{dataSource === "free" ? "Live Solana DEX traffic" : "Solscan market map"}</strong>
               <span>Размер = активност · стрелките показват посоката на капиталовия поток между quote asset и токена</span>
             </div>
             <span>{updated ? `обновено ${new Date(updated).toLocaleTimeString("bg-BG")}` : "зареждане…"}</span>
@@ -551,7 +551,7 @@ export default function MarketMap() {
               {solscanInfo?.meta?.holder != null && <><dt>Holders (Solscan)</dt><dd>{Number(solscanInfo.meta.holder).toLocaleString()}</dd></>}
               {solscanInfo?.meta?.creator && <><dt>Creator</dt><dd title={solscanInfo.meta.creator}>{String(solscanInfo.meta.creator).slice(0, 6)}…{String(solscanInfo.meta.creator).slice(-4)}</dd></>}
             </dl>
-            {streamLive === true && solscanInfo && <div className="data-source-note">Solscan {solscanInfo.cached ? "кеш" : "обновено"} · Helius live stream</div>}
+            {streamLive === true && solscanInfo && <div className="data-source-note">Solscan {solscanInfo.cached ? "кеш" : "обновено"} · Solana RPC + DexScreener</div>}
             <button className="open-token-button" onClick={() => openToken(selected)} disabled={loadingMint === selected.mint}>
               {loadingMint === selected.mint ? "Зареждам holders…" : "Отвори holder картата"}
             </button>
