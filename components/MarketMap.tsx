@@ -36,8 +36,6 @@ type Node = MarketToken & {
   fy?: number | null;
 };
 
-type DataSource = "free" | "solscan";
-
 type Flow = {
   from: string;
   to: string;
@@ -101,13 +99,11 @@ export default function MarketMap() {
   const [motionNow, setMotionNow] = useState(0);
   const [updated, setUpdated] = useState<string | null>(null);
   const [networkSwaps1h, setNetworkSwaps1h] = useState(0);
-  const [dataSource, setDataSource] = useState<DataSource>("free");
   const [streamLive, setStreamLive] = useState(true);
   const [tabVisible, setTabVisible] = useState(true);
   const [autoPaused, setAutoPaused] = useState(false);
   const [selected, setSelected] = useState<MarketToken | null>(null);
   const [loadingMint, setLoadingMint] = useState<string | null>(null);
-  const [solscanInfo, setSolscanInfo] = useState<any>(null);
   const [error, setError] = useState("");
   const lastActivity = useRef(Date.now());
   const drag = useRef({ active: false, pointerId: -1, mint: "", lastX: 0, lastY: 0, moved: false });
@@ -213,7 +209,7 @@ export default function MarketMap() {
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [streamLive, dataSource]);
+  }, [streamLive]);
 
   useEffect(() => {
     const s = forceSimulation<any>()
@@ -315,17 +311,6 @@ export default function MarketMap() {
     for (const key of [...nodeMap.current.keys()]) if (!allowed.has(key)) nodeMap.current.delete(key);
   };
 
-  function chooseSource(source: DataSource) {
-    setDataSource(source);
-    setSelected(null);
-    setError("");
-    setStreamLive(true);
-    try {
-      const cached = localStorage.getItem(`solanabubble:market-snapshot:${source}`);
-      if (cached) applySnapshot(JSON.parse(cached));
-    } catch {}
-  }
-
   useEffect(() => {
     const syncVisibility = () => setTabVisible(document.visibilityState === "visible");
     syncVisibility();
@@ -334,36 +319,31 @@ export default function MarketMap() {
   }, []);
 
   useEffect(() => {
-    if (streamLive !== true || !dataSource || !tabVisible) return;
+    if (streamLive !== true || !tabVisible) return;
     let stopped = false;
 
     async function load() {
       try {
-        const endpoint = dataSource === "free" ? "/api/market" : "/api/market/solscan";
-        const r = await fetch(endpoint, { cache: "no-store" });
+        const r = await fetch("/api/market", { cache: "no-store" });
         const j = await r.json();
-        if (!r.ok) {
-          if (dataSource === "solscan" && j?.planRestricted) {
-            if (!stopped) {
-              setError("Solscan Level 1 не позволява Token API. Автоматично преминах към Solana RPC + DexScreener.");
-              setDataSource("free");
-            }
-            return;
-          }
-          throw new Error(j?.message || "market");
-        }
+        if (!r.ok) throw new Error(j?.message || "market");
         if (stopped) return;
         applySnapshot(j);
-        try { localStorage.setItem(`solanabubble:market-snapshot:${dataSource}`, JSON.stringify(j)); } catch {}
+        try { localStorage.setItem("solanabubble:market-snapshot:free", JSON.stringify(j)); } catch {}
       } catch {
         if (!stopped) setError("Не успях да обновя live пазарния поток. Показвам последния кеш.");
       }
     }
 
+    try {
+      const cached = localStorage.getItem("solanabubble:market-snapshot:free");
+      if (cached) applySnapshot(JSON.parse(cached));
+    } catch {}
+
     load();
-    const id = window.setInterval(load, dataSource === "free" ? 20000 : 30000);
+    const id = window.setInterval(load, 20000);
     return () => { stopped = true; window.clearInterval(id); };
-  }, [streamLive, dataSource, tabVisible]);
+  }, [streamLive, tabVisible]);
 
   async function changeLive(next: boolean, automatic = false) {
     setError("");
@@ -392,20 +372,7 @@ export default function MarketMap() {
       for (const name of events) window.removeEventListener(name, activity);
       window.clearInterval(timer);
     };
-  }, [streamLive, autoPaused, dataSource]);
-
-  useEffect(() => {
-    if (!selected || streamLive !== true) {
-      setSolscanInfo(null);
-      return;
-    }
-    let stopped = false;
-    fetch(`/api/tokens/${selected.mint}/solscan`, { cache: "no-store" })
-      .then((r) => r.ok ? r.json() : null)
-      .then((j) => { if (!stopped && j) setSolscanInfo(j); })
-      .catch(() => null);
-    return () => { stopped = true; };
-  }, [selected?.mint, streamLive]);
+  }, [streamLive, autoPaused]);
 
   async function openToken(t: MarketToken) {
     setLoadingMint(t.mint);
@@ -437,10 +404,9 @@ export default function MarketMap() {
       <header className="market-topbar">
         <div>
           <a className="brand" href="/">SolanaBubble</a>
-          <span className="market-subtitle">Източник: {dataSource === "free" ? "RPC + DexScreener" : "Solscan"}</span>
+          <span className="market-subtitle">Източник: Solana RPC + DexScreener</span>
         </div>
         <div className="market-actions">
-          <button className="source-switch" onClick={() => chooseSource(dataSource === "free" ? "solscan" : "free")}>Смени източника</button>
           <a href="/admin">База данни</a>
           <span className={`market-live ${streamLive === false ? "paused" : ""}`}><i />{streamLive === false ? "PAUSED" : "LIVE"}</span>
         </div>
@@ -451,7 +417,7 @@ export default function MarketMap() {
         <div><span>1ч. обем</span><b>{fmtUsd(totals.volume)}</b></div>
         <div><span>Покупки / продажби</span><b>{totals.buys} / {totals.sells}</b></div>
         <div><span>Ликвидност</span><b>{fmtUsd(totals.liquidity)}</b></div>
-        <div><span>{dataSource === "free" ? "Пазарни потоци 1ч." : "Solscan feed"}</span><b>{dataSource === "free" ? networkSwaps1h.toLocaleString() : "ACTIVE"}</b></div>
+        <div><span>Пазарни потоци 1ч.</span><b>{networkSwaps1h.toLocaleString()}</b></div>
       </section>
 
       <section className="market-workspace">
@@ -468,7 +434,7 @@ export default function MarketMap() {
           </div>}
           <div className="market-map-head">
             <div>
-              <strong>{dataSource === "free" ? "Solana RPC + DexScreener market flow" : "Solscan market map"}</strong>
+              <strong>Solana RPC + DexScreener market flow</strong>
               <span>Размер = активност · стрелките показват посоката на капиталовия поток между quote asset и токена</span>
             </div>
             <span>{updated ? `обновено ${new Date(updated).toLocaleTimeString("bg-BG")}` : "зареждане…"}</span>
@@ -622,10 +588,6 @@ export default function MarketMap() {
               <dt>Покупки 1ч.</dt><dd>{selected.buys1h}</dd>
               <dt>Продажби 1ч.</dt><dd>{selected.sells1h}</dd>
               <dt>Промяна 1ч.</dt><dd className={selected.priceChange1h >= 0 ? "buy" : "sell"}>{selected.priceChange1h.toFixed(2)}%</dd>
-              {solscanInfo?.meta?.holder != null && <><dt>Holders (Solscan)</dt><dd>{Number(solscanInfo.meta.holder).toLocaleString()}</dd></>}
-              {solscanInfo?.meta?.creator && <><dt>Creator</dt><dd title={solscanInfo.meta.creator}>{String(solscanInfo.meta.creator).slice(0, 6)}…{String(solscanInfo.meta.creator).slice(-4)}</dd></>}
-            </dl>
-            {streamLive === true && solscanInfo && <div className="data-source-note">Solscan {solscanInfo.cached ? "кеш" : "обновено"} · Solana RPC + DexScreener</div>}
             <button className="open-token-button" onClick={() => openToken(selected)} disabled={loadingMint === selected.mint}>
               {loadingMint === selected.mint ? "Зареждам holders…" : "Отвори holder картата"}
             </button>
