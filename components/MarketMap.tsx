@@ -673,21 +673,52 @@ export default function MarketMap() {
         </div>
       </header>
 
-      <section className="market-stats">
-        <div><span>Токени на картата</span><b>{tokens.length}</b></div>
-        <div><span>1ч. обем</span><b>{fmtUsd(totals.volume)}</b></div>
-        <div><span>Покупки / продажби</span><b>{totals.buys} / {totals.sells}</b></div>
-        <div><span>Ликвидност</span><b>{fmtUsd(totals.liquidity)}</b></div>
-        <div><span>Пазарни потоци 1ч.</span><b>{networkSwaps1h.toLocaleString()}</b></div>
+      <section className="market-stats reference-market-stats">
+        <div>
+          <span>MARKET SENTIMENT</span>
+          <b className={marketSummary.sentiment.cls}>{marketSummary.sentiment.label} <i>{marketSummary.sentiment.arrow}</i></b>
+          <small>{marketSummary.avgMove >= 0 ? "+" : ""}{marketSummary.avgMove.toFixed(1)}% avg 1h</small>
+        </div>
+        <div>
+          <span>ACTIVE TOKENS</span>
+          <b>{marketSummary.active.toLocaleString()}</b>
+          <small>{tokens.length} loaded</small>
+        </div>
+        <div>
+          <span>24H VOLUME</span>
+          <b>{fmtUsd(tokens.reduce((sum, t) => sum + t.volume24h, 0))}</b>
+          <small>{totals.buys >= totals.sells ? "buy pressure" : "sell pressure"}</small>
+        </div>
+        <div>
+          <span>SMART MONEY FLOW</span>
+          <b className={marketSummary.smartFlow >= 0 ? "bullish" : "bearish"}>{marketSummary.smartFlow >= 0 ? "+" : ""}{fmtUsd(marketSummary.smartFlow).replace("$", "$")}</b>
+          <small>{hotPath.length ? `${hotPath.length} hot paths` : "watching rotations"}</small>
+        </div>
       </section>
 
-      <section className="market-workspace">
+      <section className="market-workspace reference-market-workspace">
         <div className="market-map" ref={wrap}>
-          <div className="insight-live-bar">
-            <button
-              className={`go-live-control ${streamLive === true ? "is-live" : ""}`}
-              onClick={() => changeLive(streamLive !== true)}
-            >{streamLive === true ? "◉ Live" : "◉ Go Live"}</button>
+          <div className="reference-map-toolbar">
+            <div className="market-view-switch">
+              <button className={viewMode === "map" ? "active" : ""} onClick={() => setViewMode("map")}>▦ Map</button>
+              <button className={viewMode === "galaxy" ? "active" : ""} onClick={() => setViewMode("galaxy")}>✦ Galaxy</button>
+              <button className={viewMode === "list" ? "active" : ""} onClick={() => setViewMode("list")}>☷ List</button>
+            </div>
+            <div className="market-toolbar-actions">
+              {viewMode === "map" && <select value={xAxis} onChange={(e) => setXAxis(e.target.value as MarketAxis)} aria-label="Хоризонтална ос">
+                <option value="marketCap">Market cap</option>
+                <option value="liquidityUsd">Liquidity</option>
+                <option value="volume24h">24h volume</option>
+              </select>}
+              <button className={showTrafficOverlay ? "active" : ""} onClick={() => setShowTrafficOverlay((v) => !v)}>⇄ Traffic</button>
+              <button className={showHypeOverlay ? "active" : ""} onClick={() => setShowHypeOverlay((v) => !v)}>✦ Hype</button>
+              <button
+                className={`go-live-control ${streamLive === true ? "is-live" : ""}`}
+                onClick={() => changeLive(streamLive !== true)}
+              >{streamLive === true ? "◉ Live" : "◉ Go Live"}</button>
+            </div>
+          </div>
+          <div className="insight-live-bar secondary-market-controls">
             <button className={`ghost-control auto-graph-control ${autoGraph ? "active" : ""}`} onClick={() => setAutoGraph((v) => !v)}>
               {autoGraph ? "✦ Auto graph" : "○ Auto graph"}
             </button>
@@ -696,15 +727,37 @@ export default function MarketMap() {
           {streamLive === false && <div className="pause-banner">
             {autoPaused ? "Автоматична пауза след 2 мин. без активност" : "Live режимът е на пауза"} · данните са от кеша
           </div>}
-          <div className="market-map-head">
+          <div className="market-map-head reference-map-head">
             <div>
-              <strong>Solana RPC + DexScreener market flow</strong>
-              <span>Размер = активност · стрелките показват посоката на капиталовия поток между quote asset и токена</span>
+              <strong>{viewMode === "map" ? "Solana Market Map" : viewMode === "galaxy" ? "Solana Traffic Galaxy" : "Solana Token List"}</strong>
+              <span>{viewMode === "map"
+                ? "Y = price change 24h · X = selected market metric · size = activity · color = price movement"
+                : viewMode === "galaxy"
+                  ? "Жива network карта с traffic, hype и hot path връзки"
+                  : "Подреден списък с market, hype и traffic показатели"}</span>
             </div>
             <span>{updated ? `обновено ${new Date(updated).toLocaleTimeString("bg-BG")}` : "зареждане…"}</span>
           </div>
 
-          <svg>
+          {viewMode === "list" ? <div className="market-list-view">
+            <div className="market-list-header">
+              <span>Token</span><span>Price</span><span>24h</span><span>24h Volume</span><span>Hype</span><span>Traffic</span>
+            </div>
+            {[...tokens].sort((a,b) => b.volume24h - a.volume24h).map((t) => {
+              const traffic = trafficState(t);
+              return <button key={t.mint} onClick={() => setSelected(t)} onDoubleClick={() => openToken(t)}>
+                <span className="market-list-token">
+                  <span className="market-list-icon">{t.imageUrl ? <img src={t.imageUrl} alt="" /> : (t.symbol || "?").slice(0,2)}</span>
+                  <span><strong>{t.symbol || t.name || t.mint.slice(0,6)}</strong><small>{t.name || t.dex || "Solana token"}</small></span>
+                </span>
+                <span>{fmtUsd(t.priceUsd)}</span>
+                <span className={t.priceChange24h >= 0 ? "buy" : "sell"}>{t.priceChange24h >= 0 ? "+" : ""}{t.priceChange24h.toFixed(1)}%</span>
+                <span>{fmtUsd(t.volume24h)}</span>
+                <span>H {hypeScore(t)}</span>
+                <span className={traffic.cls}>{traffic.symbol} {traffic.label}</span>
+              </button>;
+            })}
+          </div> : <svg>
             <defs>
               <radialGradient id="marketGlow">
                 <stop offset="0%" stopColor="#87909f" stopOpacity=".16" />
@@ -760,7 +813,25 @@ export default function MarketMap() {
             </g>
             <ellipse cx={size.w / 2} cy={size.h / 2} rx={size.w * .34} ry={size.h * .34} fill="url(#marketGlow)" />
 
-            {visibleFlows.map((f, i) => {
+            {viewMode === "map" && <>
+              <g className="market-axis-grid" pointerEvents="none">
+                {[1, .75, .5, .25, 0].map((p, i) => {
+                  const value = axisStats.changeAbs - p * axisStats.changeAbs * 2;
+                  const y = 70 + p * Math.max(120, size.h - 150);
+                  return <g key={`axis-y-${i}`}>
+                    <line x1="48" y1={y} x2={size.w - 18} y2={y} />
+                    <text x="14" y={y + 4}>{value >= 0 ? "+" : ""}{value.toFixed(0)}%</text>
+                  </g>;
+                })}
+                {[.25,.5,.75].map((p, i) => {
+                  const x = 74 + p * Math.max(100, size.w - 148);
+                  return <line key={`axis-x-${i}`} x1={x} y1="54" x2={x} y2={size.h - 56} />;
+                })}
+                <text x="12" y="28" className="axis-title">PRICE CHANGE 24H</text>
+                <text x={size.w / 2} y={size.h - 18} textAnchor="middle" className="axis-title">{xAxis === "marketCap" ? "MARKET CAP" : xAxis === "liquidityUsd" ? "LIQUIDITY" : "24H VOLUME"}</text>
+              </g>
+            </>}
+            {showTrafficOverlay && visibleFlows.map((f, i) => {
               const source = f.source as Node;
               const target = f.target as Node;
               const p = edgePoint(source, target, 5);
@@ -786,7 +857,7 @@ export default function MarketMap() {
               </line>;
             })}
 
-            {visibleFlows.slice(0, 60).map((f, i) => {
+            {showTrafficOverlay && visibleFlows.slice(0, 60).map((f, i) => {
               const source = f.source as Node;
               const target = f.target as Node;
               const p = edgePoint(source, target, 6);
@@ -804,7 +875,7 @@ export default function MarketMap() {
               />;
             })}
 
-            {nodes.map((n, i) => {
+            {renderedNodes.map((n, i) => {
               const color = flowColor(n);
               const total = Math.max(1, n.buys1h + n.sells1h);
               const imbalance = (n.buys1h - n.sells1h) / total;
@@ -858,7 +929,7 @@ export default function MarketMap() {
                   className="planet-highlight"
                   pointerEvents="none"
                 />}
-                {!n.isCore && Array.from({ length: hypeStarCount(hype) }).map((_, starIndex) => {
+                {showHypeOverlay && !n.isCore && Array.from({ length: hypeStarCount(hype) }).map((_, starIndex) => {
                   const angle = motionNow / (1450 + starIndex * 150) + starIndex * ((Math.PI * 2) / Math.max(1, hypeStarCount(hype)));
                   const orbit = n.r + 11 + starIndex * 2.2;
                   const sx = Math.cos(angle) * orbit;
@@ -869,6 +940,14 @@ export default function MarketMap() {
                     <circle cx={sx} cy={sy} r={starSize} className="planet-hype-star-core" />
                   </g>;
                 })}
+                {viewMode === "map" && !n.isCore && <g className="reference-node-label" pointerEvents="none">
+                  <text x="0" y={-n.r - 30} textAnchor="middle" className="reference-token-name">{n.symbol || n.name || n.mint.slice(0,5)}</text>
+                  <text x="0" y={-n.r - 18} textAnchor="middle" className={n.priceChange24h >= 0 ? "reference-token-change buy" : "reference-token-change sell"}>
+                    {n.priceChange24h >= 0 ? "+" : ""}{n.priceChange24h.toFixed(1)}%
+                  </text>
+                  <rect x="-22" y={n.r + 8} width="44" height="13" rx="2" className="reference-pool-chip" />
+                  <text x="0" y={n.r + 17} textAnchor="middle" className="reference-pool-text">{n.dex ? n.dex.slice(0,8) : "Pool"} · live</text>
+                </g>}
                 {n.imageUrl && !n.isCore ? <>
                   <clipPath id={`token-clip-${n.mint}`}><circle r={Math.max(5, n.r - 3)} /></clipPath>
                   <image
@@ -923,7 +1002,7 @@ export default function MarketMap() {
                 </g>}
               </g>;
             })}
-          </svg>
+          </svg>}
 
           <div className="market-legend">
             <span><i className="market-buy-dot" />капитал към токена</span>
