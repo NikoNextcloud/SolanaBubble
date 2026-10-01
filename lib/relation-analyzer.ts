@@ -7,14 +7,26 @@ type HolderRow = {
   usd_value: number;
   pct_supply: number;
   funder?: string | null;
+  cluster_id?: number | null;
 };
 
-type Evidence = {
+type Fingerprint = {
   wallet: string;
-  funder: string | null;
-  firstSeen: number | null;
+  funders: string[];
+  signers: string[];
+  tokenBuyTimes: number[];
+  signatures: string[];
 };
 
+type DirectEdge = {
+  from: string;
+  to: string;
+  amount: number;
+  signature: string;
+  blockTime: number;
+};
+
+const SYSTEM_PROGRAM = "11111111111111111111111111111111";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function accountKeyString(key: any) {
@@ -23,70 +35,170 @@ function accountKeyString(key: any) {
   return String(key.pubkey ?? "");
 }
 
-function extractSystemFunder(tx: any, wallet: string): string | null {
-  const instructions = tx?.transaction?.message?.instructions ?? [];
-  for (const ix of instructions) {
+function unique<T>(items: T[]) {
+  return [...new Set(items)];
+}
+
+function systemFunders(tx: any, wallet: string) {
+  const out: string[] = [];
+  for (const ix of tx?.transaction?.message?.instructions ?? []) {
     const parsed = ix?.parsed;
-    if (!parsed) continue;
-    if (ix.program !== "system" && ix.programId?.toString?.() !== "11111111111111111111111111111111") continue;
-    if (parsed.type !== "transfer") continue;
+    if (!parsed || parsed.type !== "transfer") continue;
+    const isSystem = ix.program === "system" || accountKeyString(ix.programId) === SYSTEM_PROGRAM;
+    if (!isSystem) continue;
     const info = parsed.info ?? {};
     if (String(info.destination ?? "") !== wallet) continue;
     const source = String(info.source ?? "");
-    if (source && source !== wallet) return source;
+    if (source && source !== wallet) out.push(source);
   }
+  return out;
+}
 
-  const keys = tx?.transaction?.message?.accountKeys ?? [];
-  const pre = tx?.meta?.preBalances ?? [];
-  const post = tx?.meta?.postBalances ?? [];
-  const walletIdx = keys.findIndex((k: any) => accountKeyString(k) === wallet);
-  if (walletIdx < 0 || Number(post[walletIdx] ?? 0) <= Number(pre[walletIdx] ?? 0)) return null;
+function transactionSigners(tx: any, wallet: string) {
+  return (tx?.transaction?.message?.accountKeys ?? [])
+    .filter((k: any) => Boolean(k?.signer))
+    .map(accountKeyString)
+    .filter((x: string) => x && x !== wallet);
+}
 
-  let best: { wallet: string; loss: number } | null = null;
-  for (let i = 0; i < keys.length; i++) {
-    const address = accountKeyString(keys[i]);
-    if (!address || address === wallet) continue;
-    const loss = Number(pre[i] ?? 0) - Number(post[i] ?? 0);
-    const isSigner = Boolean(keys[i]?.signer);
-    if (loss > 5_000 && isSigner && (!best || loss > best.loss)) best = { wallet: address, loss };
+function tokenDelta(tx: any, mint: string, wallet: string) {
+  let pre = 0;
+  let post = 0;
+  for (const row of tx?.meta?.preTokenBalances ?? []) {
+    if (row?.mint === mint && String(row?.owner ?? "") === wallet) {
+      pre += Number(row.uiTokenAmount?.uiAmountString ?? row.uiTokenAmount?.uiAmount ?? 0);
+    }
   }
-  return best?.wallet ?? null;
+  for (const row of tx?.meta?.postTokenBalances ?? []) {
+    if (row?.mint === mint && String(row?.owner ?? "") === wallet) {
+      post += Number(row.uiTokenAmount?.uiAmountString ?? row.uiTokenAmount?.uiAmount ?? 0);
+    }
+  }
+  return post - pre;
 }
 
 function trackedTokenTransfers(tx: any, mint: string, currentHolders: Set<string>) {
-  const pre = tx?.meta?.preTokenBalances ?? [];
-  const post = tx?.meta?.postTokenBalances ?? [];
-  const before = new Map<string, number>();
-  const after = new Map<string, number>();
+  const pre = new Map<string, number>();
+  const post = new Map<string, number>();
 
-  for (const row of pre) {
+  for (const row of tx?.meta?.preTokenBalances ?? []) {
     if (row?.mint !== mint || !row?.owner) continue;
-    before.set(String(row.owner), (before.get(String(row.owner)) ?? 0) + Number(row.uiTokenAmount?.uiAmountString ?? row.uiTokenAmount?.uiAmount ?? 0));
+    const owner = String(row.owner);
+    pre.set(owner, (pre.get(owner) ?? 0) + Number(row.uiTokenAmount?.uiAmountString ?? row.uiTokenAmount?.uiAmount ?? 0));
   }
-  for (const row of post) {
+  for (const row of tx?.meta?.postTokenBalances ?? []) {
     if (row?.mint !== mint || !row?.owner) continue;
-    after.set(String(row.owner), (after.get(String(row.owner)) ?? 0) + Number(row.uiTokenAmount?.uiAmountString ?? row.uiTokenAmount?.uiAmount ?? 0));
+    const owner = String(row.owner);
+    post.set(owner, (post.get(owner) ?? 0) + Number(row.uiTokenAmount?.uiAmountString ?? row.uiTokenAmount?.uiAmount ?? 0));
   }
 
-  const deltas = new Map<string, number>();
-  for (const owner of new Set([...before.keys(), ...after.keys()])) {
-    deltas.set(owner, (after.get(owner) ?? 0) - (before.get(owner) ?? 0));
+  const delta = new Map<string, number>();
+  for (const owner of new Set([...pre.keys(), ...post.keys()])) {
+    if (!currentHolders.has(owner)) continue;
+    delta.set(owner, (post.get(owner) ?? 0) - (pre.get(owner) ?? 0));
   }
 
-  const sellers = [...deltas.entries()].filter(([w, d]) => currentHolders.has(w) && d < 0).sort((a, b) => a[1] - b[1]);
-  const buyers = [...deltas.entries()].filter(([w, d]) => currentHolders.has(w) && d > 0).sort((a, b) => b[1] - a[1]);
+  const sellers = [...delta.entries()].filter(([, d]) => d < 0).sort((a, b) => a[1] - b[1]);
+  const buyers = [...delta.entries()].filter(([, d]) => d > 0).sort((a, b) => b[1] - a[1]);
   const out: { from: string; to: string; amount: number }[] = [];
+  const remainingBuy = new Map(buyers.map(([w, amount]) => [w, amount]));
 
   for (const [from, loss] of sellers) {
     let remaining = Math.abs(loss);
-    for (const [to, gain] of buyers) {
-      if (from === to || remaining <= 0) continue;
-      const amount = Math.min(remaining, gain);
+    for (const [to] of buyers) {
+      const available = remainingBuy.get(to) ?? 0;
+      if (from === to || remaining <= 0 || available <= 0) continue;
+      const amount = Math.min(remaining, available);
       if (amount > 0) out.push({ from, to, amount });
       remaining -= amount;
+      remainingBuy.set(to, available - amount);
     }
   }
   return out;
+}
+
+function pairKey(a: string, b: string) {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+function parsePair(key: string) {
+  const [wallet_a, wallet_b] = key.split("|");
+  return { wallet_a, wallet_b };
+}
+
+function addScore(
+  scores: Map<string, { score: number; signals: Set<string>; funder?: string }>,
+  a: string,
+  b: string,
+  points: number,
+  signal: string,
+  funder?: string,
+) {
+  if (!a || !b || a === b) return;
+  const key = pairKey(a, b);
+  const cur = scores.get(key) ?? { score: 0, signals: new Set<string>() };
+  if (!cur.signals.has(signal)) {
+    cur.score += points;
+    cur.signals.add(signal);
+  }
+  if (funder) cur.funder = funder;
+  scores.set(key, cur);
+}
+
+async function fingerprintWallet(
+  mint: string,
+  wallet: string,
+  currentHolders: Set<string>,
+  directEdges: Map<string, DirectEdge>,
+): Promise<Fingerprint> {
+  const funders: string[] = [];
+  const signers: string[] = [];
+  const tokenBuyTimes: number[] = [];
+  const signatures: string[] = [];
+
+  // We inspect more signature history than before, but only fetch a bounded
+  // number of full transactions. This improves multi-wallet detection without
+  // turning Public RPC into a firehose.
+  const sigs = await fetchRecentSignatures(wallet, 12);
+  const candidates = unique([
+    ...sigs.slice(0, 4),
+    ...sigs.slice(-2),
+  ].map((x: any) => String(x?.signature ?? "")).filter(Boolean));
+
+  for (const signature of candidates) {
+    const row = sigs.find((x: any) => String(x?.signature ?? "") === signature);
+    const tx = await fetchParsedTransaction(signature);
+    if (!tx) continue;
+
+    signatures.push(signature);
+    funders.push(...systemFunders(tx, wallet));
+    signers.push(...transactionSigners(tx, wallet));
+
+    const blockTime = Number(tx?.blockTime ?? row?.blockTime ?? 0);
+    if (blockTime && tokenDelta(tx, mint, wallet) > 0) tokenBuyTimes.push(blockTime);
+
+    for (const transfer of trackedTokenTransfers(tx, mint, currentHolders)) {
+      const key = `${transfer.from}>${transfer.to}`;
+      const prev = directEdges.get(key);
+      if (!prev || transfer.amount > prev.amount) {
+        directEdges.set(key, {
+          ...transfer,
+          signature,
+          blockTime,
+        });
+      }
+    }
+
+    await sleep(55);
+  }
+
+  return {
+    wallet,
+    funders: unique(funders),
+    signers: unique(signers),
+    tokenBuyTimes: unique(tokenBuyTimes).sort((a, b) => a - b),
+    signatures: unique(signatures),
+  };
 }
 
 export async function analyzeHolderRelations(
@@ -95,144 +207,205 @@ export async function analyzeHolderRelations(
   opts: { maxWallets?: number; cacheMs?: number } = {},
 ) {
   const db = admin();
-  const maxWallets = opts.maxWallets ?? 14;
-  const cacheMs = opts.cacheMs ?? 10 * 60 * 1000;
-  const cacheKey = `relations:${mint}`;
+  const maxWallets = opts.maxWallets ?? 24;
+  const cacheMs = opts.cacheMs ?? 5 * 60 * 1000;
+  const cacheKey = `relations:v2:${mint}`;
 
   const { data: cached } = await db
     .from("api_cache")
-    .select("updated_at")
+    .select("payload,updated_at")
     .eq("cache_key", cacheKey)
     .maybeSingle();
 
   if (cached?.updated_at && Date.now() - new Date(cached.updated_at).getTime() < cacheMs) {
-    return { cached: true, analyzed: 0, links: 0, transfers: 0 };
+    return { cached: true, ...(cached.payload as object) };
   }
 
-  const top = [...holders]
-    .sort((a, b) => Number(b.usd_value ?? 0) - Number(a.usd_value ?? 0))
-    .slice(0, maxWallets);
   const currentHolders = new Set(holders.map((h) => h.wallet));
-  const evidence: Evidence[] = [];
-  const directTransfers = new Map<string, { from: string; to: string; amount: number; signature: string; blockTime: number }>();
+  const priority = [...holders].sort((a, b) => {
+    const aNeeds = a.cluster_id == null ? 1 : 0;
+    const bNeeds = b.cluster_id == null ? 1 : 0;
+    if (aNeeds !== bNeeds) return bNeeds - aNeeds;
+    return Number(b.usd_value ?? 0) - Number(a.usd_value ?? 0);
+  });
+  const target = priority.slice(0, maxWallets);
 
-  for (const holder of top) {
-    let funder: string | null = null;
-    let firstSeen: number | null = null;
+  const fingerprints: Fingerprint[] = [];
+  const directEdges = new Map<string, DirectEdge>();
 
+  for (const holder of target) {
     try {
-      const sigs = await fetchRecentSignatures(holder.wallet, 4);
-      if (sigs.length) {
-        const oldest = sigs[sigs.length - 1];
-        firstSeen = Number(oldest?.blockTime ?? 0) || null;
-      }
-
-      for (const sigRow of sigs.slice(0, 2)) {
-        const signature = String(sigRow?.signature ?? "");
-        if (!signature) continue;
-        const tx = await fetchParsedTransaction(signature);
-        if (!tx) continue;
-
-        funder ||= extractSystemFunder(tx, holder.wallet);
-
-        for (const tr of trackedTokenTransfers(tx, mint, currentHolders)) {
-          const key = `${tr.from}>${tr.to}`;
-          const existing = directTransfers.get(key);
-          if (!existing || tr.amount > existing.amount) {
-            directTransfers.set(key, {
-              ...tr,
-              signature,
-              blockTime: Number(tx.blockTime ?? sigRow?.blockTime ?? 0),
-            });
-          }
-        }
-        await sleep(70);
-      }
+      fingerprints.push(await fingerprintWallet(mint, holder.wallet, currentHolders, directEdges));
     } catch {
-      // Public RPC may rate-limit individual wallets; keep the rest of the analysis.
+      fingerprints.push({ wallet: holder.wallet, funders: [], signers: [], tokenBuyTimes: [], signatures: [] });
     }
-
-    evidence.push({ wallet: holder.wallet, funder, firstSeen });
-    await sleep(70);
+    await sleep(55);
   }
 
+  const scores = new Map<string, { score: number; signals: Set<string>; funder?: string }>();
+
+  // Strong signal #1: same wallet funded multiple holder wallets.
   const byFunder = new Map<string, string[]>();
-  for (const item of evidence) {
-    if (!item.funder || currentHolders.has(item.funder)) continue;
-    const list = byFunder.get(item.funder) ?? [];
-    list.push(item.wallet);
-    byFunder.set(item.funder, list);
-  }
-
-  let links = 0;
-  for (const [funder, wallets] of byFunder) {
-    if (wallets.length < 2) continue;
-    for (const wallet of wallets) {
-      await db.from("holdings").update({ funder }).eq("token_mint", mint).eq("wallet", wallet);
+  for (const fp of fingerprints) {
+    for (const funder of fp.funders) {
+      const list = byFunder.get(funder) ?? [];
+      list.push(fp.wallet);
+      byFunder.set(funder, list);
     }
+  }
+  for (const [funder, walletsRaw] of byFunder) {
+    const wallets = unique(walletsRaw);
+    if (wallets.length < 2) continue;
     for (let i = 0; i < wallets.length; i++) {
       for (let j = i + 1; j < wallets.length; j++) {
-        const [wallet_a, wallet_b] = [wallets[i], wallets[j]].sort();
-        await db.from("wallet_links").upsert({
-          token_mint: mint,
-          wallet_a,
-          wallet_b,
-          kind: "funder",
-          evidence: `common_funder:${funder}`,
-          signal_count: 1,
-          last_seen: new Date().toISOString(),
-        });
-        links++;
+        addScore(scores, wallets[i], wallets[j], 4, `common_funder:${funder}`, funder);
+      }
+    }
+    // Do not exclude a funder just because it is itself a holder. If wallet A
+    // funded B and C, all three are relevant to the same on-chain cluster.
+    if (currentHolders.has(funder)) {
+      for (const wallet of wallets) addScore(scores, funder, wallet, 5, `direct_funder:${funder}`, funder);
+    }
+  }
+
+  // Strong signal #2: same external signer/authority appears on transactions
+  // for multiple holders.
+  const bySigner = new Map<string, string[]>();
+  for (const fp of fingerprints) {
+    for (const signer of fp.signers) {
+      const list = bySigner.get(signer) ?? [];
+      list.push(fp.wallet);
+      bySigner.set(signer, list);
+    }
+  }
+  for (const [signer, walletsRaw] of bySigner) {
+    const wallets = unique(walletsRaw);
+    if (wallets.length < 2) continue;
+    for (let i = 0; i < wallets.length; i++) {
+      for (let j = i + 1; j < wallets.length; j++) {
+        addScore(scores, wallets[i], wallets[j], 3, `common_signer:${signer}`);
       }
     }
   }
 
-  const timed = evidence.filter((x) => x.firstSeen).sort((a, b) => Number(a.firstSeen) - Number(b.firstSeen));
-  for (let i = 0; i < timed.length; i++) {
-    for (let j = i + 1; j < timed.length; j++) {
-      const delta = Math.abs(Number(timed[j].firstSeen) - Number(timed[i].firstSeen));
-      if (delta > 90) break;
-      const [wallet_a, wallet_b] = [timed[i].wallet, timed[j].wallet].sort();
-      await db.from("wallet_links").upsert({
-        token_mint: mint,
-        wallet_a,
-        wallet_b,
-        kind: "timing",
-        evidence: `activity_within:${delta}s`,
-        signal_count: 1,
-        last_seen: new Date().toISOString(),
-      });
-      links++;
+  // Strong signal #3: direct token flow between holders.
+  for (const edge of directEdges.values()) {
+    addScore(scores, edge.from, edge.to, 5, `direct_token_transfer:${edge.signature}`);
+  }
+
+  // Supporting signal: token acquisition within 75 seconds. Timing alone is
+  // deliberately too weak to create a cluster.
+  for (let i = 0; i < fingerprints.length; i++) {
+    for (let j = i + 1; j < fingerprints.length; j++) {
+      const a = fingerprints[i];
+      const b = fingerprints[j];
+      let bestDelta = Number.POSITIVE_INFINITY;
+      for (const ta of a.tokenBuyTimes) {
+        for (const tb of b.tokenBuyTimes) bestDelta = Math.min(bestDelta, Math.abs(ta - tb));
+      }
+      if (bestDelta <= 75) addScore(scores, a.wallet, b.wallet, 1, `buy_timing:${bestDelta}s`);
     }
   }
 
-  // Persist deterministic cluster ids from the evidence graph so linked
-  // holders are not only connected by lines but also share a visual cluster.
-  const adjacency = new Map<string, Set<string>>();
-  const { data: relationRows } = await db
-    .from("wallet_links")
-    .select("wallet_a,wallet_b")
-    .eq("token_mint", mint);
+  // Same parsed transaction touching both wallets is another strong relation.
+  const signatureOwners = new Map<string, string[]>();
+  for (const fp of fingerprints) {
+    for (const sig of fp.signatures) {
+      const list = signatureOwners.get(sig) ?? [];
+      list.push(fp.wallet);
+      signatureOwners.set(sig, list);
+    }
+  }
+  for (const [sig, walletsRaw] of signatureOwners) {
+    const wallets = unique(walletsRaw);
+    if (wallets.length < 2) continue;
+    for (let i = 0; i < wallets.length; i++) {
+      for (let j = i + 1; j < wallets.length; j++) {
+        addScore(scores, wallets[i], wallets[j], 4, `same_transaction:${sig}`);
+      }
+    }
+  }
 
-  for (const row of relationRows ?? []) {
-    const a = String(row.wallet_a);
-    const b = String(row.wallet_b);
-    if (!currentHolders.has(a) || !currentHolders.has(b)) continue;
+  // Rebuild the weak links from the current evidence. Strong funder links are
+  // retained/upserted; old timing-only noise is cleared every analysis pass.
+  await db.from("wallet_links").delete().eq("token_mint", mint).eq("kind", "timing");
+
+  let links = 0;
+  const acceptedPairs = new Set<string>();
+
+  for (const [key, scored] of scores) {
+    // A single timing coincidence is not enough. We require either one strong
+    // signal (score >= 3) or multiple independent weak/supporting signals.
+    if (scored.score < 3) continue;
+    const { wallet_a, wallet_b } = parsePair(key);
+    if (!currentHolders.has(wallet_a) || !currentHolders.has(wallet_b)) continue;
+
+    const hasFunder = [...scored.signals].some((s) => s.startsWith("common_funder:") || s.startsWith("direct_funder:"));
+    const kind = hasFunder ? "funder" : "timing";
+    const evidence = [...scored.signals].join(";");
+    const signalCount = scored.signals.size;
+
+    await db.from("wallet_links").upsert({
+      token_mint: mint,
+      wallet_a,
+      wallet_b,
+      kind,
+      evidence,
+      signal_count: signalCount,
+      last_seen: new Date().toISOString(),
+    });
+
+    if (scored.funder) {
+      await db.from("holdings").update({ funder: scored.funder })
+        .eq("token_mint", mint)
+        .in("wallet", [wallet_a, wallet_b]);
+    }
+
+    acceptedPairs.add(key);
+    links++;
+  }
+
+  let transfers = 0;
+  for (const edge of directEdges.values()) {
+    await db.from("wallet_edges").upsert({
+      token_mint: mint,
+      from_wallet: edge.from,
+      to_wallet: edge.to,
+      kind: "transfer",
+      amount: edge.amount,
+      usd_value: 0,
+      tx_count: 1,
+      first_seen: edge.blockTime ? new Date(edge.blockTime * 1000).toISOString() : new Date().toISOString(),
+      last_seen: edge.blockTime ? new Date(edge.blockTime * 1000).toISOString() : new Date().toISOString(),
+      last_signature: edge.signature,
+    });
+    acceptedPairs.add(pairKey(edge.from, edge.to));
+    transfers++;
+  }
+
+  // Build clusters only from accepted high-confidence relations.
+  const adjacency = new Map<string, Set<string>>();
+  const connect = (a: string, b: string) => {
+    if (!currentHolders.has(a) || !currentHolders.has(b)) return;
     const aa = adjacency.get(a) ?? new Set<string>();
     const bb = adjacency.get(b) ?? new Set<string>();
     aa.add(b); bb.add(a);
     adjacency.set(a, aa); adjacency.set(b, bb);
-  }
-  for (const edge of directTransfers.values()) {
-    const aa = adjacency.get(edge.from) ?? new Set<string>();
-    const bb = adjacency.get(edge.to) ?? new Set<string>();
-    aa.add(edge.to); bb.add(edge.from);
-    adjacency.set(edge.from, aa); adjacency.set(edge.to, bb);
+  };
+  for (const key of acceptedPairs) {
+    const { wallet_a, wallet_b } = parsePair(key);
+    connect(wallet_a, wallet_b);
   }
 
+  // Reset only wallets in the analysis window, then assign stable component
+  // ids based on the lexicographically smallest wallet in each component.
+  await db.from("holdings").update({ cluster_id: null })
+    .eq("token_mint", mint)
+    .in("wallet", target.map((h) => h.wallet));
+
   const visited = new Set<string>();
-  let clusterId = 1;
-  for (const wallet of adjacency.keys()) {
+  let clusters = 0;
+  for (const wallet of [...adjacency.keys()].sort()) {
     if (visited.has(wallet)) continue;
     const queue = [wallet];
     const component: string[] = [];
@@ -247,42 +420,32 @@ export async function analyzeHolderRelations(
       }
     }
     if (component.length < 2) continue;
-    for (const member of component) {
-      await db.from("holdings")
-        .update({ cluster_id: clusterId })
-        .eq("token_mint", mint)
-        .eq("wallet", member);
-    }
-    clusterId++;
+
+    const seed = [...component].sort()[0];
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) hash = ((hash * 31) + seed.charCodeAt(i)) | 0;
+    const clusterId = Math.abs(hash % 1_000_000) + 1;
+
+    await db.from("holdings").update({ cluster_id: clusterId })
+      .eq("token_mint", mint)
+      .in("wallet", component);
+    clusters++;
   }
 
-  let transfers = 0;
-  for (const edge of directTransfers.values()) {
-    await db.from("wallet_edges").upsert({
-      token_mint: mint,
-      from_wallet: edge.from,
-      to_wallet: edge.to,
-      kind: "transfer",
-      amount: edge.amount,
-      usd_value: 0,
-      tx_count: 1,
-      first_seen: edge.blockTime ? new Date(edge.blockTime * 1000).toISOString() : new Date().toISOString(),
-      last_seen: edge.blockTime ? new Date(edge.blockTime * 1000).toISOString() : new Date().toISOString(),
-      last_signature: edge.signature,
-    });
-    transfers++;
-  }
+  const payload = {
+    analyzed: target.length,
+    links,
+    transfers,
+    clusters,
+    candidatePairs: scores.size,
+    updatedAt: new Date().toISOString(),
+  };
 
   await db.from("api_cache").upsert({
     cache_key: cacheKey,
-    payload: {
-      analyzed: top.length,
-      links,
-      transfers,
-      updatedAt: new Date().toISOString(),
-    },
+    payload,
     updated_at: new Date().toISOString(),
   });
 
-  return { cached: false, analyzed: top.length, links, transfers };
+  return { cached: false, ...payload };
 }
