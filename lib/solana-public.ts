@@ -147,3 +147,26 @@ export async function fetchDexScreenerToken(mint: string) {
     volume24h: Number(best?.volume?.h24 ?? 0),
   };
 }
+
+
+export async function fetchRecentSignatures(address: string, limit = 8) {
+  return rpc<any[]>("getSignaturesForAddress", [
+    address,
+    { limit, commitment: "confirmed" },
+  ]);
+}
+
+export async function fetchParsedTransaction(signature: string) {
+  try {
+    return await rpc<any>("getTransaction", [
+      signature,
+      {
+        commitment: "confirmed",
+        encoding: "jsonParsed",
+        maxSupportedTransactionVersion: 0,
+      },
+    ]);
+  } catch {
+    return null;
+  }
+}
