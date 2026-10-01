@@ -11,18 +11,14 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const body = await req.json().catch(() => null) as { live?: boolean; source?: "helius" | "solscan" } | null;
+  const body = await req.json().catch(() => null) as { live?: boolean; source?: "free" | "solscan" } | null;
   if (typeof body?.live !== "boolean") {
     return NextResponse.json({ error: "invalid_live_state" }, { status: 400 });
   }
 
-  if (body.source !== "solscan") {
-    await setNetworkLive(body.live);
-  }
-
-  return NextResponse.json({
+    return NextResponse.json({
     live: body.live,
-    source: body.source ?? "helius",
+    source: body.source ?? "free",
     mode: "local-control",
   }, {
     headers: { "cache-control": "no-store, max-age=0" },
