@@ -62,7 +62,7 @@ type HotPath = {
   confidence?: number;
 };
 
-type MarketViewMode = "map" | "galaxy" | "list";
+type MarketViewMode = "map" | "list";
 type MarketAxis = "marketCap" | "liquidityUsd" | "volume24h";
 
 type Flow = {
@@ -125,14 +125,6 @@ function trafficState(t: MarketToken) {
   return { label: "FLAT", symbol: "•", cls: "flat" };
 }
 
-function hypeStarCount(score: number) {
-  if (score >= 85) return 5;
-  if (score >= 70) return 4;
-  if (score >= 55) return 3;
-  if (score >= 35) return 2;
-  if (score >= 20) return 1;
-  return 0;
-}
 
 function planetGradientId(t: MarketToken) {
   const traffic = trafficState(t);
@@ -188,10 +180,9 @@ export default function MarketMap() {
   const [updated, setUpdated] = useState<string | null>(null);
   const [networkSwaps1h, setNetworkSwaps1h] = useState(0);
   const [streamLive, setStreamLive] = useState(true);
-  const [viewMode, setViewMode] = useState<MarketViewMode>("galaxy");
+  const [viewMode, setViewMode] = useState<MarketViewMode>("map");
   const [xAxis, setXAxis] = useState<MarketAxis>("marketCap");
   const [showTrafficOverlay, setShowTrafficOverlay] = useState(true);
-  const [showHypeOverlay, setShowHypeOverlay] = useState(true);
   const [autoGraph, setAutoGraph] = useState(true);
   const lastAutoExpand = useRef(0);
   const [tabVisible, setTabVisible] = useState(true);
@@ -336,7 +327,7 @@ export default function MarketMap() {
     if (!s) return;
     const nodes = [...nodeMap.current.values()];
     for (const node of nodes) {
-      if (node.isCore) node.r = node.symbol === "SOL" ? (viewMode === "galaxy" ? 58 : 42) : 34;
+      if (node.isCore) node.r = node.symbol === "SOL" ? 42 : 34;
       else node.r = viewMode === "map" ? marketMapRadius(node) : radius(node);
     }
     const links = [...flows, ...expansionFlows]
@@ -344,8 +335,8 @@ export default function MarketMap() {
       .map((f) => ({ source: f.from, target: f.to, usd1h: f.usd1h }));
 
     s.nodes(nodes);
-    s.force("center", forceCenter(size.w / 2, size.h / 2).strength(viewMode === "map" ? 0.005 : 0.025));
-    s.force("charge", forceManyBody().strength((d: any) => viewMode === "map" ? (d.isCore ? -20 : -18) : (d.isCore ? -310 : -72)));
+    s.force("center", forceCenter(size.w / 2, size.h / 2).strength(0.005));
+    s.force("charge", forceManyBody().strength((d: any) => d.isCore ? -20 : -18));
     s.force("x", forceX<any>((d) => {
       if (viewMode === "map") {
         if (d.isCore) return size.w / 2;
@@ -361,7 +352,7 @@ export default function MarketMap() {
       }
       const imbalance = (d.buys1h - d.sells1h) / Math.max(1, d.buys1h + d.sells1h);
       return size.w / 2 + imbalance * size.w * 0.28;
-    }).strength((d: any) => viewMode === "map" ? (d.isCore ? .02 : .46) : (d.isCore ? 0.18 : 0.045)));
+    }).strength((d: any) => d.isCore ? .02 : .46));
     s.force("y", forceY<any>((d) => {
       if (viewMode === "map") {
         if (d.isCore) return size.h * .58;
@@ -371,13 +362,13 @@ export default function MarketMap() {
       if (d.isCore) return d.symbol === "SOL" ? size.h * 0.52 : size.h * 0.48;
       const activityRank = Math.min(1, Math.log10(Math.max(1, d.volume1h)) / 7);
       return size.h * (0.58 - activityRank * 0.24);
-    }).strength((d: any) => viewMode === "map" ? (d.isCore ? .02 : .5) : (d.isCore ? 0.18 : 0.04)));
+    }).strength((d: any) => d.isCore ? .02 : .5));
     s.force("link", forceLink<any, any>(viewMode === "map" && !showTrafficOverlay ? [] : links)
       .id((d: any) => d.mint)
       .distance((l: any) => 135 + Math.max(0, 100 - Math.log10(Math.max(1, l.usd1h)) * 10))
       .strength((l: any) => Math.min(0.32, 0.06 + Math.log10(Math.max(1, l.usd1h)) * 0.03)));
-    s.force("collide", forceCollide<any>((d) => d.r + (viewMode === "map" ? 24 : d.isCore ? 28 : 22)).strength(0.99));
-    s.alpha(viewMode === "map" ? .58 : .72).restart();
+    s.force("collide", forceCollide<any>((d) => d.r + 24).strength(0.99));
+    s.alpha(.58).restart();
   }, [size, tokens, flows, expansionFlows, viewMode, xAxis, showTrafficOverlay, axisStats]);
 
   const applySnapshot = (j: any) => {
@@ -616,12 +607,7 @@ export default function MarketMap() {
   }
 
   const nodes = [...nodeMap.current.values()];
-  const galaxyVisibleMints = new Set(tokens.slice(0, 60).map((t) => t.mint));
-  const renderedNodes = viewMode === "map"
-    ? nodes.filter((n) => !n.isCore)
-    : viewMode === "galaxy"
-      ? nodes.filter((n) => n.isCore || galaxyVisibleMints.has(n.mint))
-      : nodes;
+  const renderedNodes = viewMode === "map" ? nodes.filter((n) => !n.isCore) : nodes;
   const combinedFlows = [...flows, ...expansionFlows];
   const hotFlowKeys = new Set([
     ...[...combinedFlows]
@@ -643,17 +629,6 @@ export default function MarketMap() {
     .map((f) => ({ ...f, source: nodeMap.current.get(f.from), target: nodeMap.current.get(f.to) }))
     .filter((f) => f.source && f.target)
     .slice(0, 100);
-
-  const cometNodes = viewMode === "galaxy"
-    ? renderedNodes
-        .filter((n) => !n.isCore)
-        .sort((a, b) => {
-          const scoreA = hypeScore(a) * 1.3 + Math.log10(Math.max(1, Number(a.netFlowUsd1h ?? 0) + a.volume1h + a.buys1h * 80)) * 12;
-          const scoreB = hypeScore(b) * 1.3 + Math.log10(Math.max(1, Number(b.netFlowUsd1h ?? 0) + b.volume1h + b.buys1h * 80)) * 12;
-          return scoreB - scoreA;
-        })
-        .slice(0, 28)
-    : renderedNodes.filter((n) => !n.isCore);
 
   const netFlowByMint = new Map<string, number>();
   for (const flow of combinedFlows) {
@@ -705,10 +680,9 @@ export default function MarketMap() {
           <div className="reference-map-toolbar neon-map-toolbar">
             <div className="market-view-switch">
               <button className={viewMode === "map" ? "active" : ""} onClick={() => setViewMode("map")}>▦ Map</button>
-              <button className={viewMode === "galaxy" ? "active" : ""} onClick={() => setViewMode("galaxy")}>✦ Galaxy</button>
               <button className={viewMode === "list" ? "active" : ""} onClick={() => setViewMode("list")}>☷ List</button>
             </div>
-            <div className="market-galaxy-filters">
+            <div className="market-map-filters">
               <button className="sector-control">◉ All Sectors⌄</button>
               <div className="timeframe-switch">
                 <button>1H</button><button>6H</button><button className="active">24H</button><button>7D</button>
@@ -722,7 +696,6 @@ export default function MarketMap() {
                 <option value="volume24h">24h volume</option>
               </select>}
               <button className={showTrafficOverlay ? "active" : ""} onClick={() => setShowTrafficOverlay((v) => !v)}>⇄ Traffic</button>
-              <button className={showHypeOverlay ? "active" : ""} onClick={() => setShowHypeOverlay((v) => !v)}>✦ Hype</button>
               <button
                 className={`go-live-control ${streamLive === true ? "is-live" : ""}`}
                 onClick={() => changeLive(streamLive !== true)}
@@ -740,12 +713,10 @@ export default function MarketMap() {
           </div>}
           <div className="market-map-head reference-map-head">
             <div>
-              <strong>{viewMode === "map" ? "Solana Market Map" : viewMode === "galaxy" ? "Live Market Galaxy" : "Solana Token List"}</strong>
+              <strong>{viewMode === "map" ? "Solana Market Map" : "Solana Token List"}</strong>
               <span>{viewMode === "map"
                 ? "Y = price change 24h · X = selected market metric · size = activity · color = price movement"
-                : viewMode === "galaxy"
-                  ? "Real-time hype flow между Solana токени · comet trails показват посоката на интереса"
-                  : "Подреден списък с market, hype и traffic показатели"}</span>
+                : "Подреден списък с market, hype и traffic показатели"}</span>
             </div>
             <span>{updated ? `обновено ${new Date(updated).toLocaleTimeString("bg-BG")}` : "зареждане…"}</span>
           </div>
@@ -798,26 +769,6 @@ export default function MarketMap() {
                 <stop offset="68%" stopColor="#65727f" />
                 <stop offset="100%" stopColor="#303942" />
               </radialGradient>
-              <linearGradient id="cometTailIn" x1="0%" x2="100%">
-                <stop offset="0%" stopColor="#52e6b2" stopOpacity="0" />
-                <stop offset="55%" stopColor="#6bf3c5" stopOpacity=".28" />
-                <stop offset="100%" stopColor="#baffea" stopOpacity=".95" />
-              </linearGradient>
-              <linearGradient id="cometTailHot" x1="0%" x2="100%">
-                <stop offset="0%" stopColor="#ff8eea" stopOpacity="0" />
-                <stop offset="55%" stopColor="#a78bfa" stopOpacity=".36" />
-                <stop offset="100%" stopColor="#ffffff" stopOpacity="1" />
-              </linearGradient>
-              <linearGradient id="cometTailWarm" x1="0%" x2="100%">
-                <stop offset="0%" stopColor="#ff9d4d" stopOpacity="0" />
-                <stop offset="55%" stopColor="#ffc56e" stopOpacity=".34" />
-                <stop offset="100%" stopColor="#fff2c7" stopOpacity="1" />
-              </linearGradient>
-              <linearGradient id="cometFutureFade" x1="0%" x2="100%">
-                <stop offset="0%" stopColor="#ffffff" stopOpacity=".72" />
-                <stop offset="45%" stopColor="#eefaff" stopOpacity=".38" />
-                <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
-              </linearGradient>
               <pattern id="tinyStars" width="220" height="220" patternUnits="userSpaceOnUse">
                 <circle cx="18" cy="22" r="1" fill="#ffffff" opacity=".55" />
                 <circle cx="74" cy="38" r="1.2" fill="#dfe8ff" opacity=".38" />
@@ -862,7 +813,7 @@ export default function MarketMap() {
                 <text x={size.w / 2} y={size.h - 18} textAnchor="middle" className="axis-title">{xAxis === "marketCap" ? "MARKET CAP" : xAxis === "liquidityUsd" ? "LIQUIDITY" : "24H VOLUME"}</text>
               </g>
             </>}
-            {showTrafficOverlay && viewMode !== "galaxy" && visibleFlows.map((f, i) => {
+            {showTrafficOverlay && viewMode === "map" && visibleFlows.map((f, i) => {
               const source = f.source as Node;
               const target = f.target as Node;
               const p = edgePoint(source, target, 5);
@@ -898,74 +849,6 @@ export default function MarketMap() {
               </path>;
             })}
 
-            {showHypeOverlay && streamLive && cometNodes.flatMap((n, nodeIndex) => {
-              const hype = hypeScore(n);
-              const traffic = trafficState(n);
-              const buys = Math.max(0, n.buys1h);
-              const incoming = Math.max(0, Number(n.netFlowUsd1h ?? 0));
-              const totalTrades = Math.max(1, n.buys1h + n.sells1h);
-              const buyPressure = Math.max(0, (n.buys1h - n.sells1h) / totalTrades);
-              const trafficStrength = Math.log10(Math.max(1, incoming + buys * 55 + n.volume1h * .12));
-              const activityStrength = Math.log10(Math.max(1, buys * 35 + incoming + n.volume1h * .08));
-              const cometCount = Math.max(0, Math.min(5, Math.round(
-                (hype / 22) + activityStrength / 2.4 + trafficStrength / 2.2 + buyPressure * 3.2
-              )));
-              if (!cometCount) return [];
-
-              return Array.from({ length: cometCount }).map((_, cometIndex) => {
-                const angle = ((nodeIndex * 1.73 + cometIndex * 2.31) % (Math.PI * 2));
-                const distance = n.r + 82 + ((nodeIndex + cometIndex) % 4) * 26;
-                const spread = 18 + (cometIndex % 3) * 8;
-                const sx = n.x + Math.cos(angle) * distance + Math.sin(angle * 2.4) * spread;
-                const sy = n.y + Math.sin(angle) * distance + Math.cos(angle * 1.8) * spread;
-                const tx = n.x + Math.cos(angle) * (n.r + 5);
-                const ty = n.y + Math.sin(angle) * (n.r + 5);
-                const mx = (sx + tx) / 2;
-                const my = (sy + ty) / 2;
-                const bend = 18 + ((nodeIndex + cometIndex) % 4) * 7;
-                const cx = mx + Math.cos(angle + Math.PI / 2) * bend;
-                const cy = my + Math.sin(angle + Math.PI / 2) * bend;
-                const d = `M ${sx} ${sy} Q ${cx} ${cy} ${tx} ${ty}`;
-                const duration = Math.max(2.35, 8.4 - hype / 22 - Math.min(1.65, trafficStrength * .24));
-                const delay = -(((duration / Math.max(1, cometCount)) * cometIndex) + (nodeIndex % 5) * .21);
-                const size = hype >= 75 ? 3.1 : hype >= 45 ? 2.55 : 2.05;
-                const tailId = hype >= 70 ? "cometTailHot" : traffic.cls === "in" ? "cometTailIn" : "cometTailWarm";
-
-                return <g key={`holder-comet-wrap:${n.mint}:${cometIndex}`} pointerEvents="none">
-                  <g
-                    className="holder-comet"
-                    style={{ ["--comet-duration" as any]: `${duration}s`, ["--comet-delay" as any]: `${delay}s` }}
-                  >
-                    <path d="M -56 0 C -40 0 -22 0 -4 0" stroke={`url(#${tailId})`} strokeWidth={size * 1.6} strokeLinecap="round" fill="none" className="holder-comet-tail" />
-                    <path d="M 6 0 C 17 -1.5 30 1.2 48 0" className="holder-comet-future" />
-                    <ellipse cx="-1.5" cy="0" rx={size * 2.2} ry={size * 1.32} className="holder-comet-aura" />
-                    <circle r={size} className="holder-comet-head" />
-                    <circle r={Math.max(.8, size * .34)} className="holder-comet-core" />
-                    <animateMotion
-                      dur={`${duration}s`}
-                      begin={`${delay}s`}
-                      repeatCount="indefinite"
-                      path={d}
-                      rotate="auto"
-                    />
-                    <title>{`Incoming holder activity → ${n.symbol || n.name || n.mint.slice(0, 6)} · Hype ${hype}`}</title>
-                  </g>
-                  <g
-                    transform={`translate(${tx} ${ty})`}
-                    className="holder-impact"
-                    style={{
-                      ["--impact-duration" as any]: `${duration}s`,
-                      ["--impact-delay" as any]: `${delay}s`,
-                      ["--impact-power" as any]: Math.max(.45, Math.min(1.35, .45 + hype / 105 + trafficStrength / 15))
-                    }}
-                  >
-                    <circle r={size * 2.2} className="holder-impact-core" />
-                    <circle r={size * 5.3} className="holder-impact-ring holder-impact-ring-a" />
-                    {hype >= 65 && <circle r={size * 7.4} className="holder-impact-ring holder-impact-ring-b" />}
-                  </g>
-                </g>;
-              });
-            })}
             {renderedNodes.map((n, i) => {
               const color = flowColor(n);
               const total = Math.max(1, n.buys1h + n.sells1h);
@@ -987,22 +870,6 @@ export default function MarketMap() {
                   className={`planet-atmosphere ${planetGlowClass(n)} ${hotNodeMints.has(n.mint) ? "hot-path-node" : ""}`}
                   pointerEvents="none"
                 />
-                {!n.isCore && viewMode === "galaxy" && hype >= 20 && <>
-                  <circle
-                    r={n.r + 10 + hype * .08}
-                    className="planet-hype-aura planet-hype-aura-inner"
-                    strokeWidth={1 + hype * .018}
-                    strokeOpacity={Math.min(.82, .18 + hype / 135)}
-                    pointerEvents="none"
-                  />
-                  {hype >= 60 && <circle
-                    r={n.r + 18 + hype * .13}
-                    className="planet-hype-aura planet-hype-aura-outer"
-                    strokeWidth={1 + hype * .012}
-                    strokeOpacity={Math.min(.52, .08 + hype / 220)}
-                    pointerEvents="none"
-                  />}
-                </>}
                 <circle
                   r={n.r}
                   fill={n.isCore ? "#2b3138" : `url(#${planetGradientId(n)})`}
@@ -1066,33 +933,6 @@ export default function MarketMap() {
                   <circle r={n.r + 8} className="market-shockwave shockwave-a" pointerEvents="none" />
                   <circle r={n.r + 8} className="market-shockwave shockwave-b" pointerEvents="none" />
                 </>}
-                {viewMode !== "map" && !n.isCore && <g className="market-node-indicators" pointerEvents="none">
-                  <rect
-                    x={-n.r}
-                    y={-n.r - 18}
-                    width={Math.max(38, n.r * 1.25)}
-                    height="14"
-                    rx="7"
-                    className={`market-hype-pill ${hype >= 70 ? "hot" : hype >= 45 ? "warm" : ""}`}
-                  />
-                  <text
-                    x={-n.r + 7}
-                    y={-n.r - 8}
-                    className="market-hype-text"
-                  >H {hype}</text>
-                  <text
-                    x={n.r - 3}
-                    y={-n.r - 8}
-                    textAnchor="end"
-                    className={`market-traffic-text ${traffic.cls}`}
-                  >{traffic.symbol}</text>
-                  {(n.depth ?? 0) > 0 && <text
-                    x={0}
-                    y={n.r + 16}
-                    textAnchor="middle"
-                    className="market-depth-label"
-                  >L{n.depth}/3 · {netFlow >= 0 ? "+" : ""}{fmtUsd(netFlow)}</text>}
-                </g>}
               </g>;
             })}
           </svg>}
@@ -1100,7 +940,6 @@ export default function MarketMap() {
           <div className="market-zoom-controls">
             <button>−</button><span>100%</span><button>＋</button><button>⛶</button>
           </div>
-          <div className="hype-flow-legend"><span>☄</span><b>Hype Flow</b><small>Low</small><i /><small>High</small></div>
           <div className="market-legend">
             <span><i className="market-buy-dot" />капитал към токена</span>
             <span><i className="market-neutral-dot" />SOL / USDC / USDT центрове</span>
@@ -1118,7 +957,7 @@ export default function MarketMap() {
             {expansionLoading && <div className="market-expanding">Разгръщам wallet връзките…</div>}
             <div className="market-hot-list reference-side-card">
               <div className="market-hot-title">
-                <strong>Galactic Hype</strong>
+                <strong>Market Hype</strong>
                 {hotPath.length > 0 && <button className="follow-hot-path" onClick={followHotPath}>Проследи Hot Path</button>}
               </div>
               {hottest.map((t, i) => {
@@ -1158,7 +997,7 @@ export default function MarketMap() {
               </button>)}
             </div>}
             {hotPath.length > 0 && <div className="market-hot-path-list reference-side-card">
-              <strong>Traffic Constellation</strong>
+              <strong>Traffic Flow</strong>
               {hotPath.slice(0, 4).map((step, i) => {
                 const from = nodeMap.current.get(step.from);
                 const to = nodeMap.current.get(step.to);
