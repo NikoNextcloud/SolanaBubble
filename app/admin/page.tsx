@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import WorkspaceShell from "@/components/WorkspaceShell";
 
 const TABLES = [
   ["tokens", "Токени"],
@@ -89,7 +90,7 @@ export default function AdminPage() {
     setStatus("Всички данни са изчистени безопасно. Структурата на базата е запазена.");
   }
 
-  return <main className="admin-page">
+  return <WorkspaceShell section="Database"><main className="admin-page">
     <header className="admin-header">
       <div><a href="/" className="brand">SolanaBubble</a><h1>Управление на базата данни</h1></div>
       <a href="/" className="admin-back">← Начална страница</a>
@@ -141,5 +142,5 @@ export default function AdminPage() {
     </section>
 
     <p className="admin-note">ADMIN_SECRET се пази само в sessionStorage на този браузърен таб. Единственият бутон за изтриване премахва само редовете с данни. Таблиците, схемата, миграциите, RLS правилата и environment настройките остават непокътнати.</p>
-  </main>;
+  </main></WorkspaceShell>;
 }
