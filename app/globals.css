@@ -360,3 +360,37 @@ body{background:#1b2025!important}
 .holder-quick-cluster{width:100%;margin-top:10px;display:grid;grid-template-columns:minmax(0,1fr) auto 12px;align-items:center;gap:8px;padding:11px 12px;border:1px solid #3f464d;border-radius:12px;background:linear-gradient(90deg,#32383f,#252a30);color:#eef1f4;text-align:left;cursor:pointer}
 .holder-quick-cluster span{font-size:12px;font-weight:700}.holder-quick-cluster b{font-size:11px}.holder-quick-cluster i{font-style:normal;color:#aeb6bd}
 @media(max-width:700px){.holder-quick-card{width:min(330px,calc(100vw - 32px));left:8px;top:48px}}
+
+
+/* Movable holder controls + safer popup placement */
+.movable-control{user-select:none}
+.panel-drag-handle{
+  width:18px;
+  height:28px;
+  display:grid;
+  place-items:center;
+  flex:0 0 18px;
+  border-radius:6px;
+  color:#7f8993;
+  font-size:12px;
+  line-height:1;
+  cursor:grab;
+  touch-action:none;
+}
+.panel-drag-handle:hover{background:#30373e;color:#dce2e7}
+.panel-drag-handle:active{cursor:grabbing}
+.holder-live-bar{right:auto!important}
+.holder-quick-card{z-index:20!important;max-height:calc(100% - 70px);overflow:auto}
+.holder-filter-menu{z-index:21!important}
+.zoom-controls{right:auto!important}
+.holder-graph-toolbar{
+  top:60px!important;
+  left:16px!important;
+  right:16px!important;
+  padding-right:6px;
+}
+.insight-map svg{padding-top:48px;box-sizing:border-box}
+@media(max-width:900px){
+  .holder-graph-toolbar{top:66px!important}
+  .insight-map svg{padding-top:58px}
+}
