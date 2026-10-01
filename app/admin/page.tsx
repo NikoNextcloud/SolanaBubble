@@ -117,14 +117,14 @@ export default function AdminPage() {
         <small>{usage?.solscan?.total_requests_24h != null ? `${Number(usage.solscan.total_requests_24h).toLocaleString()} заявки / 24ч.` : "—"}</small>
       </div>
       <div>
-        <span>Helius наблюдаван трафик</span>
-        <b>{usage?.helius?.observedSwaps24h != null ? Number(usage.helius.observedSwaps24h).toLocaleString() : "—"}</b>
-        <small>on-chain swaps, записани от нас за 24ч.</small>
+        <span>Solana Public RPC</span>
+        <b>{usage?.publicRpc?.healthy ? "ONLINE" : usage ? "OFFLINE" : "—"}</b>
+        <small>{usage?.publicRpc?.status || "Натисни Обнови"}</small>
       </div>
       <div>
-        <span>Helius оставащи кредити</span>
-        <b>—</b>
-        <small>{usage?.helius?.note || "Helius не дава надежден публичен usage endpoint за точния остатък."}</small>
+        <span>Безплатен режим</span>
+        <b>RPC + DEX</b>
+        <small>{usage?.publicRpc?.note || "Solana Public RPC + DexScreener"}</small>
       </div>
     </section>
 
