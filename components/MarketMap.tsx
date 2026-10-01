@@ -98,8 +98,9 @@ export default function MarketMap() {
   const [motionNow, setMotionNow] = useState(0);
   const [updated, setUpdated] = useState<string | null>(null);
   const [networkSwaps1h, setNetworkSwaps1h] = useState(0);
-  const [dataSource, setDataSource] = useState<DataSource | null>(null);
-  const [streamLive, setStreamLive] = useState<boolean | null>(null);
+  const [dataSource, setDataSource] = useState<DataSource>("free");
+  const [streamLive, setStreamLive] = useState(true);
+  const [tabVisible, setTabVisible] = useState(true);
   const [autoPaused, setAutoPaused] = useState(false);
   const [selected, setSelected] = useState<MarketToken | null>(null);
   const [loadingMint, setLoadingMint] = useState<string | null>(null);
@@ -236,16 +237,22 @@ export default function MarketMap() {
     setDataSource(source);
     setSelected(null);
     setError("");
+    setStreamLive(true);
     try {
       const cached = localStorage.getItem(`solanabubble:market-snapshot:${source}`);
       if (cached) applySnapshot(JSON.parse(cached));
     } catch {}
-
-    setStreamLive(true);
   }
 
   useEffect(() => {
-    if (streamLive !== true || !dataSource) return;
+    const syncVisibility = () => setTabVisible(document.visibilityState === "visible");
+    syncVisibility();
+    document.addEventListener("visibilitychange", syncVisibility);
+    return () => document.removeEventListener("visibilitychange", syncVisibility);
+  }, []);
+
+  useEffect(() => {
+    if (streamLive !== true || !dataSource || !tabVisible) return;
     let stopped = false;
 
     async function load() {
@@ -263,29 +270,17 @@ export default function MarketMap() {
     }
 
     load();
-    const id = window.setInterval(load, 15000);
+    const id = window.setInterval(load, dataSource === "free" ? 20000 : 30000);
     return () => { stopped = true; window.clearInterval(id); };
-  }, [streamLive, dataSource]);
+  }, [streamLive, dataSource, tabVisible]);
 
   async function changeLive(next: boolean, automatic = false) {
     setError("");
-    try {
-      const r = await fetch("/api/live-mode", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ live: next, source: dataSource ?? "free" }),
-      });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || "live mode");
-      if (j.warning) setError(j.warning);
-      setStreamLive(next);
-      setAutoPaused(automatic && !next);
-      lastActivity.current = Date.now();
-      if (next) sim.current?.alpha(0.55).restart();
-      else sim.current?.stop();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Неуспешна промяна на live режима.");
-    }
+    setStreamLive(next);
+    setAutoPaused(automatic && !next);
+    lastActivity.current = Date.now();
+    if (next) sim.current?.alpha(0.55).restart();
+    else sim.current?.stop();
   }
 
   useEffect(() => {
@@ -345,28 +340,6 @@ export default function MarketMap() {
     .filter((f) => f.source && f.target)
     .slice(0, 100);
   void tick;
-
-  if (!dataSource) {
-    return (
-      <main className="source-gate">
-        <section className="source-card">
-          <div className="source-brand">SolanaBubble</div>
-          <h1>Избери източник на данни</h1>
-          <p>Нищо няма да се стартира, докато не избереш източник. Така не харчим излишни API кредити.</p>
-          <div className="source-options">
-            <button onClick={() => chooseSource("free")}>
-              <strong>Helius</strong>
-              <span>Live on-chain DEX поток, holder събития и webhook данни.</span>
-            </button>
-            <button onClick={() => chooseSource("solscan")}>
-              <strong>Solscan</strong>
-              <span>Кеширани market/token данни без да стартираме Helius stream.</span>
-            </button>
-          </div>
-        </section>
-      </main>
-    );
-  }
 
   return (
     <main className="market-shell">
