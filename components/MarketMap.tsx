@@ -193,7 +193,7 @@ export default function MarketMap() {
   const [error, setError] = useState("");
   const lastActivity = useRef(Date.now());
   const drag = useRef({ active: false, pointerId: -1, mint: "", lastX: 0, lastY: 0, moved: false });
-  const [mapPan, setMapPan] = useState({ x: 0, y: 0 });
+  const [mapView, setMapView] = useState({ x: 0, y: 0, k: 1 });
   const mapPanDrag = useRef({ active: false, pointerId: -1, startX: 0, startY: 0, baseX: 0, baseY: 0 });
 
   const beginMapPan = (e: React.PointerEvent<SVGSVGElement>) => {
@@ -203,8 +203,8 @@ export default function MarketMap() {
       pointerId: e.pointerId,
       startX: e.clientX,
       startY: e.clientY,
-      baseX: mapPan.x,
-      baseY: mapPan.y,
+      baseX: mapView.x,
+      baseY: mapView.y,
     };
     e.currentTarget.setPointerCapture(e.pointerId);
   };
@@ -212,10 +212,11 @@ export default function MarketMap() {
   const moveMapPan = (e: React.PointerEvent<SVGSVGElement>) => {
     const p = mapPanDrag.current;
     if (!p.active || p.pointerId !== e.pointerId) return;
-    setMapPan({
+    setMapView((current) => ({
+      ...current,
       x: p.baseX + e.clientX - p.startX,
       y: p.baseY + e.clientY - p.startY,
-    });
+    }));
   };
 
   const endMapPan = (e: React.PointerEvent<SVGSVGElement>) => {
@@ -223,6 +224,33 @@ export default function MarketMap() {
     if (!p.active || p.pointerId !== e.pointerId) return;
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
     p.active = false;
+  };
+
+  const zoomMapAt = (clientX: number, clientY: number, factor: number, svg: SVGSVGElement) => {
+    const rect = svg.getBoundingClientRect();
+    const px = clientX - rect.left;
+    const py = clientY - rect.top;
+    setMapView((current) => {
+      const k = Math.max(.45, Math.min(3.2, current.k * factor));
+      const ratio = k / current.k;
+      return {
+        k,
+        x: px - (px - current.x) * ratio,
+        y: py - (py - current.y) * ratio,
+      };
+    });
+  };
+
+  const handleMapWheel = (e: React.WheelEvent<SVGSVGElement>) => {
+    e.preventDefault();
+    zoomMapAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.12 : 1 / 1.12, e.currentTarget);
+  };
+
+  const zoomMapBy = (factor: number) => {
+    const svg = wrap.current?.querySelector("svg");
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    zoomMapAt(rect.left + rect.width / 2, rect.top + rect.height / 2, factor, svg);
   };
 
   const savePinnedMarketNodes = () => {
@@ -287,7 +315,7 @@ export default function MarketMap() {
   };
 
   const resetMarketPositions = () => {
-    setMapPan({ x: 0, y: 0 });
+    setMapView({ x: 0, y: 0, k: 1 });
     for (const n of nodeMap.current.values()) {
       n.fx = null;
       n.fy = null;
@@ -685,17 +713,38 @@ export default function MarketMap() {
 
   return (
     <main className="market-shell">
-      <div className="lovable-page-heading">
-        <div>
+      <div className="lovable-page-heading market-page-heading">
+        <div className="market-heading-copy">
           <div className="eyebrow"><i /> LIVE MARKET INTELLIGENCE</div>
           <h1>Token map</h1>
           <p>Discover the tokens and market activity moving across Solana.</p>
         </div>
+
+        <div className="market-heading-controls">
+          <div className="market-view-switch">
+            <button className={viewMode === "map" ? "active" : ""} onClick={() => setViewMode("map")}>▦ Map</button>
+            <button className={viewMode === "list" ? "active" : ""} onClick={() => setViewMode("list")}>☷ List</button>
+          </div>
+          <div className="market-toolbar-actions">
+            <div className="market-inline-search">⌕ <span>Search tokens, wallets, or narratives…</span></div>
+            {viewMode === "map" && <select value={xAxis} onChange={(e) => setXAxis(e.target.value as MarketAxis)} aria-label="Хоризонтална ос">
+              <option value="marketCap">Market cap</option>
+              <option value="liquidityUsd">Liquidity</option>
+              <option value="volume24h">24h volume</option>
+            </select>}
+            <button
+              className={`go-live-control ${streamLive === true ? "is-live" : ""}`}
+              onClick={() => changeLive(streamLive !== true)}
+            >{streamLive === true ? "◉ Live" : "◉ Go Live"}</button>
+          </div>
+        </div>
+
         <div className="page-actions">
           <button
             type="button"
             className={autoGraph ? "active" : ""}
             onClick={() => setAutoGraph((v) => !v)}
+            title="Автоматично разгръща токени със surge или buy pressure, най-много веднъж на 45 секунди."
           >{autoGraph ? "✦ Auto graph" : "○ Auto graph"}</button>
           <button type="button" onClick={resetMarketPositions}>↺ Нулирай позиции</button>
         </div>
@@ -725,24 +774,6 @@ export default function MarketMap() {
 
       <section className="market-workspace reference-market-workspace">
         <div className="market-map" ref={wrap}>
-          <div className="reference-map-toolbar neon-map-toolbar">
-            <div className="market-view-switch">
-              <button className={viewMode === "map" ? "active" : ""} onClick={() => setViewMode("map")}>▦ Map</button>
-              <button className={viewMode === "list" ? "active" : ""} onClick={() => setViewMode("list")}>☷ List</button>
-            </div>
-            <div className="market-toolbar-actions">
-              <div className="market-inline-search">⌕ <span>Search tokens, wallets, or narratives…</span></div>
-              {viewMode === "map" && <select value={xAxis} onChange={(e) => setXAxis(e.target.value as MarketAxis)} aria-label="Хоризонтална ос">
-                <option value="marketCap">Market cap</option>
-                <option value="liquidityUsd">Liquidity</option>
-                <option value="volume24h">24h volume</option>
-              </select>}
-              <button
-                className={`go-live-control ${streamLive === true ? "is-live" : ""}`}
-                onClick={() => changeLive(streamLive !== true)}
-              >{streamLive === true ? "◉ Live" : "◉ Go Live"}</button>
-            </div>
-          </div>
           {streamLive === false && <div className="pause-banner">
             {autoPaused ? "Автоматична пауза след 2 мин. без активност" : "Live режимът е на пауза"} · данните са от кеша
           </div>}
@@ -766,6 +797,7 @@ export default function MarketMap() {
             })}
           </div> : <svg
             className={`market-pan-surface ${mapPanDrag.current.active ? "is-panning" : ""}`}
+            onWheel={handleMapWheel}
             onPointerDown={beginMapPan}
             onPointerMove={moveMapPan}
             onPointerUp={endMapPan}
@@ -844,7 +876,7 @@ export default function MarketMap() {
                 <text x={size.w / 2} y={size.h - 18} textAnchor="middle" className="axis-title">{xAxis === "marketCap" ? "MARKET CAP" : xAxis === "liquidityUsd" ? "LIQUIDITY" : "24H VOLUME"}</text>
               </g>
             </>}
-            <g transform={`translate(${mapPan.x} ${mapPan.y})`} className="market-pan-layer">
+            <g transform={`translate(${mapView.x} ${mapView.y}) scale(${mapView.k})`} className="market-pan-layer">
             {renderedNodes.map((n, i) => {
               const color = flowColor(n);
               const total = Math.max(1, n.buys1h + n.sells1h);
@@ -955,9 +987,12 @@ export default function MarketMap() {
             </g>
           </svg>}
 
-          <div className="market-zoom-controls">
-            <button>−</button><span>100%</span><button>＋</button><button>⛶</button>
-          </div>
+          {viewMode === "map" && <div className="market-zoom-controls">
+            <button onClick={() => zoomMapBy(1 / 1.18)} aria-label="Zoom out">−</button>
+            <span>{Math.round(mapView.k * 100)}%</span>
+            <button onClick={() => zoomMapBy(1.18)} aria-label="Zoom in">＋</button>
+            <button onClick={() => setMapView({ x: 0, y: 0, k: 1 })} aria-label="Reset zoom">⛶</button>
+          </div>}
           <div className="market-legend">
             <span><i className="market-buy-dot" />капитал към токена</span>
             <span><i className="market-neutral-dot" />SOL / USDC / USDT центрове</span>
