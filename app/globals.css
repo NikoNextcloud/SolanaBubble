@@ -1714,3 +1714,78 @@ button.market-section-row:hover{background:#121f2b}
 }
 .market-section-empty strong{color:#e4edf4;font-size:18px}
 .market-section-empty span{max-width:520px;font-size:11px;line-height:1.6}
+
+
+/* Map hype glow: token brightness scales with Hype score, no connector arrows */
+.market-hype-glow{
+  fill:none;
+  stroke:rgba(95,232,255,.96);
+  transform-box:fill-box;
+  transform-origin:center;
+  filter:
+    drop-shadow(0 0 calc(4px + 10px * var(--hype-strength, .2)) rgba(82,225,255,.78))
+    drop-shadow(0 0 calc(8px + 20px * var(--hype-strength, .2)) rgba(126,91,255,.42));
+  animation:marketHypeBreath 3.2s ease-in-out infinite;
+}
+.market-hype-glow-outer{
+  stroke:rgba(170,116,255,.72);
+  filter:
+    drop-shadow(0 0 calc(7px + 13px * var(--hype-strength, .5)) rgba(136,93,255,.5))
+    drop-shadow(0 0 calc(12px + 24px * var(--hype-strength, .5)) rgba(70,212,255,.22));
+  animation-duration:4.4s;
+}
+@keyframes marketHypeBreath{
+  0%,100%{transform:scale(.985)}
+  50%{transform:scale(calc(1.015 + .035 * var(--hype-strength, .2)))}
+}
+
+/* Holder map readability: force all primary text to white on dark surfaces */
+.insight-stage,
+.insight-stage .workspace,
+.insight-stage .dash-topbar,
+.insight-stage .metric-strip,
+.insight-stage .view-tabs,
+.insight-stage .holder-toolbar-row,
+.insight-stage .work-content,
+.insight-stage .side,
+.insight-stage .data-view,
+.insight-stage .data-head{
+  color:#fff!important;
+}
+.insight-stage .brand,
+.insight-stage .token-title strong,
+.insight-stage .token-title span,
+.insight-stage .metric-strip span,
+.insight-stage .metric-strip b,
+.insight-stage .view-tabs button,
+.insight-stage .holder-toolbar-row,
+.insight-stage .holder-toolbar-row label,
+.insight-stage .holder-toolbar-row .shown-count,
+.insight-stage .holder-type-controls button,
+.insight-stage .holder-type-controls b,
+.insight-stage .side,
+.insight-stage .side h2,
+.insight-stage .side dt,
+.insight-stage .side dd,
+.insight-stage .eyebrow,
+.insight-stage .mint-full,
+.insight-stage .note,
+.insight-stage .data-head h2,
+.insight-stage .data-head span,
+.insight-stage .data-table,
+.insight-stage .data-table th,
+.insight-stage .data-table td,
+.insight-stage .graph-toolbar,
+.insight-stage .graph-toolbar label,
+.insight-stage .zoom-controls span,
+.insight-stage .ghost-control,
+.insight-stage .holder-quick-card,
+.insight-stage .holder-quick-card button{
+  color:#fff!important;
+}
+.insight-stage .view-tabs button:not(.active),
+.insight-stage .metric-strip span,
+.insight-stage .eyebrow,
+.insight-stage .data-table th{
+  opacity:.82;
+}
