@@ -105,6 +105,11 @@ export default function AdminPage() {
 
     <section className="usage-cards">
       <div>
+        <span>Supabase план</span>
+        <b>{usage?.supabase?.plan || "—"}</b>
+        <small>{usage?.supabase ? `${usage.supabase.tier} · ${usage.supabase.status}` : "Натисни Обнови"}</small>
+      </div>
+      <div>
         <span>Solscan оставащи CU</span>
         <b>{usage?.solscan?.remaining_cus != null ? Number(usage.solscan.remaining_cus).toLocaleString() : "—"}</b>
         <small>{usage?.solscanError ? `Грешка: ${usage.solscanError}` : usage?.solscan?.renew_date ? `Обновяване: ${new Date(usage.solscan.renew_date).toLocaleDateString("bg-BG")}` : "Натисни Обнови"}</small>
