@@ -8,7 +8,6 @@ const TABLES = [
   ["transactions", "Транзакции"],
   ["wallet_links", "Връзки между портфейли"],
   ["wallet_edges", "Потоци между портфейли"],
-  ["network_swaps", "Мрежови суапове"],
 ] as const;
 
 type Table = (typeof TABLES)[number][0];
@@ -18,7 +17,6 @@ function rowKey(table: Table, row: any) {
   if (table === "holdings") return `${row.token_mint}:${row.wallet}`;
   if (table === "exited_holders") return String(row.id);
   if (table === "transactions") return `${row.signature}:${row.wallet}:${row.token_mint}`;
-  if (table === "network_swaps") return row.signature;
   if (table === "wallet_links") return `${row.token_mint}:${row.wallet_a}:${row.wallet_b}:${row.kind}`;
   return `${row.token_mint}:${row.from_wallet}:${row.to_wallet}:${row.kind}`;
 }
@@ -28,7 +26,6 @@ function filtersFor(table: Table, row: any) {
   if (table === "holdings") return { token_mint: row.token_mint, wallet: row.wallet };
   if (table === "exited_holders") return { id: row.id };
   if (table === "transactions") return { signature: row.signature, wallet: row.wallet, token_mint: row.token_mint };
-  if (table === "network_swaps") return { signature: row.signature };
   if (table === "wallet_links") return { token_mint: row.token_mint, wallet_a: row.wallet_a, wallet_b: row.wallet_b, kind: row.kind };
   return { token_mint: row.token_mint, from_wallet: row.from_wallet, to_wallet: row.to_wallet, kind: row.kind };
 }
