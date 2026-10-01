@@ -785,6 +785,21 @@ export default function MarketMap() {
                 <stop offset="68%" stopColor="#65727f" />
                 <stop offset="100%" stopColor="#303942" />
               </radialGradient>
+              <linearGradient id="cometTailIn" x1="0%" x2="100%">
+                <stop offset="0%" stopColor="#52e6b2" stopOpacity="0" />
+                <stop offset="55%" stopColor="#6bf3c5" stopOpacity=".28" />
+                <stop offset="100%" stopColor="#baffea" stopOpacity=".95" />
+              </linearGradient>
+              <linearGradient id="cometTailHot" x1="0%" x2="100%">
+                <stop offset="0%" stopColor="#ff8eea" stopOpacity="0" />
+                <stop offset="55%" stopColor="#a78bfa" stopOpacity=".36" />
+                <stop offset="100%" stopColor="#ffffff" stopOpacity="1" />
+              </linearGradient>
+              <linearGradient id="cometTailWarm" x1="0%" x2="100%">
+                <stop offset="0%" stopColor="#ff9d4d" stopOpacity="0" />
+                <stop offset="55%" stopColor="#ffc56e" stopOpacity=".34" />
+                <stop offset="100%" stopColor="#fff2c7" stopOpacity="1" />
+              </linearGradient>
               <pattern id="tinyStars" width="220" height="220" patternUnits="userSpaceOnUse">
                 <circle cx="18" cy="22" r="1" fill="#ffffff" opacity=".55" />
                 <circle cx="74" cy="38" r="1.2" fill="#dfe8ff" opacity=".38" />
@@ -865,6 +880,42 @@ export default function MarketMap() {
               </path>;
             })}
 
+            {showHypeOverlay && visibleFlows.slice(0, 36).flatMap((f, i) => {
+              const source = f.source as Node;
+              const target = f.target as Node;
+              const p = edgePoint(source, target, 7);
+              const mx = (p.x1 + p.x2) / 2;
+              const my = (p.y1 + p.y2) / 2;
+              const dx = p.x2 - p.x1;
+              const dy = p.y2 - p.y1;
+              const len = Math.hypot(dx, dy) || 1;
+              const bend = Math.min(42, len * .12) * (i % 2 === 0 ? 1 : -1);
+              const cx = mx - (dy / len) * bend;
+              const cy = my + (dx / len) * bend;
+              const d = `M ${p.x1} ${p.y1} Q ${cx} ${cy} ${p.x2} ${p.y2}`;
+              const targetHype = hypeScore(target);
+              const targetTraffic = trafficState(target);
+              const flowStrength = Math.log10(Math.max(1, f.usd1h + f.trades1h * 40));
+              const cometCount = Math.max(1, Math.min(4, Math.round(targetHype / 30 + flowStrength / 3)));
+              const duration = Math.max(1.4, 4.8 - targetHype / 32 - Math.min(1.2, flowStrength * .18));
+              const tailId = f.kind === "rotation" ? "cometTailHot" : targetTraffic.cls === "in" ? "cometTailIn" : "cometTailWarm";
+              return Array.from({ length: cometCount }).map((_, cometIndex) => {
+                const delay = -((duration / cometCount) * cometIndex) - (i % 5) * .17;
+                const size = targetHype >= 70 ? 2.9 : targetHype >= 40 ? 2.35 : 1.9;
+                return <g key={`comet:${f.from}:${f.to}:${i}:${cometIndex}`} className="hype-comet" pointerEvents="none">
+                  <path d="M -30 0 C -20 0 -12 0 0 0" stroke={`url(#${tailId})`} strokeWidth={size * 1.55} strokeLinecap="round" fill="none" className="hype-comet-tail" />
+                  <circle r={size * 2.6} className="hype-comet-aura" />
+                  <circle r={size} className="hype-comet-head" />
+                  <animateMotion
+                    dur={`${duration}s`}
+                    begin={`${delay}s`}
+                    repeatCount="indefinite"
+                    path={d}
+                    rotate="auto"
+                  />
+                </g>;
+              });
+            })}
             {showTrafficOverlay && visibleFlows.slice(0, 60).map((f, i) => {
               const source = f.source as Node;
               const target = f.target as Node;
@@ -937,17 +988,7 @@ export default function MarketMap() {
                   className="planet-highlight"
                   pointerEvents="none"
                 />}
-                {showHypeOverlay && !n.isCore && Array.from({ length: hypeStarCount(hype) }).map((_, starIndex) => {
-                  const angle = motionNow / (1450 + starIndex * 150) + starIndex * ((Math.PI * 2) / Math.max(1, hypeStarCount(hype)));
-                  const orbit = n.r + 11 + starIndex * 2.2;
-                  const sx = Math.cos(angle) * orbit;
-                  const sy = Math.sin(angle) * orbit;
-                  const starSize = starIndex === 0 ? 3 : 2.3;
-                  return <g key={`star:${n.mint}:${starIndex}`} className="planet-hype-star" pointerEvents="none">
-                    <circle cx={sx} cy={sy} r={starSize * 2.15} className="planet-hype-star-glow" />
-                    <circle cx={sx} cy={sy} r={starSize} className="planet-hype-star-core" />
-                  </g>;
-                })}
+                
                 {viewMode === "map" && !n.isCore && <g className="reference-node-label" pointerEvents="none">
                   <text x="0" y={-n.r - 30} textAnchor="middle" className="reference-token-name">{n.symbol || n.name || n.mint.slice(0,5)}</text>
                   <text x="0" y={-n.r - 18} textAnchor="middle" className={n.priceChange24h >= 0 ? "reference-token-change buy" : "reference-token-change sell"}>
@@ -1110,8 +1151,8 @@ export default function MarketMap() {
                 <span className={trafficState(selected).cls}>{trafficState(selected).symbol} {trafficState(selected).label}</span>
               </div>
               <div className="selected-hype-row">
-                <span>Galactic Hype</span>
-                <b>{"★".repeat(hypeStarCount(hypeScore(selected)))}{"☆".repeat(5 - hypeStarCount(hypeScore(selected)))}</b>
+                <span>Hype Flow</span>
+                <b className="selected-hype-meter"><i style={{ width: `${hypeScore(selected)}%` }} /></b>
               </div>
             </div>
             <dl className="market-token-stats">
