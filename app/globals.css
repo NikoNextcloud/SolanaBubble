@@ -1606,3 +1606,33 @@ body{background:#1b2025!important}
   0%,100%{opacity:.66}
   50%{opacity:.98}
 }
+
+
+/* Comet-only galaxy flow: burning tail behind, projected path ahead */
+.holder-comet-tail{
+  opacity:1;
+  filter:
+    drop-shadow(0 0 5px rgba(255,255,255,.34))
+    drop-shadow(0 0 11px rgba(103,214,255,.5))
+    drop-shadow(0 0 18px rgba(140,86,255,.24));
+}
+.holder-comet-future{
+  fill:none;
+  stroke:rgba(176,226,255,.72);
+  stroke-width:1.05;
+  stroke-linecap:round;
+  stroke-dasharray:2.5 5;
+  opacity:.72;
+  filter:
+    drop-shadow(0 0 4px rgba(92,210,255,.65))
+    drop-shadow(0 0 8px rgba(148,94,255,.28));
+}
+.holder-comet-aura{
+  fill:rgba(232,250,255,.2);
+}
+.holder-comet-head{
+  filter:
+    drop-shadow(0 0 3px #fff)
+    drop-shadow(0 0 8px rgba(94,221,255,.98))
+    drop-shadow(0 0 15px rgba(123,91,255,.5));
+}
