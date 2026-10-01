@@ -18,18 +18,27 @@ export async function GET(req: Request) {
   const db = admin();
   const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-  const [solscan, rpcHealth, tokens] = await Promise.all([
+  const [solscan, rpcHealth, tokens, dbSize] = await Promise.all([
     fetchSolscanUsage().catch((error) => ({ error: error instanceof Error ? error.message : "Solscan usage error" } as any)),
     getRpcHealth(),
     db.from("tokens").select("mint", { count: "exact", head: true }),
+    db.rpc("database_size_bytes"),
   ]);
+
+  const databaseBytes = Number(dbSize.data ?? 0);
+  const freeDatabaseLimitBytes = 500 * 1024 * 1024;
+  const databaseRemainingBytes = Math.max(0, freeDatabaseLimitBytes - databaseBytes);
 
   return NextResponse.json({
     supabase: {
-      plan: process.env.SUPABASE_PLAN || "FREE",
-      tier: process.env.SUPABASE_TIER || "tier_free",
+      plan: "FREE",
+      tier: "tier_free",
       projectRef: "behssggsfiydcdvhkled",
       status: "ACTIVE_HEALTHY",
+      databaseBytes,
+      databaseLimitBytes: freeDatabaseLimitBytes,
+      databaseRemainingBytes,
+      databaseUsedPercent: freeDatabaseLimitBytes > 0 ? (databaseBytes / freeDatabaseLimitBytes) * 100 : 0,
     },
     solscan: "data" in solscan ? solscan.data : null,
     solscanCached: "cached" in solscan ? solscan.cached : false,
