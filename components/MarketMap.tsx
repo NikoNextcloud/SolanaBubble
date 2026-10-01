@@ -117,6 +117,29 @@ function trafficState(t: MarketToken) {
   return { label: "FLAT", symbol: "•", cls: "flat" };
 }
 
+function hypeStarCount(score: number) {
+  if (score >= 85) return 5;
+  if (score >= 70) return 4;
+  if (score >= 55) return 3;
+  if (score >= 35) return 2;
+  if (score >= 20) return 1;
+  return 0;
+}
+
+function planetGradientId(t: MarketToken) {
+  const traffic = trafficState(t);
+  if (traffic.cls === "in") return "planetGradIn";
+  if (traffic.cls === "out") return "planetGradOut";
+  return "planetGradFlat";
+}
+
+function planetGlowClass(t: MarketToken) {
+  const traffic = trafficState(t);
+  if (traffic.cls === "in") return "planet-glow-in";
+  if (traffic.cls === "out") return "planet-glow-out";
+  return "planet-glow-flat";
+}
+
 const CORE_META: Record<string, { symbol: string; name: string }> = {
   "So11111111111111111111111111111111111111112": { symbol: "SOL", name: "Wrapped SOL" },
   "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": { symbol: "USDC", name: "USD Coin" },
@@ -642,6 +665,41 @@ export default function MarketMap() {
                 <stop offset="55%" stopColor="#4c5563" stopOpacity=".05" />
                 <stop offset="100%" stopColor="#0e1015" stopOpacity="0" />
               </radialGradient>
+              <radialGradient id="spaceBgCenter" cx="50%" cy="45%" r="78%">
+                <stop offset="0%" stopColor="#303943" />
+                <stop offset="42%" stopColor="#202831" />
+                <stop offset="100%" stopColor="#10151b" />
+              </radialGradient>
+              <radialGradient id="planetGradIn" cx="34%" cy="27%" r="78%">
+                <stop offset="0%" stopColor="#eafff6" />
+                <stop offset="22%" stopColor="#8cf3c6" />
+                <stop offset="68%" stopColor="#2ea46f" />
+                <stop offset="100%" stopColor="#153e31" />
+              </radialGradient>
+              <radialGradient id="planetGradOut" cx="34%" cy="27%" r="78%">
+                <stop offset="0%" stopColor="#fff0f2" />
+                <stop offset="22%" stopColor="#ff9eaa" />
+                <stop offset="68%" stopColor="#cf4e62" />
+                <stop offset="100%" stopColor="#4b2029" />
+              </radialGradient>
+              <radialGradient id="planetGradFlat" cx="34%" cy="27%" r="78%">
+                <stop offset="0%" stopColor="#f1f4f7" />
+                <stop offset="24%" stopColor="#b9c4ce" />
+                <stop offset="68%" stopColor="#65727f" />
+                <stop offset="100%" stopColor="#303942" />
+              </radialGradient>
+              <pattern id="tinyStars" width="220" height="220" patternUnits="userSpaceOnUse">
+                <circle cx="18" cy="22" r="1" fill="#ffffff" opacity=".55" />
+                <circle cx="74" cy="38" r="1.2" fill="#dfe8ff" opacity=".38" />
+                <circle cx="142" cy="28" r=".9" fill="#ffffff" opacity=".48" />
+                <circle cx="198" cy="46" r="1.1" fill="#ffffff" opacity=".37" />
+                <circle cx="36" cy="102" r="1.3" fill="#fff5d6" opacity=".4" />
+                <circle cx="114" cy="86" r="1" fill="#ffffff" opacity=".42" />
+                <circle cx="180" cy="120" r=".9" fill="#d9f3ff" opacity=".39" />
+                <circle cx="64" cy="172" r="1.1" fill="#ffffff" opacity=".44" />
+                <circle cx="150" cy="188" r="1.4" fill="#fff5d6" opacity=".31" />
+                <circle cx="205" cy="176" r="1" fill="#ffffff" opacity=".4" />
+              </pattern>
               <marker id="marketArrowBuy" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5" markerHeight="5" orient="auto">
                 <path d="M 0 0 L 10 5 L 0 10 z" fill="#46d58d" />
               </marker>
@@ -649,6 +707,11 @@ export default function MarketMap() {
                 <path d="M 0 0 L 10 5 L 0 10 z" fill="#ff6473" />
               </marker>
             </defs>
+            <g className="space-background" pointerEvents="none">
+              <rect x="0" y="0" width={size.w} height={size.h} fill="url(#spaceBgCenter)" />
+              <rect x="0" y="0" width={size.w} height={size.h} fill="url(#tinyStars)" />
+              <ellipse cx={size.w / 2} cy={size.h * .48} rx={size.w * .36} ry={size.h * .34} className="space-nebula-core" />
+            </g>
             <ellipse cx={size.w / 2} cy={size.h / 2} rx={size.w * .34} ry={size.h * .34} fill="url(#marketGlow)" />
 
             {visibleFlows.map((f, i) => {
@@ -668,7 +731,7 @@ export default function MarketMap() {
                 strokeOpacity={opacity}
                 strokeDasharray={inferred ? "3 7" : "4 5"}
                 markerEnd={f.kind === "sell" ? "url(#marketArrowSell)" : "url(#marketArrowBuy)"}
-                className={`market-flow-line ${hot ? "hot-path" : ""} ${inferred ? "inferred-flow" : ""}`}
+                className={`market-flow-line flow-trail ${hot ? "hot-path" : ""} ${inferred ? "inferred-flow" : ""}`}
               >
                 <title>{inferred
                   ? `Вероятен wallet-overlap поток · ${f.sharedWallets ?? f.trades1h} общи wallet-а · ${Math.round((f.confidence ?? .5) * 100)}% увереност`
@@ -709,21 +772,18 @@ export default function MarketMap() {
               const pulse = n.isCore ? 1 + Math.sin(motionNow / 900 + i) * .025 : 1 + Math.sin(motionNow / pulseSpeed + i) * pulseAmp;
               return <g key={n.mint} transform={`translate(${n.x} ${n.y}) scale(${pulse})`}>
                 <circle
-                  r={n.r + 5}
-                  fill="none"
-                  stroke={color}
-                  strokeOpacity=".12"
-                  strokeWidth="1"
-                  className="market-halo"
+                  r={n.r + 8}
+                  className={`planet-atmosphere ${planetGlowClass(n)} ${hotNodeMints.has(n.mint) ? "hot-path-node" : ""}`}
+                  pointerEvents="none"
                 />
                 <circle
                   r={n.r}
-                  fill={n.isCore ? "#2b3138" : "#20262c"}
-                  fillOpacity={n.isCore ? ".98" : ".96"}
+                  fill={n.isCore ? "#2b3138" : `url(#${planetGradientId(n)})`}
+                  fillOpacity={n.isCore ? ".98" : ".94"}
                   stroke={selected?.mint === n.mint ? "#ffffff" : n.isCore ? "#b8c0c8" : color}
                   strokeWidth={selected?.mint === n.mint ? 2.5 : 1.5}
                   className={[
-                    n.isCore ? "market-token-bubble market-core-bubble" : "market-token-bubble",
+                    n.isCore ? "market-token-bubble market-core-bubble planet-bubble" : "market-token-bubble planet-bubble",
                     hotNodeMints.has(n.mint) ? "hot-path-node" : "",
                     activityPulse.includes(n.mint) ? "trade-hit" : "",
                     focusDimmed ? "focus-dimmed" : "",
@@ -745,6 +805,24 @@ export default function MarketMap() {
                 >
                   <title>{n.symbol || n.name || n.mint}</title>
                 </circle>
+                {!n.isCore && <circle
+                  r={Math.max(4, n.r * .7)}
+                  cx={-n.r * .16}
+                  cy={-n.r * .2}
+                  className="planet-highlight"
+                  pointerEvents="none"
+                />}
+                {!n.isCore && Array.from({ length: hypeStarCount(hype) }).map((_, starIndex) => {
+                  const angle = motionNow / (1450 + starIndex * 150) + starIndex * ((Math.PI * 2) / Math.max(1, hypeStarCount(hype)));
+                  const orbit = n.r + 11 + starIndex * 2.2;
+                  const sx = Math.cos(angle) * orbit;
+                  const sy = Math.sin(angle) * orbit;
+                  const starSize = starIndex === 0 ? 3 : 2.3;
+                  return <g key={`star:${n.mint}:${starIndex}`} className="planet-hype-star" pointerEvents="none">
+                    <circle cx={sx} cy={sy} r={starSize * 2.15} className="planet-hype-star-glow" />
+                    <circle cx={sx} cy={sy} r={starSize} className="planet-hype-star-core" />
+                  </g>;
+                })}
                 {n.imageUrl && !n.isCore ? <>
                   <clipPath id={`token-clip-${n.mint}`}><circle r={Math.max(5, n.r - 3)} /></clipPath>
                   <image
@@ -815,7 +893,7 @@ export default function MarketMap() {
             {expansionLoading && <div className="market-expanding">Разгръщам wallet връзките…</div>}
             <div className="market-hot-list">
               <div className="market-hot-title">
-                <strong>Hype / Traffic</strong>
+                <strong>Galactic Hype</strong>
                 {hotPath.length > 0 && <button className="follow-hot-path" onClick={followHotPath}>Проследи Hot Path</button>}
               </div>
               {hottest.map((t, i) => {
@@ -855,7 +933,7 @@ export default function MarketMap() {
               </button>)}
             </div>}
             {hotPath.length > 0 && <div className="market-hot-path-list">
-              <strong>Hot Path сега</strong>
+              <strong>Traffic Constellation</strong>
               {hotPath.slice(0, 4).map((step, i) => {
                 const from = nodeMap.current.get(step.from);
                 const to = nodeMap.current.get(step.to);
