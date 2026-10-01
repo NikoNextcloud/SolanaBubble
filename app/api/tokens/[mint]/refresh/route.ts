@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { admin } from "@/lib/db";
 import { fetchDexScreenerToken, fetchPublicHolders, fetchPublicSupply } from "@/lib/solana-public";
+import { analyzeHolderRelations } from "@/lib/relation-analyzer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -88,6 +89,17 @@ export async function POST(_req: Request, { params }: { params: Promise<{ mint: 
       metadata_updated_at: now,
     });
 
+    const relationAnalysis = await analyzeHolderRelations(mint, rows, {
+      maxWallets: 14,
+      cacheMs: 10 * 60 * 1000,
+    }).catch((error) => ({
+      cached: false,
+      analyzed: 0,
+      links: 0,
+      transfers: 0,
+      error: error instanceof Error ? error.message : "relation_analysis_failed",
+    }));
+
     return NextResponse.json({
       ok: true,
       holders: rows.length,
@@ -95,6 +107,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ mint: 
       priceUsd: price,
       refreshedAt: now,
       source: "solana-public-rpc+dexscreener",
+      relationAnalysis,
     }, { headers: { "cache-control": "no-store, max-age=0" } });
   } catch (error) {
     return NextResponse.json({
