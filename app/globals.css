@@ -1636,3 +1636,58 @@ body{background:#1b2025!important}
     drop-shadow(0 0 8px rgba(94,221,255,.98))
     drop-shadow(0 0 15px rgba(123,91,255,.5));
 }
+
+
+/* Final comet arrival behavior + hype light accumulation */
+.holder-comet{
+  animation:holderCometArrival var(--comet-duration,6s) linear infinite var(--comet-delay,0s);
+}
+@keyframes holderCometArrival{
+  0%{opacity:0}
+  2.5%{opacity:1}
+  97.8%{opacity:1}
+  99.35%{opacity:1}
+  100%{opacity:0}
+}
+.holder-comet-future{
+  stroke:url(#cometFutureFade);
+  stroke-width:1.15;
+  stroke-linecap:round;
+  stroke-dasharray:none;
+  opacity:.72;
+  fill:none;
+  filter:
+    drop-shadow(0 0 3px rgba(255,255,255,.68))
+    drop-shadow(0 0 8px rgba(108,208,255,.26));
+}
+.planet-hype-aura{
+  fill:none;
+  transform-box:fill-box;
+  transform-origin:center;
+}
+.planet-hype-aura-inner{
+  stroke:rgba(117,232,255,.92);
+  filter:
+    drop-shadow(0 0 7px rgba(84,225,255,.52))
+    drop-shadow(0 0 16px rgba(132,82,255,.28));
+  animation:hypeAuraInner 3.4s ease-in-out infinite;
+}
+.planet-hype-aura-outer{
+  stroke:rgba(157,101,255,.7);
+  filter:
+    drop-shadow(0 0 10px rgba(115,84,255,.34))
+    drop-shadow(0 0 22px rgba(71,205,255,.12));
+  animation:hypeAuraOuter 4.8s ease-in-out infinite;
+}
+@keyframes hypeAuraInner{
+  0%,100%{transform:scale(.98)}
+  50%{transform:scale(1.035)}
+}
+@keyframes hypeAuraOuter{
+  0%,100%{transform:scale(.985);opacity:.72}
+  50%{transform:scale(1.055);opacity:1}
+}
+
+.holder-comet-future{
+  stroke:rgba(244,252,255,.62);
+}
