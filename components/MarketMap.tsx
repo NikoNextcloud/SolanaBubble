@@ -341,8 +341,17 @@ export default function MarketMap() {
       try {
         const endpoint = dataSource === "free" ? "/api/market" : "/api/market/solscan";
         const r = await fetch(endpoint, { cache: "no-store" });
-        if (!r.ok) throw new Error("market");
         const j = await r.json();
+        if (!r.ok) {
+          if (dataSource === "solscan" && j?.planRestricted) {
+            if (!stopped) {
+              setError("Solscan Level 1 не позволява Token API. Автоматично преминах към Solana RPC + DexScreener.");
+              setDataSource("free");
+            }
+            return;
+          }
+          throw new Error(j?.message || "market");
+        }
         if (stopped) return;
         applySnapshot(j);
         try { localStorage.setItem(`solanabubble:market-snapshot:${dataSource}`, JSON.stringify(j)); } catch {}
