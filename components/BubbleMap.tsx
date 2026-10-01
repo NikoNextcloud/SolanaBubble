@@ -75,7 +75,8 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const [showSwaps, setShowSwaps] = useState(true);
   const [showTransfers, setShowTransfers] = useState(true);
   const [motionOn, setMotionOn] = useState(true);
-  const [streamLive, setStreamLive] = useState<boolean | null>(null);
+  const [streamLive, setStreamLive] = useState(true);
+  const [tabVisible, setTabVisible] = useState(true);
   const [autoPaused, setAutoPaused] = useState(false);
   const idleRef = useRef(Date.now());
   const [motionNow, setMotionNow] = useState(0);
@@ -184,7 +185,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
     });
 
     s.force("center", forceCenter(size.w / 2, size.h / 2).strength(0.025));
-    s.force("charge", forceManyBody<N>().strength((d) => groups.has(d.wallet) ? -4 : -20));
+    s.force("charge", forceManyBody<N>().strength((d) => groups.has(d.wallet) ? -10 : -34));
     s.force("x", forceX<N>((d) => {
       const g = groups.get(d.wallet);
       return g ? (centers.get(g)?.x ?? size.w / 2) : size.w / 2;
@@ -193,7 +194,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
       const g = groups.get(d.wallet);
       return g ? (centers.get(g)?.y ?? size.h / 2) : size.h / 2;
     }).strength((d) => groups.has(d.wallet) ? 0.2 : 0.014));
-    s.force("collide", forceCollide<N>((d) => d.r + (groups.has(d.wallet) ? 2.5 : 4.5)).strength(0.94));
+    s.force("collide", forceCollide<N>((d) => d.r + (groups.has(d.wallet) ? 7 : 11)).strength(0.97));
   };
 
   const restart = () => {
@@ -204,10 +205,10 @@ export default function BubbleMap({ mint }: { mint: string }) {
     s.force("link", forceLink<N, any>(links.current)
       .id((d) => d.wallet)
       .distance((l: any) =>
-        l.kind === "funder" ? 34 :
-        l.kind === "direct-transfer" ? 38 :
-        l.kind === "timing" ? 44 :
-        l.kind.startsWith("flow-") ? 54 : 48
+        l.kind === "funder" ? 46 :
+        l.kind === "direct-transfer" ? 50 :
+        l.kind === "timing" ? 58 :
+        l.kind.startsWith("flow-") ? 68 : 60
       )
       .strength((l: any) =>
         l.kind === "funder" ? 0.48 :
@@ -256,28 +257,45 @@ export default function BubbleMap({ mint }: { mint: string }) {
   }, [motionOn, streamLive, view]);
 
   async function changeStreamLive(next: boolean, automatic = false) {
-    try {
-      const r = await fetch("/api/live-mode", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ live: next }),
-      });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || "live mode");
-      setStreamLive(next);
-      setAutoPaused(automatic && !next);
-      idleRef.current = Date.now();
-      if (next) sim.current?.alpha(0.45).restart();
-      else sim.current?.stop();
-    } catch {}
+    setStreamLive(next);
+    setAutoPaused(automatic && !next);
+    idleRef.current = Date.now();
+    if (next) sim.current?.alpha(0.45).restart();
+    else sim.current?.stop();
   }
 
   useEffect(() => {
-    fetch("/api/live-mode", { cache: "no-store" })
-      .then((r) => r.ok ? r.json() : null)
-      .then((j) => { if (j && typeof j.live === "boolean") setStreamLive(j.live); })
-      .catch(() => setStreamLive(true));
+    const onVisibility = () => setTabVisible(document.visibilityState === "visible");
+    onVisibility();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
   }, []);
+
+  useEffect(() => {
+    if (!streamLive || !tabVisible) return;
+    let stopped = false;
+
+    const refresh = async () => {
+      try {
+        const r = await fetch(`/api/tokens/${mint}/refresh`, {
+          method: "POST",
+          cache: "no-store",
+        });
+        if (!r.ok || stopped) return;
+        const j = await r.json();
+        if (Number.isFinite(Number(j.priceUsd))) {
+          setMeta((prev) => prev ? { ...prev, price_usd: Number(j.priceUsd) } : prev);
+        }
+      } catch {}
+    };
+
+    refresh();
+    const id = window.setInterval(refresh, 60_000);
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+    };
+  }, [mint, streamLive, tabVisible]);
 
   useEffect(() => {
     const activity = () => {
@@ -714,7 +732,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
             <button
               className={`market-pause-orb holder-pause-orb ${streamLive === false ? "paused" : ""}`}
               onClick={() => changeStreamLive(streamLive !== true)}
-              title={streamLive === true ? "Пауза на Helius network stream и Solscan обновяванията" : "Пусни live режима"}
+              title={streamLive === true ? "Пауза на live обновяванията" : "Пусни live режима"}
             >{streamLive === true ? "Ⅱ" : "▶"}</button>
             {streamLive === false && <div className="pause-banner holder-pause-banner">
               {autoPaused ? "Автоматична пауза след 2 мин. без активност" : "Live режимът е на пауза"}
