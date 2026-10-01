@@ -75,6 +75,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const [showSwaps, setShowSwaps] = useState(true);
   const [showTransfers, setShowTransfers] = useState(true);
   const [motionOn, setMotionOn] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [streamLive, setStreamLive] = useState(true);
   const [tabVisible, setTabVisible] = useState(true);
   const [autoPaused, setAutoPaused] = useState(false);
@@ -745,18 +746,22 @@ export default function BubbleMap({ mint }: { mint: string }) {
             {missing && <div className="map-message">Токенът не се следи. Стартирай bootstrap за {mint}.</div>}
 
             <div className="insight-live-bar holder-live-bar">
-              <button className="ghost-control">☷ Holders</button>
-              <button className="ghost-control">↕ Filters</button>
+              <button className="ghost-control" onClick={() => setView("holders")}>☷ Holders</button>
+              <button
+                className={`ghost-control ${filtersOpen ? "active" : ""}`}
+                onClick={() => setFiltersOpen((v) => !v)}
+              >↕ Filters</button>
               <button
                 className={`go-live-control ${streamLive === true ? "is-live" : ""}`}
                 onClick={() => changeStreamLive(streamLive !== true)}
               >{streamLive === true ? "◉ Live" : "◉ Go Live"}</button>
             </div>
-            <button
-              className={`market-pause-orb holder-pause-orb ${streamLive === false ? "paused" : ""}`}
-              onClick={() => changeStreamLive(streamLive !== true)}
-              title={streamLive === true ? "Пауза на live обновяванията" : "Пусни live режима"}
-            >{streamLive === true ? "Ⅱ" : "▶"}</button>
+            {filtersOpen && <div className="holder-filter-menu">
+              <label><input type="checkbox" checked={linkedOnly} onChange={(e) => setLinkedOnly(e.target.checked)} /><span>Само свързани</span></label>
+              <label><input type="checkbox" checked={showSwaps} onChange={(e) => setShowSwaps(e.target.checked)} /><span>Swap връзки</span></label>
+              <label><input type="checkbox" checked={showTransfers} onChange={(e) => setShowTransfers(e.target.checked)} /><span>Transfer връзки</span></label>
+              <label><input type="checkbox" checked={motionOn} onChange={(e) => setMotionOn(e.target.checked)} /><span>Жива карта</span></label>
+            </div>}
             {streamLive === false && <div className="pause-banner holder-pause-banner">
               {autoPaused ? "Автоматична пауза след 2 мин. без активност" : "Live режимът е на пауза"}
             </div>}
@@ -773,10 +778,6 @@ export default function BubbleMap({ mint }: { mint: string }) {
                   <option value="1">1%</option>
                 </select>
               </label>
-              <label className="check-control"><input type="checkbox" checked={linkedOnly} onChange={(e) => setLinkedOnly(e.target.checked)} /> linked only</label>
-              <label className="check-control"><input type="checkbox" checked={showSwaps} onChange={(e) => setShowSwaps(e.target.checked)} /> swaps</label>
-              <label className="check-control"><input type="checkbox" checked={showTransfers} onChange={(e) => setShowTransfers(e.target.checked)} /> transfers</label>
-              <label className="check-control motion-control"><input type="checkbox" checked={motionOn} onChange={(e) => setMotionOn(e.target.checked)} /> жива карта</label>
               <div className="holder-type-controls">
                 <button className={showClusters ? "active" : ""} onClick={() => setShowClusters((v) => !v)}>Клъстери <b>{clusterCount}</b></button>
                 <button className={showHidden ? "active" : ""} onClick={() => setShowHidden((v) => !v)}>Скрити <b>{hiddenCount}</b></button>
