@@ -887,32 +887,39 @@ export default function MarketMap() {
               </path>;
             })}
 
-            {showHypeOverlay && visibleFlows.slice(0, 36).flatMap((f, i) => {
-              const source = f.source as Node;
-              const target = f.target as Node;
-              const p = edgePoint(source, target, 7);
-              const mx = (p.x1 + p.x2) / 2;
-              const my = (p.y1 + p.y2) / 2;
-              const dx = p.x2 - p.x1;
-              const dy = p.y2 - p.y1;
-              const len = Math.hypot(dx, dy) || 1;
-              const bend = Math.min(42, len * .12) * (i % 2 === 0 ? 1 : -1);
-              const cx = mx - (dy / len) * bend;
-              const cy = my + (dx / len) * bend;
-              const d = `M ${p.x1} ${p.y1} Q ${cx} ${cy} ${p.x2} ${p.y2}`;
-              const targetHype = hypeScore(target);
-              const targetTraffic = trafficState(target);
-              const flowStrength = Math.log10(Math.max(1, f.usd1h + f.trades1h * 40));
-              const cometCount = Math.max(1, Math.min(4, Math.round(targetHype / 30 + flowStrength / 3)));
-              const duration = Math.max(1.4, 4.8 - targetHype / 32 - Math.min(1.2, flowStrength * .18));
-              const tailId = f.kind === "rotation" ? "cometTailHot" : targetTraffic.cls === "in" ? "cometTailIn" : "cometTailWarm";
+            {showHypeOverlay && renderedNodes.filter((n) => !n.isCore).flatMap((n, nodeIndex) => {
+              const hype = hypeScore(n);
+              const traffic = trafficState(n);
+              const buys = Math.max(0, n.buys1h);
+              const incoming = Math.max(0, Number(n.netFlowUsd1h ?? 0));
+              const activityStrength = Math.log10(Math.max(1, buys * 35 + incoming + n.volume1h * .08));
+              const cometCount = Math.max(0, Math.min(7, Math.round((hype / 24) + activityStrength / 2.2)));
+              if (!cometCount) return [];
+
               return Array.from({ length: cometCount }).map((_, cometIndex) => {
-                const delay = -((duration / cometCount) * cometIndex) - (i % 5) * .17;
-                const size = targetHype >= 70 ? 2.9 : targetHype >= 40 ? 2.35 : 1.9;
-                return <g key={`comet:${f.from}:${f.to}:${i}:${cometIndex}`} className="hype-comet" pointerEvents="none">
-                  <path d="M -30 0 C -20 0 -12 0 0 0" stroke={`url(#${tailId})`} strokeWidth={size * 1.55} strokeLinecap="round" fill="none" className="hype-comet-tail" />
-                  <circle r={size * 2.6} className="hype-comet-aura" />
-                  <circle r={size} className="hype-comet-head" />
+                const angle = ((nodeIndex * 1.73 + cometIndex * 2.31) % (Math.PI * 2));
+                const distance = n.r + 82 + ((nodeIndex + cometIndex) % 4) * 26;
+                const spread = 18 + (cometIndex % 3) * 8;
+                const sx = n.x + Math.cos(angle) * distance + Math.sin(angle * 2.4) * spread;
+                const sy = n.y + Math.sin(angle) * distance + Math.cos(angle * 1.8) * spread;
+                const tx = n.x + Math.cos(angle) * (n.r + 5);
+                const ty = n.y + Math.sin(angle) * (n.r + 5);
+                const mx = (sx + tx) / 2;
+                const my = (sy + ty) / 2;
+                const bend = 18 + ((nodeIndex + cometIndex) % 4) * 7;
+                const cx = mx + Math.cos(angle + Math.PI / 2) * bend;
+                const cy = my + Math.sin(angle + Math.PI / 2) * bend;
+                const d = `M ${sx} ${sy} Q ${cx} ${cy} ${tx} ${ty}`;
+                const duration = Math.max(1.15, 4.6 - hype / 31 - Math.min(1.4, activityStrength * .22));
+                const delay = -(((duration / Math.max(1, cometCount)) * cometIndex) + (nodeIndex % 5) * .21);
+                const size = hype >= 75 ? 3.1 : hype >= 45 ? 2.55 : 2.05;
+                const tailId = hype >= 70 ? "cometTailHot" : traffic.cls === "in" ? "cometTailIn" : "cometTailWarm";
+
+                return <g key={`holder-comet:${n.mint}:${cometIndex}`} className="holder-comet" pointerEvents="none">
+                  <path d="M -42 0 C -30 0 -17 0 -3 0" stroke={`url(#${tailId})`} strokeWidth={size * 1.45} strokeLinecap="round" fill="none" className="holder-comet-tail" />
+                  <ellipse cx="-1.5" cy="0" rx={size * 2.1} ry={size * 1.25} className="holder-comet-aura" />
+                  <circle r={size} className="holder-comet-head" />
+                  <circle r={Math.max(.75, size * .34)} className="holder-comet-core" />
                   <animateMotion
                     dur={`${duration}s`}
                     begin={`${delay}s`}
@@ -920,6 +927,7 @@ export default function MarketMap() {
                     path={d}
                     rotate="auto"
                   />
+                  <title>{`Incoming holder activity → ${n.symbol || n.name || n.mint.slice(0, 6)} · Hype ${hype}`}</title>
                 </g>;
               });
             })}
