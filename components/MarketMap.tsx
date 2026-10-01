@@ -157,6 +157,8 @@ export default function MarketMap() {
   const [updated, setUpdated] = useState<string | null>(null);
   const [networkSwaps1h, setNetworkSwaps1h] = useState(0);
   const [streamLive, setStreamLive] = useState(true);
+  const [autoGraph, setAutoGraph] = useState(true);
+  const lastAutoExpand = useRef(0);
   const [tabVisible, setTabVisible] = useState(true);
   const [autoPaused, setAutoPaused] = useState(false);
   const [selected, setSelected] = useState<MarketToken | null>(null);
@@ -514,6 +516,20 @@ export default function MarketMap() {
     sim.current?.alpha(0.85).restart();
   }
 
+  useEffect(() => {
+    if (!autoGraph || streamLive !== true || !recentEvents.length) return;
+    if (Date.now() - lastAutoExpand.current < 45_000) return;
+
+    const candidate = recentEvents
+      .filter((event) => event.kind === "surge" || event.kind === "buy-pressure")
+      .map((event) => nodeMap.current.get(event.mint))
+      .find((node) => node && !node.isCore && (node.depth ?? 0) < 2 && !expandedMints.includes(node.mint));
+
+    if (!candidate) return;
+    lastAutoExpand.current = Date.now();
+    void expandToken(candidate);
+  }, [recentEvents, autoGraph, streamLive, expandedMints]);
+
   async function openToken(t: MarketToken) {
     setLoadingMint(t.mint);
     setError("");
@@ -542,6 +558,14 @@ export default function MarketMap() {
     ...hotPath.map((p) => `${p.from}>${p.to}:rotation`),
   ]);
   const hotNodeMints = new Set(hotPath.flatMap((p) => [p.from, p.to]));
+  const focusMints = new Set<string>();
+  if (selected?.mint) {
+    focusMints.add(selected.mint);
+    for (const flow of combinedFlows) {
+      if (flow.from === selected.mint) focusMints.add(flow.to);
+      if (flow.to === selected.mint) focusMints.add(flow.from);
+    }
+  }
   const visibleFlows = combinedFlows
     .map((f) => ({ ...f, source: nodeMap.current.get(f.from), target: nodeMap.current.get(f.to) }))
     .filter((f) => f.source && f.target)
@@ -595,6 +619,9 @@ export default function MarketMap() {
               className={`go-live-control ${streamLive === true ? "is-live" : ""}`}
               onClick={() => changeLive(streamLive !== true)}
             >{streamLive === true ? "◉ Live" : "◉ Go Live"}</button>
+            <button className={`ghost-control auto-graph-control ${autoGraph ? "active" : ""}`} onClick={() => setAutoGraph((v) => !v)}>
+              {autoGraph ? "✦ Auto graph" : "○ Auto graph"}
+            </button>
             <button className="ghost-control reset-layout-control" onClick={resetMarketPositions}>↺ Нулирай позиции</button>
           </div>
           {streamLive === false && <div className="pause-banner">
@@ -677,6 +704,7 @@ export default function MarketMap() {
               const hype = hypeScore(n);
               const traffic = trafficState(n);
               const netFlow = Number.isFinite(Number(n.netFlowUsd1h)) ? Number(n.netFlowUsd1h) : (netFlowByMint.get(n.mint) ?? 0);
+              const focusDimmed = Boolean(selected?.mint && !focusMints.has(n.mint) && !n.isCore);
               const pulseAmp = n.expanded ? .025 : Math.min(.10, .018 + activity * .055 + Math.abs(imbalance) * .03 + (hype / 100) * .018);
               const pulse = n.isCore ? 1 + Math.sin(motionNow / 900 + i) * .025 : 1 + Math.sin(motionNow / pulseSpeed + i) * pulseAmp;
               return <g key={n.mint} transform={`translate(${n.x} ${n.y}) scale(${pulse})`}>
@@ -698,6 +726,7 @@ export default function MarketMap() {
                     n.isCore ? "market-token-bubble market-core-bubble" : "market-token-bubble",
                     hotNodeMints.has(n.mint) ? "hot-path-node" : "",
                     activityPulse.includes(n.mint) ? "trade-hit" : "",
+                    focusDimmed ? "focus-dimmed" : "",
                   ].filter(Boolean).join(" ")}
                   onPointerDown={(e) => beginMarketDrag(e, n.mint)}
                   onPointerMove={moveMarketDrag}
@@ -737,6 +766,10 @@ export default function MarketMap() {
                   cx={Math.cos(motionNow / 900 + i) * (n.r + 9)}
                   cy={Math.sin(motionNow / 900 + i) * (n.r + 9)}
                 />}
+                {activityPulse.includes(n.mint) && !n.isCore && <>
+                  <circle r={n.r + 8} className="market-shockwave shockwave-a" pointerEvents="none" />
+                  <circle r={n.r + 8} className="market-shockwave shockwave-b" pointerEvents="none" />
+                </>}
                 {!n.isCore && <g className="market-node-indicators" pointerEvents="none">
                   <rect
                     x={-n.r}
