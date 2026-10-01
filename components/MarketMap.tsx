@@ -3,7 +3,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY, type Simulation } from "d3-force";
 import { useRouter } from "next/navigation";
 
-type MarketToken = {
+import type { Intelligence, SignalAlert } from "@/lib/market/signals";
+import TokenSignalCard from "./TokenSignalCard";
+import MoversPanel from "./MoversPanel";
+import AlertsPanel from "./AlertsPanel";
+
+type MarketToken = Intelligence & {
   mint: string;
   name: string | null;
   symbol: string | null;
@@ -30,8 +35,8 @@ type MarketToken = {
   traffic?: "in" | "out" | "flat";
   netFlowUsd1h?: number;
   activityDelta?: number;
-  hypeDelta?: number;
-  volumeDelta?: number;
+  hypeDelta?: number | null;
+  volumeDelta?: number | null;
 };
 
 type Node = MarketToken & {
@@ -93,13 +98,12 @@ function radius(t: MarketToken) {
 
 function marketMapRadius(t: MarketToken) {
   const hype = hypeScore(t);
-  const marketWeight = Math.log10(Math.max(1, t.marketCap || t.volume24h || t.liquidityUsd) + 1);
-  return Math.max(13, Math.min(62, 13 + hype * 0.43 + Math.min(6, marketWeight * 0.65)));
+  return Math.max(13, Math.min(62, 13 + hype * 0.49));
 }
 
 function flowColor(t: MarketToken) {
   const total = Math.max(1, t.buys1h + t.sells1h);
-  const ratio = (t.buys1h - t.sells1h) / total;
+  const ratio = t.netFlowUsd1h == null ? (t.buys1h - t.sells1h) / total : t.netFlowUsd1h / Math.max(1, t.volume1h);
   if (ratio > 0.18) return "#46d58d";
   if (ratio < -0.18) return "#ff6473";
   return "#76808e";
@@ -175,6 +179,8 @@ export default function MarketMap() {
   const [expandedMints, setExpandedMints] = useState<string[]>([]);
   const [expansionLoading, setExpansionLoading] = useState<string | null>(null);
   const [hotPath, setHotPath] = useState<HotPath[]>([]);
+  const [alerts, setAlerts] = useState<SignalAlert[]>([]);
+  const [snapshotStale, setSnapshotStale] = useState(false);
   const [recentEvents, setRecentEvents] = useState<MarketEvent[]>([]);
   const [activityPulse, setActivityPulse] = useState<string[]>([]);
   const previousActivity = useRef(new Map<string, number>());
@@ -437,7 +443,11 @@ export default function MarketMap() {
     let pinned: Record<string, { x: number; y: number }> = {};
     try { pinned = JSON.parse(localStorage.getItem("solanabubble:market-pinned") || "{}"); } catch {}
     const nextFlows = (j.flows ?? []) as Flow[];
+    if (!list.length && j.warming) { setError("Snapshot worker is warming the cache…"); return; }
     setTokens(list);
+    setSelected(current => current ? list.find(t => t.mint === current.mint) ?? current : null);
+    setAlerts(Array.isArray(j.alerts) ? j.alerts : []);
+    setSnapshotStale(Boolean(j.stale));
     setFlows(nextFlows);
     setHotPath(Array.isArray(j.hotPath) ? j.hotPath : []);
     setRecentEvents(Array.isArray(j.recentEvents) ? j.recentEvents : []);
@@ -454,7 +464,7 @@ export default function MarketMap() {
     }
     setUpdated(j.fetchedAt ?? new Date().toISOString());
     setNetworkSwaps1h(Number(j.network?.swaps1h ?? 0));
-    setError("");
+    setError(j.stale ? "Snapshot is stale; waiting for the ingestion worker." : "");
 
     for (const t of list) {
       const prev = nodeMap.current.get(t.mint);
@@ -702,13 +712,6 @@ export default function MarketMap() {
     .sort((a, b) => hypeScore(b) - hypeScore(a))
     .slice(0, 5);
 
-  const movers = [...renderedNodes]
-    .filter((n) => !n.isCore)
-    .sort((a, b) =>
-      (Math.abs(Number(b.activityDelta ?? 0)) * 8 + Math.abs(Number(b.hypeDelta ?? 0)) * 4 + Math.abs(Number(b.volumeDelta ?? 0)) / 5000) -
-      (Math.abs(Number(a.activityDelta ?? 0)) * 8 + Math.abs(Number(a.hypeDelta ?? 0)) * 4 + Math.abs(Number(a.volumeDelta ?? 0)) / 5000)
-    )
-    .slice(0, 5);
   void tick;
 
   return (
@@ -766,7 +769,7 @@ export default function MarketMap() {
           <small>{totals.buys >= totals.sells ? "buy pressure" : "sell pressure"}</small>
         </div>
         <div>
-          <span>SMART MONEY FLOW</span>
+          <span>ESTIMATED MARKET FLOW</span>
           <b className={marketSummary.smartFlow >= 0 ? "bullish" : "bearish"}>{marketSummary.smartFlow >= 0 ? "+" : ""}{fmtUsd(marketSummary.smartFlow).replace("$", "$")}</b>
           <small>{hotPath.length ? `${hotPath.length} hot paths` : "watching rotations"}</small>
         </div>
@@ -886,12 +889,13 @@ export default function MarketMap() {
               const traffic = trafficState(n);
               const netFlow = Number.isFinite(Number(n.netFlowUsd1h)) ? Number(n.netFlowUsd1h) : (netFlowByMint.get(n.mint) ?? 0);
               const focusDimmed = Boolean(selected?.mint && !focusMints.has(n.mint) && !n.isCore);
-              const pulseDuration = n.isCore ? 3.2 : Math.max(1.7, 4.4 - activity * 2.2 - hype / 120);
+              const pulseDuration = n.isCore ? 3.2 : Math.max(.8, Math.min(5, 4 - Math.tanh(Number(n.volumeAcceleration ?? 0) / 500) * 3));
+              const brightness = Math.max(.65, Math.min(1.5, 1 + Math.tanh(Number(n.hypeVelocity ?? 0)) * .5));
               return <g
                 key={n.mint}
                 transform={`translate(${n.x} ${n.y})`}
                 className={`market-node-group ${streamLive ? "is-animated" : "is-paused"}`}
-                style={{ ["--node-pulse-duration" as any]: `${pulseDuration}s` }}
+                style={{ ["--node-pulse-duration" as any]: `${pulseDuration}s`, filter: `brightness(${brightness})` }}
               >
                 <circle
                   r={n.r + 6 + hype * .045}
@@ -902,7 +906,7 @@ export default function MarketMap() {
                     ["--hype-strength" as any]: Math.max(.08, hype / 100),
                     ["--hype-color" as any]: traffic.cls === "in" ? "#66d39a" : traffic.cls === "out" ? "#ee746c" : "#a9afb7",
                     ["--hype-blur" as any]: `${4 + hype * .12}px`,
-                    ["--hype-duration" as any]: `${Math.max(1.25, 4.4 - hype * .028)}s`,
+                    ["--hype-duration" as any]: `${pulseDuration}s`,
                   }}
                   pointerEvents="none"
                 />
@@ -915,7 +919,7 @@ export default function MarketMap() {
                     ["--hype-strength" as any]: hype / 100,
                     ["--hype-color" as any]: traffic.cls === "in" ? "#66d39a" : traffic.cls === "out" ? "#ee746c" : "#c7cbd0",
                     ["--hype-blur" as any]: `${8 + hype * .16}px`,
-                    ["--hype-duration" as any]: `${Math.max(1.45, 5.2 - hype * .03)}s`,
+                    ["--hype-duration" as any]: `${pulseDuration}s`,
                   }}
                   pointerEvents="none"
                 />}
@@ -924,7 +928,7 @@ export default function MarketMap() {
                   fill={n.isCore ? "#2b3138" : `url(#${planetGradientId(n)})`}
                   fillOpacity={n.isCore ? ".98" : ".94"}
                   stroke={selected?.mint === n.mint ? "#ffffff" : n.isCore ? "#b8c0c8" : color}
-                  strokeWidth={selected?.mint === n.mint ? 2.5 : 1.5}
+                  strokeWidth={(selected?.mint === n.mint ? 2.5 : 1.5) + Math.max(0, Math.min(4, Number(n.holderGrowthPct ?? 0) / 5))}
                   className={[
                     n.isCore ? "market-token-bubble market-core-bubble planet-bubble" : "market-token-bubble planet-bubble",
                     hotNodeMints.has(n.mint) ? "hot-path-node" : "",
@@ -948,6 +952,7 @@ export default function MarketMap() {
                 >
                   <title>{n.symbol || n.name || n.mint}</title>
                 </circle>
+                {!n.isCore && ((n.riskScore ?? 0) >= 50 || n.liquidityWarning) && <circle r={n.r + 9} fill="none" stroke={n.liquidityWarning ? "#ff6473" : "#f5bd62"} strokeWidth="2" strokeDasharray="5 4" pointerEvents="none"><title>Risk {n.riskScore}/100 · {n.riskReasons?.join("; ")}</title></circle>}
                 {!n.isCore && <circle
                   r={Math.max(4, n.r * .7)}
                   cx={-n.r * .16}
@@ -994,9 +999,10 @@ export default function MarketMap() {
             <button onClick={() => setMapView({ x: 0, y: 0, k: 1 })} aria-label="Reset zoom">⛶</button>
           </div>}
           <div className="market-legend">
-            <span><i className="market-buy-dot" />капитал към токена</span>
+            <span><i className="market-buy-dot" />inflow estimate</span>
             <span><i className="market-neutral-dot" />SOL / USDC / USDT центрове</span>
-            <span><i className="market-sell-dot" />капитал от токена</span>
+            <span><i className="market-sell-dot" />outflow estimate</span>
+            <span>Size: Hype · Brightness: Velocity · Pulse: Acceleration · Outline: Holder growth · Ring: Risk</span>
           </div>
         </div>
 
@@ -1004,8 +1010,9 @@ export default function MarketMap() {
           {!selected ? <>
             <div className="side-section-title">
               <h2>Market intelligence</h2>
-              <span>LIVE</span>
+              <span>{snapshotStale ? "STALE" : "CACHED"}</span>
             </div>
+            <small className="signal-note">Snapshot: {updated ? new Date(updated).toLocaleString() : "warming"}</small>
             <p className="side-intro">Кликни върху токен за подробности. Double click отваря holder картата.</p>
             {expansionLoading && <div className="market-expanding">Разгръщам wallet връзките…</div>}
             <div className="market-hot-list reference-side-card">
@@ -1041,14 +1048,8 @@ export default function MarketMap() {
                 </button>;
               })}
             </div>}
-            {movers.some((m) => Number(m.activityDelta ?? 0) !== 0 || Number(m.hypeDelta ?? 0) !== 0) && <div className="market-movers">
-              <strong>Най-бързи промени</strong>
-              {movers.map((m) => <button key={m.mint} onClick={() => { setSelected(m); expandToken(m); }}>
-                <span>{m.symbol || m.mint.slice(0, 5)}</span>
-                <small>{Number(m.activityDelta ?? 0) >= 0 ? "+" : ""}{Number(m.activityDelta ?? 0)} tx</small>
-                <b className={Number(m.hypeDelta ?? 0) >= 0 ? "in" : "out"}>{Number(m.hypeDelta ?? 0) >= 0 ? "+" : ""}{Number(m.hypeDelta ?? 0)} H</b>
-              </button>)}
-            </div>}
+            <MoversPanel tokens={tokens} onSelect={t => setSelected(t)} limit={5} />
+            <AlertsPanel alerts={alerts} onSelect={mint => { const t = tokens.find(t => t.mint === mint); if (t) setSelected(t); else router.push(`/token/${mint}`); }} />
             {hotPath.length > 0 && <div className="market-hot-path-list reference-side-card">
               <strong>Traffic Flow</strong>
               {hotPath.slice(0, 4).map((step, i) => {
@@ -1095,6 +1096,7 @@ export default function MarketMap() {
                 <b className="selected-hype-meter"><i style={{ width: `${hypeScore(selected)}%` }} /></b>
               </div>
             </div>
+            <TokenSignalCard token={selected} />
             <dl className="market-token-stats">
               <dt>Цена</dt><dd>{fmtUsd(selected.priceUsd)}</dd>
               <dt>Market cap</dt><dd>{fmtUsd(selected.marketCap)}</dd>

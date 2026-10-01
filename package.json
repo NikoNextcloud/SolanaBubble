@@ -2,7 +2,17 @@
   "name": "solana-bubbles",
   "version": "0.1.0",
   "private": true,
-  "scripts": { "dev": "next dev", "build": "next build", "start": "next start", "bootstrap": "tsx scripts/bootstrap.ts", "typecheck": "tsc --noEmit" },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "bootstrap": "tsx scripts/bootstrap.ts",
+    "typecheck": "tsc --noEmit",
+    "market:ingest": "node --import tsx scripts/market-ingest.ts",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "worker:bundle": "node scripts/build-worker.mjs",
+    "test:api": "node tests/api-smoke.mjs"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
     "d3-force": "^3.0.0",

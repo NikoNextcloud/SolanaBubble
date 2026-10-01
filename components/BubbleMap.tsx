@@ -1,4 +1,5 @@
 "use client";
+import TrackedTokenSignal from "./TrackedTokenSignal";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY, type Simulation } from "d3-force";
 import { browserDb } from "@/lib/supabase-browser";
@@ -1160,6 +1161,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
       </section>
 
       <aside className="side insight-side">
+        {!selected && <TrackedTokenSignal mint={mint} />}
         {!selected ? <>
           <div className="side-section token-insight-panel">
             <span className="eyebrow">Token overview</span>

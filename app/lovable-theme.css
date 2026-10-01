@@ -909,3 +909,18 @@ button.market-section-row:hover{background:#35373b!important}
   }
   .market-list-view{inset:0!important}
 }
+
+/* Intelligence extends the existing Lovable surface and typography. */
+.signal-card, .intelligence-movers, .intelligence-alerts { padding: 14px; margin: 12px 0; }
+.signal-card .market-token-stats { display: block; padding: 0; margin: 12px 0; }
+.signal-card .market-token-stats > div { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; }
+.signal-card dd { margin: 0; text-align: right; }
+.signal-note, .signal-history small { display: block; color: var(--muted-foreground, #96969f); font-size: 11px; line-height: 1.5; margin: 8px 0; }
+.signal-warning { color: #ff817c; padding: 10px; border: 1px solid #ff647355; border-radius: 8px; background: #ff647311; }
+.signal-reasons { padding-left: 18px; color: #d8ac76; font-size: 11px; }
+.signal-history svg { width: 100%; height: 100px; }
+.intelligence-movers select, .intelligence-alerts select { background: #202027; color: #ddd; border: 1px solid #ffffff20; border-radius: 6px; padding: 7px; width: 100%; }
+.intelligence-movers button, .intelligence-alerts button { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; width: 100%; background: transparent; border: 0; border-bottom: 1px solid #ffffff0c; color: inherit; text-align: left; padding: 10px 0; cursor: pointer; }
+.intelligence-alerts button small { width: 100%; font-size: 11px; color: #999; }
+.market-legend { flex-wrap: wrap; max-width: calc(100% - 120px); }
+@media (prefers-reduced-motion: reduce) { .market-node-group *, .market-hype-glow { animation: none !important; } }

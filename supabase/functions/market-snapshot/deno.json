@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "lib": [
+      "deno.ns",
+      "deno.window",
+      "esnext"
+    ]
+  }
+}

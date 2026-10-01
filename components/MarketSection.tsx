@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-type MarketToken = {
+import type { Intelligence, SignalAlert } from "@/lib/market/signals";
+import MoversPanel from "./MoversPanel";
+import AlertsPanel from "./AlertsPanel";
+
+type MarketToken = Intelligence & {
   mint: string;
   name?: string | null;
   symbol?: string | null;
@@ -20,15 +24,6 @@ type MarketToken = {
   dex?: string | null;
 };
 
-type MarketEvent = {
-  mint: string;
-  symbol?: string | null;
-  kind: "surge" | "cooldown" | "buy-pressure" | "sell-pressure";
-  deltaTrades: number;
-  deltaVolume: number;
-  hypeDelta: number;
-};
-
 const fmtUsd = (n = 0) => {
   if (!Number.isFinite(n)) return "—";
   if (Math.abs(n) >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
@@ -40,7 +35,7 @@ const fmtUsd = (n = 0) => {
 export default function MarketSection({ section }: { section: string }) {
   const router = useRouter();
   const [tokens, setTokens] = useState<MarketToken[]>([]);
-  const [events, setEvents] = useState<MarketEvent[]>([]);
+  const [alerts, setAlerts] = useState<SignalAlert[]>([]);
   const [watchlist, setWatchlist] = useState<MarketToken[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -53,23 +48,19 @@ export default function MarketSection({ section }: { section: string }) {
 
   useEffect(() => {
     let stopped = false;
-    fetch("/api/market", { cache: "no-store" })
+    const load = () => fetch("/api/market", { cache: "no-store" })
       .then((r) => r.ok ? r.json() : Promise.reject())
       .then((j) => {
         if (stopped) return;
         setTokens(Array.isArray(j.tokens) ? j.tokens : []);
-        setEvents(Array.isArray(j.recentEvents) ? j.recentEvents : []);
+        setAlerts(Array.isArray(j.alerts) ? j.alerts : []);
       })
       .catch(() => {})
       .finally(() => { if (!stopped) setLoading(false); });
-    return () => { stopped = true; };
+    load();
+    const interval = window.setInterval(load, 30_000);
+    return () => { stopped = true; window.clearInterval(interval); };
   }, []);
-
-  const movers = useMemo(() =>
-    [...tokens]
-      .sort((a, b) => Math.abs(Number(b.priceChange24h || 0)) - Math.abs(Number(a.priceChange24h || 0)))
-      .slice(0, 30),
-  [tokens]);
 
   const narratives = useMemo(() => {
     const groups = new Map<string, MarketToken[]>();
@@ -120,17 +111,7 @@ export default function MarketSection({ section }: { section: string }) {
       </div> : <div className="market-section-empty">Watchlist-ът е празен. Отвори токен, за да го добавиш автоматично.</div>
     )}
 
-    {section === "movers" && !loading && (
-      <div className="market-section-table">
-        <div className="market-section-row market-section-row-head"><span>Token</span><span>24h</span><span>Volume</span><span>Hype</span></div>
-        {movers.map((t) => <button className="market-section-row" key={t.mint} onClick={() => openToken(t.mint)}>
-          <span><strong>{t.symbol || t.name || t.mint.slice(0, 6)}</strong><small>{t.name || t.dex || "Solana token"}</small></span>
-          <span className={Number(t.priceChange24h || 0) >= 0 ? "buy" : "sell"}>{Number(t.priceChange24h || 0) >= 0 ? "+" : ""}{Number(t.priceChange24h || 0).toFixed(2)}%</span>
-          <span>{fmtUsd(Number(t.volume24h || 0))}</span>
-          <span>H {Math.round(Number(t.hypeScore || 0))}</span>
-        </button>)}
-      </div>
-    )}
+    {section === "movers" && !loading && <MoversPanel tokens={tokens} onSelect={t => openToken(t.mint)} limit={30} />}
 
     {section === "narratives" && !loading && (
       <div className="market-section-grid">
@@ -143,17 +124,7 @@ export default function MarketSection({ section }: { section: string }) {
       </div>
     )}
 
-    {section === "alerts" && !loading && (
-      events.length ? <div className="market-section-table">
-        <div className="market-section-row market-section-row-head"><span>Token</span><span>Signal</span><span>Δ trades</span><span>Δ hype</span></div>
-        {events.map((e, i) => <button className="market-section-row" key={`${e.mint}:${e.kind}:${i}`} onClick={() => openToken(e.mint)}>
-          <span><strong>{e.symbol || e.mint.slice(0, 6)}</strong></span>
-          <span>{e.kind.replace("-", " ")}</span>
-          <span className={e.deltaTrades >= 0 ? "buy" : "sell"}>{e.deltaTrades >= 0 ? "+" : ""}{e.deltaTrades}</span>
-          <span className={e.hypeDelta >= 0 ? "buy" : "sell"}>{e.hypeDelta >= 0 ? "+" : ""}{e.hypeDelta}</span>
-        </button>)}
-      </div> : <div className="market-section-empty">Няма нови market сигнали в последния snapshot.</div>
-    )}
+    {section === "alerts" && !loading && <AlertsPanel alerts={alerts} onSelect={openToken} />}
 
     {section === "portfolio" && (
       <div className="market-section-empty">

@@ -8,6 +8,7 @@ type RpcResponse<T> = { result?: T; error?: { message?: string; code?: number } 
 
 async function rpc<T>(method: string, params: unknown[]): Promise<T> {
   const res = await fetch(RPC_URL(), {
+    signal: AbortSignal.timeout(15_000),
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),

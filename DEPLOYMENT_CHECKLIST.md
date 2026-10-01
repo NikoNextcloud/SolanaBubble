@@ -11,3 +11,12 @@
 - [ ] Holder refresh works for a tracked mint
 - [ ] Live refresh pauses when the browser tab is hidden
 - [ ] Database purge removes rows but keeps schema/migrations intact
+
+- [ ] Market snapshot migrations, service-only permissions and ingestion lease verified
+- [ ] `market-snapshot` Edge Function regenerated from shared sources and deployed
+- [ ] Five-minute Supabase cron job active and recent invocation returned HTTP 200
+- [ ] Historical snapshots and alert rows accumulate without opening the UI
+- [ ] Missing/stale holder data displayed as unknown, with sampling coverage
+- [ ] `npm test`, `npm run build`, `npm run test:api` pass
+- [ ] Map/List drag and zoom visually verified in a browser
+- [ ] Vercel production deployment is explicitly requested by the user; otherwise do not deploy

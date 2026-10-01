@@ -14,12 +14,12 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - run: npm test
       - name: Build (with dummy env so build doesn't fail on missing vars)
         run: npm run build
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
           SUPABASE_SERVICE_ROLE_KEY: placeholder
-          HELIUS_API_KEY: placeholder
-          HELIUS_WEBHOOK_SECRET: placeholder
           ADMIN_SECRET: placeholder
+      - run: npm run test:api
