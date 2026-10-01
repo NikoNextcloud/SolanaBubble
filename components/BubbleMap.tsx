@@ -66,7 +66,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const [feedTxs, setFeedTxs] = useState<Tx[]>([]);
   const [holderCount, setHolderCount] = useState(0);
   const [meta, setMeta] = useState<TokenMeta | null>(null);
-  const [missing, setMissing] = useState(false);
+  const [loadingToken, setLoadingToken] = useState(true);
   const [view, setView] = useState<View>("map");
 
   const [walletQuery, setWalletQuery] = useState("");
@@ -545,6 +545,16 @@ export default function BubbleMap({ mint }: { mint: string }) {
     s.on("tick", () => bump((x) => x + 1)); sim.current = s;
 
     (async () => {
+      setLoadingToken(true);
+      try {
+        await fetch("/api/tokens/track", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ mint }),
+          cache: "no-store",
+        });
+      } catch {}
+
       const since = new Date(Date.now() - 24 * HOUR).toISOString();
       const [
         { data: t },
@@ -563,8 +573,12 @@ export default function BubbleMap({ mint }: { mint: string }) {
       ]);
 
       if (!alive) return;
-      if (!t) { setMissing(true); return; }
+      if (!t) {
+        setLoadingToken(false);
+        return;
+      }
       setMeta(t as TokenMeta);
+      setLoadingToken(false);
       setFeedTxs((recent ?? []) as Tx[]);
       setHolderCount(count ?? hs?.length ?? 0);
       (hs ?? []).forEach((h: any) => put(h, false));
@@ -824,7 +838,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
 
         <div className="work-content">
           {view === "map" && <div className="map insight-map" ref={wrap}>
-            {missing && <div className="map-message">Токенът не се следи. Стартирай bootstrap за {mint}.</div>}
+            {loadingToken && <div className="map-message holder-loading-message">Зареждам holder картата…</div>}
 
             <div
               className="insight-live-bar holder-live-bar movable-control"
