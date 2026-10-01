@@ -801,6 +801,27 @@ export default function BubbleMap({ mint }: { mint: string }) {
           <button className={view === "transactions" ? "active" : ""} onClick={() => setView("transactions")}>Transactions</button>
         </nav>
 
+        {view === "map" && <div className="holder-toolbar-row">
+          <input value={walletQuery} onChange={(e) => setWalletQuery(e.target.value)} placeholder="Търси портфейл…" aria-label="Търси портфейл" />
+          <label>Min %
+            <select value={String(minPct)} onChange={(e) => setMinPct(Number(e.target.value))}>
+              <option value="0">Всички</option>
+              <option value="0.001">0.001%</option>
+              <option value="0.01">0.01%</option>
+              <option value="0.05">0.05%</option>
+              <option value="0.1">0.1%</option>
+              <option value="0.5">0.5%</option>
+              <option value="1">1%</option>
+            </select>
+          </label>
+          <div className="holder-type-controls">
+            <button className={showClusters ? "active" : ""} onClick={() => setShowClusters((v) => !v)}>Клъстери <b>{clusterCount}</b></button>
+            <button className={showHidden ? "active" : ""} onClick={() => setShowHidden((v) => !v)}>Скрити <b>{hiddenCount}</b></button>
+            <button className={showOthers ? "active" : ""} onClick={() => setShowOthers((v) => !v)}>Останали <b>{otherCount}</b></button>
+          </div>
+          <span className="shown-count">{visibleNodes.length} показани</span>
+        </div>}
+
         <div className="work-content">
           {view === "map" && <div className="map insight-map" ref={wrap}>
             {missing && <div className="map-message">Токенът не се следи. Стартирай bootstrap за {mint}.</div>}
@@ -872,26 +893,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
             {streamLive === false && <div className="pause-banner holder-pause-banner">
               {autoPaused ? "Автоматична пауза след 2 мин. без активност" : "Live режимът е на пауза"}
             </div>}
-            <div className="graph-toolbar holder-graph-toolbar">
-              <input value={walletQuery} onChange={(e) => setWalletQuery(e.target.value)} placeholder="Find wallet…" aria-label="Find wallet" />
-              <label>Min %
-                <select value={String(minPct)} onChange={(e) => setMinPct(Number(e.target.value))}>
-                  <option value="0">All</option>
-                  <option value="0.001">0.001%</option>
-                  <option value="0.01">0.01%</option>
-                  <option value="0.05">0.05%</option>
-                  <option value="0.1">0.1%</option>
-                  <option value="0.5">0.5%</option>
-                  <option value="1">1%</option>
-                </select>
-              </label>
-              <div className="holder-type-controls">
-                <button className={showClusters ? "active" : ""} onClick={() => setShowClusters((v) => !v)}>Клъстери <b>{clusterCount}</b></button>
-                <button className={showHidden ? "active" : ""} onClick={() => setShowHidden((v) => !v)}>Скрити <b>{hiddenCount}</b></button>
-                <button className={showOthers ? "active" : ""} onClick={() => setShowOthers((v) => !v)}>Останали <b>{otherCount}</b></button>
-              </div>
-              <span className="shown-count">{visibleNodes.length} shown</span>
-            </div>
+
 
             <div
               className="zoom-controls movable-control"
