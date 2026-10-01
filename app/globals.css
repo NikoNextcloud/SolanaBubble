@@ -683,3 +683,34 @@ body{background:#1b2025!important}
 .market-movers button{
   grid-template-columns:minmax(0,1fr) auto auto;
 }
+
+
+/* Auto graph expansion, focus mode and event shockwaves */
+.auto-graph-control.active{
+  border-color:#6e5a32!important;
+  background:#332a1d!important;
+  color:#ffd083!important;
+}
+.market-token-bubble.focus-dimmed{
+  opacity:.28;
+  filter:saturate(.45) brightness(.82);
+}
+.market-shockwave{
+  fill:none;
+  stroke:#f6f8fa;
+  stroke-width:1.4;
+  opacity:0;
+  transform-box:fill-box;
+  transform-origin:center;
+}
+.market-shockwave.shockwave-a{
+  animation:marketShockwave 1.35s ease-out;
+}
+.market-shockwave.shockwave-b{
+  animation:marketShockwave 1.35s .24s ease-out;
+}
+@keyframes marketShockwave{
+  0%{opacity:.72;transform:scale(.9)}
+  70%{opacity:.2}
+  100%{opacity:0;transform:scale(1.65)}
+}
