@@ -1,17 +1,16 @@
 import { NextResponse } from "next/server";
-import { ingestTx } from "@/lib/ingest";
-import { ingestNetworkSwap } from "@/lib/network-flow";
-export const runtime = "nodejs";
-export const maxDuration = 60;
 
-// Helius Enhanced Webhook: server-side ingestion, без browser polling.
-export async function POST(req: Request) {
-  if (req.headers.get("authorization") !== process.env.HELIUS_WEBHOOK_SECRET)
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const body = await req.json();
-  for (const tx of Array.isArray(body) ? body : [body]) {
-    await ingestNetworkSwap(tx);
-    await ingestTx(tx);
-  }
-  return NextResponse.json({ ok: true });
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+/**
+ * Helius integration is retired.
+ * Keep the old endpoint temporarily so an old external webhook cannot mutate
+ * the database if it is still enabled in the Helius dashboard.
+ */
+export async function POST() {
+  return NextResponse.json(
+    { ok: false, retired: true, message: "Helius integration is disabled." },
+    { status: 410 },
+  );
 }
