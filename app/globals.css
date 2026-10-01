@@ -1477,7 +1477,7 @@ body{background:#1b2025!important}
   border-bottom-color:rgba(88,112,137,.22)!important;
   backdrop-filter:blur(16px)
 }
-.market-galaxy-filters{
+.market-map-filters{
   display:flex;align-items:center;gap:8px
 }
 .sector-control,.timeframe-switch button{
@@ -1566,179 +1566,42 @@ body{background:#1b2025!important}
 
 @media(max-width:1050px){
   .market-inline-search{display:none}
-  .market-galaxy-filters{display:none}
+  .market-map-filters{display:none}
 }
 
 
-/* Holder comets: buyer/holder activity converging on token planets */
-.holder-comet{
-  opacity:.96;
-  filter:
-    drop-shadow(0 0 5px rgba(255,255,255,.58))
-    drop-shadow(0 0 12px rgba(92,207,255,.35));
+/* Map/List only: Galaxy visuals removed */
+.reference-market-workspace .market-map{
+  background:#10161d!important;
 }
-.holder-comet-tail{
-  opacity:.92;
-  filter:drop-shadow(0 0 5px rgba(104,220,255,.34));
+.reference-market-workspace .market-map:before,
+.reference-market-workspace .market-map:after{
+  display:none!important;
+  content:none!important;
 }
-.holder-comet-aura{
-  fill:rgba(220,246,255,.17);
-  filter:
-    drop-shadow(0 0 5px rgba(255,255,255,.48))
-    drop-shadow(0 0 10px rgba(103,196,255,.38));
+.space-background rect:first-child{
+  fill:#10161d!important;
 }
-.holder-comet-head{
-  fill:#f7fcff;
-  stroke:rgba(201,238,255,.9);
-  stroke-width:.45;
-  filter:
-    drop-shadow(0 0 3px #ffffff)
-    drop-shadow(0 0 8px rgba(88,218,255,.92));
-}
-.holder-comet-core{
-  fill:#ffffff;
-  filter:drop-shadow(0 0 3px #fff);
+.space-background rect:nth-child(2),
+.space-nebula-core{
+  display:none!important;
 }
 .planet-atmosphere{
-  animation:planetAtmosphereBreath 3.6s ease-in-out infinite;
-}
-@keyframes planetAtmosphereBreath{
-  0%,100%{opacity:.66}
-  50%{opacity:.98}
-}
-
-
-/* Comet-only galaxy flow: burning tail behind, projected path ahead */
-.holder-comet-tail{
-  opacity:1;
-  filter:
-    drop-shadow(0 0 5px rgba(255,255,255,.34))
-    drop-shadow(0 0 11px rgba(103,214,255,.5))
-    drop-shadow(0 0 18px rgba(140,86,255,.24));
-}
-.holder-comet-future{
-  fill:none;
-  stroke:rgba(176,226,255,.72);
-  stroke-width:1.05;
-  stroke-linecap:round;
-  stroke-dasharray:2.5 5;
+  animation:none!important;
   opacity:.72;
-  filter:
-    drop-shadow(0 0 4px rgba(92,210,255,.65))
-    drop-shadow(0 0 8px rgba(148,94,255,.28));
 }
-.holder-comet-aura{
-  fill:rgba(232,250,255,.2);
+.planet-bubble{
+  filter:drop-shadow(0 0 5px rgba(255,255,255,.08))!important;
 }
-.holder-comet-head{
-  filter:
-    drop-shadow(0 0 3px #fff)
-    drop-shadow(0 0 8px rgba(94,221,255,.98))
-    drop-shadow(0 0 15px rgba(123,91,255,.5));
+.planet-glow-in{
+  fill:rgba(77,221,151,.10)!important;
+  filter:drop-shadow(0 0 6px rgba(77,221,151,.18))!important;
 }
-
-
-/* Final comet arrival behavior + hype light accumulation */
-.holder-comet{
-  animation:holderCometArrival var(--comet-duration,6s) linear infinite var(--comet-delay,0s);
+.planet-glow-out{
+  fill:rgba(255,110,130,.10)!important;
+  filter:drop-shadow(0 0 6px rgba(255,110,130,.16))!important;
 }
-@keyframes holderCometArrival{
-  0%{opacity:0}
-  2.5%{opacity:1}
-  97.8%{opacity:1}
-  99.35%{opacity:1}
-  100%{opacity:0}
-}
-.holder-comet-future{
-  stroke:url(#cometFutureFade);
-  stroke-width:1.15;
-  stroke-linecap:round;
-  stroke-dasharray:none;
-  opacity:.72;
-  fill:none;
-  filter:
-    drop-shadow(0 0 3px rgba(255,255,255,.68))
-    drop-shadow(0 0 8px rgba(108,208,255,.26));
-}
-.planet-hype-aura{
-  fill:none;
-  transform-box:fill-box;
-  transform-origin:center;
-}
-.planet-hype-aura-inner{
-  stroke:rgba(117,232,255,.92);
-  filter:
-    drop-shadow(0 0 7px rgba(84,225,255,.52))
-    drop-shadow(0 0 16px rgba(132,82,255,.28));
-  animation:hypeAuraInner 3.4s ease-in-out infinite;
-}
-.planet-hype-aura-outer{
-  stroke:rgba(157,101,255,.7);
-  filter:
-    drop-shadow(0 0 10px rgba(115,84,255,.34))
-    drop-shadow(0 0 22px rgba(71,205,255,.12));
-  animation:hypeAuraOuter 4.8s ease-in-out infinite;
-}
-@keyframes hypeAuraInner{
-  0%,100%{transform:scale(.98)}
-  50%{transform:scale(1.035)}
-}
-@keyframes hypeAuraOuter{
-  0%,100%{transform:scale(.985);opacity:.72}
-  50%{transform:scale(1.055);opacity:1}
-}
-
-.holder-comet-future{
-  stroke:rgba(244,252,255,.62);
-}
-
-
-/* Impact flash + stronger accumulated hype glow */
-.holder-impact{
-  opacity:0;
-  animation:holderImpact var(--impact-duration,6s) linear infinite var(--impact-delay,0s);
-  transform-box:fill-box;
-  transform-origin:center;
-}
-.holder-impact-core{
-  fill:rgba(255,255,255,.95);
-  filter:
-    drop-shadow(0 0 4px #fff)
-    drop-shadow(0 0 10px rgba(96,225,255,.95))
-    drop-shadow(0 0 18px rgba(141,89,255,.72));
-}
-.holder-impact-ring{
-  fill:none;
-  stroke:rgba(226,248,255,.9);
-  stroke-width:1.4;
-  transform-box:fill-box;
-  transform-origin:center;
-}
-.holder-impact-ring-a{
-  filter:drop-shadow(0 0 7px rgba(103,223,255,.72));
-}
-.holder-impact-ring-b{
-  stroke:rgba(154,106,255,.72);
-  filter:drop-shadow(0 0 10px rgba(142,89,255,.54));
-}
-@keyframes holderImpact{
-  0%,95.4%{opacity:0}
-  96%{opacity:.15}
-  97.2%{opacity:calc(.7 * var(--impact-power,1))}
-  98.2%{opacity:calc(1 * var(--impact-power,1));transform:scale(.86)}
-  99.1%{opacity:calc(.55 * var(--impact-power,1));transform:scale(1.18)}
-  100%{opacity:0;transform:scale(1.45)}
-}
-.planet-hype-aura-inner{
-  mix-blend-mode:screen;
-}
-.planet-hype-aura-outer{
-  mix-blend-mode:screen;
-}
-.market-token-bubble.hot-path-node,
-.planet-atmosphere.hot-path-node{
-  filter:
-    drop-shadow(0 0 12px rgba(255,255,255,.4))
-    drop-shadow(0 0 26px rgba(142,88,255,.82))
-    drop-shadow(0 0 42px rgba(74,218,255,.22))!important;
+.planet-glow-flat{
+  fill:rgba(170,184,198,.07)!important;
+  filter:none!important;
 }
