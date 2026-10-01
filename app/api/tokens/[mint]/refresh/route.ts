@@ -90,8 +90,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ mint: 
     });
 
     const relationAnalysis = await analyzeHolderRelations(mint, rows, {
-      maxWallets: 14,
-      cacheMs: 10 * 60 * 1000,
+      maxWallets: 24,
+      cacheMs: 5 * 60 * 1000,
     }).catch((error) => ({
       cached: false,
       analyzed: 0,
