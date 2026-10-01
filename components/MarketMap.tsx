@@ -384,7 +384,7 @@ export default function MarketMap() {
     };
   }, [streamLive, autoPaused]);
 
-  async function expandToken(t: MarketToken) {
+  async function expandToken(t: Node) {
     if (t.isCore || expandedMints.includes(t.mint) || expansionLoading === t.mint) return;
     setExpansionLoading(t.mint);
     try {
