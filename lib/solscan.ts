@@ -1,7 +1,10 @@
 import { admin } from "./db";
 
 const BASE = "https://pro-api.solscan.io/v2.0";
-const KEY = () => process.env.SOLSCAN_API_KEY || "";
+const KEY = () => {
+  const raw = process.env.SOLSCAN_API_KEY || "";
+  return raw.trim().replace(/^["']|["']$/g, "");
+};
 
 type CacheRow<T> = { payload: T; updated_at: string };
 
@@ -31,7 +34,10 @@ async function get<T>(path: string, base = BASE): Promise<T> {
     headers: { accept: "application/json", token: key },
     cache: "no-store",
   });
-  if (!r.ok) throw new Error(`Solscan API failed: ${r.status}`);
+  if (!r.ok) {
+    const detail = await r.text().catch(() => "");
+    throw new Error(`Solscan API failed: ${r.status}${detail ? ` · ${detail.slice(0, 180)}` : ""}`);
+  }
   const j = await r.json();
   if (j?.success === false) throw new Error(j?.errors?.message || "Solscan API error");
   return j.data as T;
