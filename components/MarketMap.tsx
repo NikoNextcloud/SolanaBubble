@@ -851,7 +851,7 @@ export default function MarketMap() {
                 <text x={size.w / 2} y={size.h - 18} textAnchor="middle" className="axis-title">{xAxis === "marketCap" ? "MARKET CAP" : xAxis === "liquidityUsd" ? "LIQUIDITY" : "24H VOLUME"}</text>
               </g>
             </>}
-            {showTrafficOverlay && visibleFlows.map((f, i) => {
+            {showTrafficOverlay && viewMode !== "galaxy" && visibleFlows.map((f, i) => {
               const source = f.source as Node;
               const target = f.target as Node;
               const p = edgePoint(source, target, 5);
@@ -910,16 +910,17 @@ export default function MarketMap() {
                 const cx = mx + Math.cos(angle + Math.PI / 2) * bend;
                 const cy = my + Math.sin(angle + Math.PI / 2) * bend;
                 const d = `M ${sx} ${sy} Q ${cx} ${cy} ${tx} ${ty}`;
-                const duration = Math.max(1.15, 4.6 - hype / 31 - Math.min(1.4, activityStrength * .22));
+                const duration = Math.max(2.8, 7.2 - hype / 28 - Math.min(1.3, activityStrength * .18));
                 const delay = -(((duration / Math.max(1, cometCount)) * cometIndex) + (nodeIndex % 5) * .21);
                 const size = hype >= 75 ? 3.1 : hype >= 45 ? 2.55 : 2.05;
                 const tailId = hype >= 70 ? "cometTailHot" : traffic.cls === "in" ? "cometTailIn" : "cometTailWarm";
 
                 return <g key={`holder-comet:${n.mint}:${cometIndex}`} className="holder-comet" pointerEvents="none">
-                  <path d="M -42 0 C -30 0 -17 0 -3 0" stroke={`url(#${tailId})`} strokeWidth={size * 1.45} strokeLinecap="round" fill="none" className="holder-comet-tail" />
-                  <ellipse cx="-1.5" cy="0" rx={size * 2.1} ry={size * 1.25} className="holder-comet-aura" />
+                  <path d="M -56 0 C -40 0 -22 0 -4 0" stroke={`url(#${tailId})`} strokeWidth={size * 1.6} strokeLinecap="round" fill="none" className="holder-comet-tail" />
+                  <path d="M 5 0 C 14 0 24 0 42 0" className="holder-comet-future" />
+                  <ellipse cx="-1.5" cy="0" rx={size * 2.2} ry={size * 1.32} className="holder-comet-aura" />
                   <circle r={size} className="holder-comet-head" />
-                  <circle r={Math.max(.75, size * .34)} className="holder-comet-core" />
+                  <circle r={Math.max(.8, size * .34)} className="holder-comet-core" />
                   <animateMotion
                     dur={`${duration}s`}
                     begin={`${delay}s`}
@@ -931,7 +932,7 @@ export default function MarketMap() {
                 </g>;
               });
             })}
-            {showTrafficOverlay && visibleFlows.slice(0, 60).map((f, i) => {
+            {showTrafficOverlay && viewMode !== "galaxy" && visibleFlows.slice(0, 60).map((f, i) => {
               const source = f.source as Node;
               const target = f.target as Node;
               const p = edgePoint(source, target, 6);
