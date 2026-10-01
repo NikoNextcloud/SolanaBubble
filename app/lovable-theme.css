@@ -605,3 +605,28 @@ button.market-section-row:hover{background:#35373b!important}
   color:#d8dade;
   font-size:9px;
 }
+
+
+/* Market map interaction + corrected control placement */
+.lovable-page-heading .page-actions button.active{
+  background:#44342f!important;
+  border-color:#76594e!important;
+  color:#ffbaa7!important;
+}
+.market-pan-surface{
+  cursor:grab;
+  touch-action:none;
+  user-select:none;
+}
+.market-pan-surface.is-panning{
+  cursor:grabbing;
+}
+.market-pan-layer{
+  will-change:transform;
+}
+.reference-map-toolbar{
+  justify-content:flex-start!important;
+}
+.reference-map-toolbar .market-toolbar-actions{
+  margin-left:auto!important;
+}
