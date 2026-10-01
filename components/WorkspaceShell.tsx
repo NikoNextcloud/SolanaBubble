@@ -22,6 +22,11 @@ export default function WorkspaceShell({
   const router = useRouter();
   const isMarket = pathname === "/";
   const isDatabase = pathname.startsWith("/admin");
+  const isWatchlist = pathname === "/market/watchlist";
+  const isMovers = pathname === "/market/movers";
+  const isNarratives = pathname === "/market/narratives";
+  const isAlerts = pathname === "/market/alerts";
+  const isPortfolio = pathname === "/market/portfolio";
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchToken[]>([]);
@@ -193,21 +198,21 @@ export default function WorkspaceShell({
           <a className={`alpha-nav ${isMarket ? "active" : ""}`} href="/">
             <span className="alpha-nav-icon">◎</span><span>Live Market Map</span>
           </a>
-          <button className="alpha-nav visual-nav-button" type="button">
+          <a className={`alpha-nav ${isWatchlist ? "active" : ""}`} href="/market/watchlist">
             <span className="alpha-nav-icon">☆</span><span>Watchlist</span>
-          </button>
-          <button className="alpha-nav visual-nav-button" type="button">
+          </a>
+          <a className={`alpha-nav ${isMovers ? "active" : ""}`} href="/market/movers">
             <span className="alpha-nav-icon">▥</span><span>Top Movers</span>
-          </button>
-          <button className="alpha-nav visual-nav-button" type="button">
+          </a>
+          <a className={`alpha-nav ${isNarratives ? "active" : ""}`} href="/market/narratives">
             <span className="alpha-nav-icon">▤</span><span>Narratives</span>
-          </button>
-          <button className="alpha-nav visual-nav-button" type="button">
+          </a>
+          <a className={`alpha-nav ${isAlerts ? "active" : ""}`} href="/market/alerts">
             <span className="alpha-nav-icon">♧</span><span>Alerts</span><b className="alpha-alert-badge">3</b>
-          </button>
-          <button className="alpha-nav visual-nav-button" type="button">
+          </a>
+          <a className={`alpha-nav ${isPortfolio ? "active" : ""}`} href="/market/portfolio">
             <span className="alpha-nav-icon">◔</span><span>Portfolio</span>
-          </button>
+          </a>
           <a className={`alpha-nav ${isDatabase ? "active" : ""}`} href="/admin">
             <span className="alpha-nav-icon">▣</span><span>Research / DB</span>
           </a>
