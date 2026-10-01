@@ -62,6 +62,9 @@ type HotPath = {
   confidence?: number;
 };
 
+type MarketViewMode = "map" | "galaxy" | "list";
+type MarketAxis = "marketCap" | "liquidityUsd" | "volume24h";
+
 type Flow = {
   from: string;
   to: string;
@@ -180,6 +183,10 @@ export default function MarketMap() {
   const [updated, setUpdated] = useState<string | null>(null);
   const [networkSwaps1h, setNetworkSwaps1h] = useState(0);
   const [streamLive, setStreamLive] = useState(true);
+  const [viewMode, setViewMode] = useState<MarketViewMode>("map");
+  const [xAxis, setXAxis] = useState<MarketAxis>("marketCap");
+  const [showTrafficOverlay, setShowTrafficOverlay] = useState(true);
+  const [showHypeOverlay, setShowHypeOverlay] = useState(true);
   const [autoGraph, setAutoGraph] = useState(true);
   const lastAutoExpand = useRef(0);
   const [tabVisible, setTabVisible] = useState(true);
@@ -270,6 +277,32 @@ export default function MarketMap() {
     }), { volume: 0, buys: 0, sells: 0, liquidity: 0 });
   }, [tokens]);
 
+  const marketSummary = useMemo(() => {
+    const active = tokens.filter((t) => t.trades1h > 0 || t.volume1h > 0);
+    const avgMove = active.length
+      ? active.reduce((sum, t) => sum + Number(t.priceChange1h || 0), 0) / active.length
+      : 0;
+    const imbalance = (totals.buys - totals.sells) / Math.max(1, totals.buys + totals.sells);
+    const sentimentScore = avgMove * .45 + imbalance * 28;
+    const sentiment = sentimentScore > 3
+      ? { label: "Bullish", cls: "bullish", arrow: "↗" }
+      : sentimentScore < -3
+        ? { label: "Bearish", cls: "bearish", arrow: "↘" }
+        : { label: "Neutral", cls: "neutral", arrow: "→" };
+    const smartFlow = tokens.reduce((sum, t) => sum + Number(t.netFlowUsd1h ?? 0), 0);
+    return { active: active.length, avgMove, sentiment, smartFlow };
+  }, [tokens, totals]);
+
+  const axisStats = useMemo(() => {
+    const values = tokens.map((t) => Math.max(0, Number(t[xAxis] ?? 0))).filter((v) => v > 0);
+    const logs = values.map((v) => Math.log10(v + 1));
+    const min = logs.length ? Math.min(...logs) : 0;
+    const max = logs.length ? Math.max(...logs) : 1;
+    const changes = tokens.map((t) => Number(t.priceChange24h || 0));
+    const abs = Math.max(25, Math.min(150, changes.length ? Math.max(...changes.map((v) => Math.abs(v))) : 100));
+    return { min, max: Math.max(min + .1, max), changeAbs: abs };
+  }, [tokens, xAxis]);
+
   useEffect(() => {
     const el = wrap.current;
     if (!el) return;
@@ -307,14 +340,22 @@ export default function MarketMap() {
     const s = sim.current;
     if (!s) return;
     const nodes = [...nodeMap.current.values()];
+  const renderedNodes = viewMode === "map" ? nodes.filter((n) => !n.isCore) : nodes;
     const links = [...flows, ...expansionFlows]
       .filter((f) => nodeMap.current.has(f.from) && nodeMap.current.has(f.to))
       .map((f) => ({ source: f.from, target: f.to, usd1h: f.usd1h }));
 
     s.nodes(nodes);
-    s.force("center", forceCenter(size.w / 2, size.h / 2).strength(0.025));
-    s.force("charge", forceManyBody().strength((d: any) => d.isCore ? -230 : -48));
+    s.force("center", forceCenter(size.w / 2, size.h / 2).strength(viewMode === "map" ? 0.005 : 0.025));
+    s.force("charge", forceManyBody().strength((d: any) => viewMode === "map" ? (d.isCore ? -20 : -18) : (d.isCore ? -230 : -48)));
     s.force("x", forceX<any>((d) => {
+      if (viewMode === "map") {
+        if (d.isCore) return size.w / 2;
+        const raw = Math.max(0, Number(d[xAxis] ?? 0));
+        const log = Math.log10(raw + 1);
+        const pct = (log - axisStats.min) / Math.max(.1, axisStats.max - axisStats.min);
+        return 74 + Math.max(0, Math.min(1, pct)) * Math.max(100, size.w - 148);
+      }
       if (d.isCore) {
         if (d.symbol === "SOL") return size.w * 0.5;
         if (d.symbol === "USDC") return size.w * 0.28;
@@ -322,19 +363,24 @@ export default function MarketMap() {
       }
       const imbalance = (d.buys1h - d.sells1h) / Math.max(1, d.buys1h + d.sells1h);
       return size.w / 2 + imbalance * size.w * 0.28;
-    }).strength((d: any) => d.isCore ? 0.18 : 0.045));
+    }).strength((d: any) => viewMode === "map" ? (d.isCore ? .02 : .46) : (d.isCore ? 0.18 : 0.045)));
     s.force("y", forceY<any>((d) => {
+      if (viewMode === "map") {
+        if (d.isCore) return size.h * .58;
+        const pct = (Number(d.priceChange24h || 0) + axisStats.changeAbs) / (axisStats.changeAbs * 2);
+        return Math.max(84, Math.min(size.h - 72, 70 + (1 - Math.max(0, Math.min(1, pct))) * Math.max(120, size.h - 150)));
+      }
       if (d.isCore) return size.h * 0.52;
       const activityRank = Math.min(1, Math.log10(Math.max(1, d.volume1h)) / 7);
       return size.h * (0.6 - activityRank * 0.19);
-    }).strength((d: any) => d.isCore ? 0.18 : 0.04));
-    s.force("link", forceLink<any, any>(links)
+    }).strength((d: any) => viewMode === "map" ? (d.isCore ? .02 : .5) : (d.isCore ? 0.18 : 0.04)));
+    s.force("link", forceLink<any, any>(viewMode === "map" && !showTrafficOverlay ? [] : links)
       .id((d: any) => d.mint)
       .distance((l: any) => 135 + Math.max(0, 100 - Math.log10(Math.max(1, l.usd1h)) * 10))
       .strength((l: any) => Math.min(0.32, 0.06 + Math.log10(Math.max(1, l.usd1h)) * 0.03)));
-    s.force("collide", forceCollide<any>((d) => d.r + (d.isCore ? 20 : 15)).strength(0.98));
-    s.alpha(0.72).restart();
-  }, [size, tokens, flows, expansionFlows]);
+    s.force("collide", forceCollide<any>((d) => d.r + (viewMode === "map" ? 24 : d.isCore ? 20 : 15)).strength(0.98));
+    s.alpha(viewMode === "map" ? .58 : .72).restart();
+  }, [size, tokens, flows, expansionFlows, viewMode, xAxis, showTrafficOverlay, axisStats]);
 
   const applySnapshot = (j: any) => {
     const list = (j.tokens ?? []) as MarketToken[];
@@ -600,12 +646,12 @@ export default function MarketMap() {
     netFlowByMint.set(flow.to, (netFlowByMint.get(flow.to) ?? 0) + flow.usd1h);
   }
 
-  const hottest = [...nodes]
+  const hottest = [...renderedNodes]
     .filter((n) => !n.isCore)
     .sort((a, b) => hypeScore(b) - hypeScore(a))
     .slice(0, 5);
 
-  const movers = [...nodes]
+  const movers = [...renderedNodes]
     .filter((n) => !n.isCore)
     .sort((a, b) =>
       (Math.abs(Number(b.activityDelta ?? 0)) * 8 + Math.abs(Number(b.hypeDelta ?? 0)) * 4 + Math.abs(Number(b.volumeDelta ?? 0)) / 5000) -
