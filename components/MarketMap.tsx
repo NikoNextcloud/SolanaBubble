@@ -29,6 +29,9 @@ type MarketToken = {
   hypeScore?: number;
   traffic?: "in" | "out" | "flat";
   netFlowUsd1h?: number;
+  activityDelta?: number;
+  hypeDelta?: number;
+  volumeDelta?: number;
 };
 
 type Node = MarketToken & {
@@ -40,6 +43,16 @@ type Node = MarketToken & {
   isCore?: boolean;
   fx?: number | null;
   fy?: number | null;
+};
+
+type MarketEvent = {
+  mint: string;
+  symbol: string | null;
+  kind: "surge" | "cooldown" | "buy-pressure" | "sell-pressure";
+  deltaTrades: number;
+  deltaVolume: number;
+  hypeDelta: number;
+  at: string;
 };
 
 type HotPath = {
@@ -137,6 +150,7 @@ export default function MarketMap() {
   const [expandedMints, setExpandedMints] = useState<string[]>([]);
   const [expansionLoading, setExpansionLoading] = useState<string | null>(null);
   const [hotPath, setHotPath] = useState<HotPath[]>([]);
+  const [recentEvents, setRecentEvents] = useState<MarketEvent[]>([]);
   const [activityPulse, setActivityPulse] = useState<string[]>([]);
   const previousActivity = useRef(new Map<string, number>());
   const [motionNow, setMotionNow] = useState(0);
@@ -305,6 +319,7 @@ export default function MarketMap() {
     setTokens(list);
     setFlows(nextFlows);
     setHotPath(Array.isArray(j.hotPath) ? j.hotPath : []);
+    setRecentEvents(Array.isArray(j.recentEvents) ? j.recentEvents : []);
     const changed: string[] = [];
     for (const t of list) {
       const activity = t.trades1h + t.buys1h + t.sells1h;
@@ -542,6 +557,14 @@ export default function MarketMap() {
     .filter((n) => !n.isCore)
     .sort((a, b) => hypeScore(b) - hypeScore(a))
     .slice(0, 5);
+
+  const movers = [...nodes]
+    .filter((n) => !n.isCore)
+    .sort((a, b) =>
+      (Math.abs(Number(b.activityDelta ?? 0)) * 8 + Math.abs(Number(b.hypeDelta ?? 0)) * 4 + Math.abs(Number(b.volumeDelta ?? 0)) / 5000) -
+      (Math.abs(Number(a.activityDelta ?? 0)) * 8 + Math.abs(Number(a.hypeDelta ?? 0)) * 4 + Math.abs(Number(a.volumeDelta ?? 0)) / 5000)
+    )
+    .slice(0, 5);
   void tick;
 
   return (
@@ -772,6 +795,32 @@ export default function MarketMap() {
                 </button>;
               })}
             </div>
+            {recentEvents.length > 0 && <div className="market-activity-feed">
+              <div className="market-hot-title">
+                <strong>Live activity</strong>
+                <span>Δ от последния snapshot</span>
+              </div>
+              {recentEvents.slice(0, 6).map((event, i) => {
+                const node = nodeMap.current.get(event.mint);
+                const positive = event.kind === "surge" || event.kind === "buy-pressure";
+                return <button key={`${event.mint}:${event.kind}:${i}`} onClick={() => {
+                  if (node) { setSelected(node); expandToken(node); }
+                }}>
+                  <span className={positive ? "event-dot in" : "event-dot out"} />
+                  <strong>{node?.symbol || event.symbol || event.mint.slice(0, 6)}</strong>
+                  <small>{event.deltaTrades >= 0 ? "+" : ""}{event.deltaTrades} tx</small>
+                  <b className={event.hypeDelta >= 0 ? "in" : "out"}>{event.hypeDelta >= 0 ? "+" : ""}{event.hypeDelta} H</b>
+                </button>;
+              })}
+            </div>}
+            {movers.some((m) => Number(m.activityDelta ?? 0) !== 0 || Number(m.hypeDelta ?? 0) !== 0) && <div className="market-movers">
+              <strong>Най-бързи промени</strong>
+              {movers.map((m) => <button key={m.mint} onClick={() => { setSelected(m); expandToken(m); }}>
+                <span>{m.symbol || m.mint.slice(0, 5)}</span>
+                <small>{Number(m.activityDelta ?? 0) >= 0 ? "+" : ""}{Number(m.activityDelta ?? 0)} tx</small>
+                <b className={Number(m.hypeDelta ?? 0) >= 0 ? "in" : "out"}>{Number(m.hypeDelta ?? 0) >= 0 ? "+" : ""}{Number(m.hypeDelta ?? 0)} H</b>
+              </button>)}
+            </div>}
             {hotPath.length > 0 && <div className="market-hot-path-list">
               <strong>Hot Path сега</strong>
               {hotPath.slice(0, 4).map((step, i) => {
@@ -811,6 +860,8 @@ export default function MarketMap() {
               <dt>Промяна 1ч.</dt><dd className={selected.priceChange1h >= 0 ? "buy" : "sell"}>{selected.priceChange1h.toFixed(2)}%</dd>
               <dt>Hype</dt><dd>H {hypeScore(selected)} / 100</dd>
               <dt>Traffic</dt><dd className={trafficState(selected).cls}>{trafficState(selected).symbol} {trafficState(selected).label}</dd>
+              <dt>Δ trades</dt><dd className={Number(selected.activityDelta ?? 0) >= 0 ? "buy" : "sell"}>{Number(selected.activityDelta ?? 0) >= 0 ? "+" : ""}{Number(selected.activityDelta ?? 0)}</dd>
+              <dt>Δ Hype</dt><dd className={Number(selected.hypeDelta ?? 0) >= 0 ? "buy" : "sell"}>{Number(selected.hypeDelta ?? 0) >= 0 ? "+" : ""}{Number(selected.hypeDelta ?? 0)}</dd>
               <dt>Мрежа</dt><dd>{expandedMints.includes(selected.mint) ? `разгърната · L${nodeMap.current.get(selected.mint)?.depth ?? 0}/3` : "клик за разгръщане"}</dd>
             </dl>
             <button className="open-token-button" onClick={() => openToken(selected)} disabled={loadingMint === selected.mint}>
