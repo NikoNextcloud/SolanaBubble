@@ -3,7 +3,7 @@ import { admin } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-type Profile = { tokenAddress?: string; chainId?: string };
+type Profile = { tokenAddress?: string; chainId?: string; icon?: string; imageUrl?: string };
 type Boost = { tokenAddress?: string; chainId?: string; amount?: number; totalAmount?: number };
 type Pair = {
   chainId?: string;
@@ -18,6 +18,7 @@ type Pair = {
   volume?: { h1?: number; h6?: number; h24?: number };
   txns?: { h1?: { buys?: number; sells?: number }; h24?: { buys?: number; sells?: number } };
   priceChange?: { h1?: number; h24?: number };
+  info?: { imageUrl?: string };
 };
 
 const SOL = "So11111111111111111111111111111111111111112";
@@ -55,6 +56,13 @@ export async function GET() {
     getJson<Profile[]>("https://api.dexscreener.com/token-profiles/latest/v1"),
     getJson<Boost[]>("https://api.dexscreener.com/token-boosts/top/v1"),
   ]);
+
+  const profileIcon = new Map<string, string>();
+  for (const p of profiles ?? []) {
+    if (p.chainId !== "solana" || !p.tokenAddress) continue;
+    const icon = p.icon || p.imageUrl;
+    if (icon) profileIcon.set(p.tokenAddress, icon);
+  }
 
   const boostMap = new Map<string, number>();
   for (const b of boosts ?? []) {
@@ -110,6 +118,7 @@ export async function GET() {
       priceChange1h: Number(p.priceChange?.h1 ?? 0),
       priceChange24h: Number(p.priceChange?.h24 ?? 0),
       boost: boostMap.get(mint) ?? 0,
+      imageUrl: p.info?.imageUrl ?? profileIcon.get(mint) ?? null,
     };
   })
   .filter((t) => t.marketCap > 0 || t.liquidityUsd > 0 || t.volume1h > 0)
