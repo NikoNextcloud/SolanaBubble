@@ -1568,3 +1568,41 @@ body{background:#1b2025!important}
   .market-inline-search{display:none}
   .market-galaxy-filters{display:none}
 }
+
+
+/* Holder comets: buyer/holder activity converging on token planets */
+.holder-comet{
+  opacity:.96;
+  filter:
+    drop-shadow(0 0 5px rgba(255,255,255,.58))
+    drop-shadow(0 0 12px rgba(92,207,255,.35));
+}
+.holder-comet-tail{
+  opacity:.92;
+  filter:drop-shadow(0 0 5px rgba(104,220,255,.34));
+}
+.holder-comet-aura{
+  fill:rgba(220,246,255,.17);
+  filter:
+    drop-shadow(0 0 5px rgba(255,255,255,.48))
+    drop-shadow(0 0 10px rgba(103,196,255,.38));
+}
+.holder-comet-head{
+  fill:#f7fcff;
+  stroke:rgba(201,238,255,.9);
+  stroke-width:.45;
+  filter:
+    drop-shadow(0 0 3px #ffffff)
+    drop-shadow(0 0 8px rgba(88,218,255,.92));
+}
+.holder-comet-core{
+  fill:#ffffff;
+  filter:drop-shadow(0 0 3px #fff);
+}
+.planet-atmosphere{
+  animation:planetAtmosphereBreath 3.6s ease-in-out infinite;
+}
+@keyframes planetAtmosphereBreath{
+  0%,100%{opacity:.66}
+  50%{opacity:.98}
+}
