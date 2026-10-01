@@ -23,6 +23,7 @@ type MarketToken = {
   quoteMint?: string | null;
   quoteSymbol?: string | null;
   imageUrl?: string | null;
+  expanded?: boolean;
 };
 
 type Node = MarketToken & {
@@ -41,8 +42,11 @@ type Flow = {
   to: string;
   usd1h: number;
   trades1h: number;
-  kind: "buy" | "sell";
+  kind: "buy" | "sell" | "rotation";
   dex: string | null;
+  source?: "market" | "wallet-overlap";
+  confidence?: number;
+  sharedWallets?: number;
 };
 
 const fmtUsd = (n: number) => {
@@ -96,6 +100,9 @@ export default function MarketMap() {
   const [size, setSize] = useState({ w: 1000, h: 700 });
   const [tokens, setTokens] = useState<MarketToken[]>([]);
   const [flows, setFlows] = useState<Flow[]>([]);
+  const [expansionFlows, setExpansionFlows] = useState<Flow[]>([]);
+  const [expandedMints, setExpandedMints] = useState<string[]>([]);
+  const [expansionLoading, setExpansionLoading] = useState<string | null>(null);
   const [motionNow, setMotionNow] = useState(0);
   const [updated, setUpdated] = useState<string | null>(null);
   const [networkSwaps1h, setNetworkSwaps1h] = useState(0);
@@ -225,7 +232,7 @@ export default function MarketMap() {
     const s = sim.current;
     if (!s) return;
     const nodes = [...nodeMap.current.values()];
-    const links = flows
+    const links = [...flows, ...expansionFlows]
       .filter((f) => nodeMap.current.has(f.from) && nodeMap.current.has(f.to))
       .map((f) => ({ source: f.from, target: f.to, usd1h: f.usd1h }));
 
@@ -252,7 +259,7 @@ export default function MarketMap() {
       .strength((l: any) => Math.min(0.32, 0.06 + Math.log10(Math.max(1, l.usd1h)) * 0.03)));
     s.force("collide", forceCollide<any>((d) => d.r + (d.isCore ? 20 : 15)).strength(0.98));
     s.alpha(0.72).restart();
-  }, [size, tokens, flows]);
+  }, [size, tokens, flows, expansionFlows]);
 
   const applySnapshot = (j: any) => {
     const list = (j.tokens ?? []) as MarketToken[];
@@ -308,7 +315,10 @@ export default function MarketMap() {
     }
 
     const allowed = new Set([...list.map((x) => x.mint), ...usedCore]);
-    for (const key of [...nodeMap.current.keys()]) if (!allowed.has(key)) nodeMap.current.delete(key);
+    for (const key of [...nodeMap.current.keys()]) {
+      const node = nodeMap.current.get(key);
+      if (!allowed.has(key) && !node?.expanded) nodeMap.current.delete(key);
+    }
   };
 
   useEffect(() => {
@@ -374,6 +384,52 @@ export default function MarketMap() {
     };
   }, [streamLive, autoPaused]);
 
+  async function expandToken(t: MarketToken) {
+    if (t.isCore || expandedMints.includes(t.mint) || expansionLoading === t.mint) return;
+    setExpansionLoading(t.mint);
+    try {
+      const r = await fetch(`/api/market/expand?mint=${encodeURIComponent(t.mint)}`, { cache: "no-store" });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error || "expand");
+
+      const center = nodeMap.current.get(t.mint);
+      const additions = (j.tokens ?? []) as MarketToken[];
+      additions.forEach((token, i) => {
+        const prev = nodeMap.current.get(token.mint);
+        if (prev) {
+          Object.assign(prev, token, { expanded: true, r: Math.max(10, radius(token) * 0.8) });
+          return;
+        }
+        const angle = (Math.PI * 2 * i) / Math.max(1, additions.length) + Math.random() * 0.25;
+        const distance = 105 + (i % 3) * 34;
+        nodeMap.current.set(token.mint, {
+          ...token,
+          expanded: true,
+          x: (center?.x ?? size.w / 2) + Math.cos(angle) * distance,
+          y: (center?.y ?? size.h / 2) + Math.sin(angle) * distance,
+          r: Math.max(10, radius(token) * 0.8),
+          isCore: false,
+        });
+      });
+
+      const nextFlows = (j.flows ?? []) as Flow[];
+      setExpansionFlows((current) => {
+        const keyed = new Map<string, Flow>();
+        for (const flow of [...current, ...nextFlows]) {
+          keyed.set(`${flow.from}>${flow.to}:${flow.source ?? flow.kind}`, flow);
+        }
+        return [...keyed.values()].slice(-120);
+      });
+      setExpandedMints((current) => [...new Set([...current, t.mint])].slice(-12));
+      sim.current?.alpha(0.9).restart();
+      setTick((x) => x + 1);
+    } catch {
+      setError("Не успях да разширя мрежата за този токен.");
+    } finally {
+      setExpansionLoading(null);
+    }
+  }
+
   async function openToken(t: MarketToken) {
     setLoadingMint(t.mint);
     setError("");
@@ -393,7 +449,14 @@ export default function MarketMap() {
   }
 
   const nodes = [...nodeMap.current.values()];
-  const visibleFlows = flows
+  const combinedFlows = [...flows, ...expansionFlows];
+  const hotFlowKeys = new Set(
+    [...combinedFlows]
+      .sort((a, b) => (b.usd1h * (b.confidence ?? 1)) - (a.usd1h * (a.confidence ?? 1)))
+      .slice(0, 4)
+      .map((f) => `${f.from}>${f.to}:${f.kind}`)
+  );
+  const visibleFlows = combinedFlows
     .map((f) => ({ ...f, source: nodeMap.current.get(f.from), target: nodeMap.current.get(f.to) }))
     .filter((f) => f.source && f.target)
     .slice(0, 100);
@@ -460,20 +523,25 @@ export default function MarketMap() {
               const source = f.source as Node;
               const target = f.target as Node;
               const p = edgePoint(source, target, 5);
-              const color = f.kind === "buy" ? "#46d58d" : "#ff6473";
-              const width = Math.max(.7, Math.min(4.2, .55 + Math.log10(Math.max(1, f.usd1h)) * .55));
-              const opacity = Math.max(.18, Math.min(.82, .2 + Math.log10(Math.max(1, f.usd1h)) * .08));
+              const inferred = f.kind === "rotation";
+              const hot = hotFlowKeys.has(`${f.from}>${f.to}:${f.kind}`);
+              const color = inferred ? "#f4b860" : f.kind === "buy" ? "#46d58d" : "#ff6473";
+              const width = Math.max(.7, Math.min(hot ? 5.4 : 4.2, .55 + Math.log10(Math.max(1, f.usd1h)) * .55 + (hot ? 1.1 : 0)));
+              const opacity = hot ? .94 : Math.max(.18, Math.min(.82, .2 + Math.log10(Math.max(1, f.usd1h)) * .08));
               return <line
                 key={`flow:${f.from}:${f.to}:${f.kind}:${i}`}
                 x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2}
                 stroke={color}
                 strokeWidth={width}
                 strokeOpacity={opacity}
-                strokeDasharray="4 5"
-                markerEnd={f.kind === "buy" ? "url(#marketArrowBuy)" : "url(#marketArrowSell)"}
-                className="market-flow-line"
+                strokeDasharray={inferred ? "3 7" : "4 5"}
+                markerEnd={f.kind === "sell" ? "url(#marketArrowSell)" : "url(#marketArrowBuy)"}
+                className={`market-flow-line ${hot ? "hot-path" : ""} ${inferred ? "inferred-flow" : ""}`}
               >
-                <title>{`${f.kind === "buy" ? "Капитал към" : "Капитал от"} ${target.symbol || target.mint.slice(0, 5)} · ${fmtUsd(f.usd1h)} / 1ч. · ${f.trades1h} tx`}</title>
+                <title>{inferred
+                  ? `Вероятен wallet-overlap поток · ${f.sharedWallets ?? f.trades1h} общи wallet-а · ${Math.round((f.confidence ?? .5) * 100)}% увереност`
+                  : `${f.kind === "buy" ? "Капитал към" : "Капитал от"} ${target.symbol || target.mint.slice(0, 5)} · ${fmtUsd(f.usd1h)} / 1ч. · ${f.trades1h} tx`
+                }</title>
               </line>;
             })}
 
@@ -489,7 +557,7 @@ export default function MarketMap() {
                 key={`particle:${f.from}:${f.to}:${i}`}
                 cx={x} cy={y}
                 r={Math.max(1.4, Math.min(3.5, 1.2 + Math.log10(Math.max(1, f.usd1h)) * .28))}
-                fill={f.kind === "buy" ? "#8ff0bd" : "#ff9aa5"}
+                fill={f.kind === "rotation" ? "#ffd38a" : f.kind === "buy" ? "#8ff0bd" : "#ff9aa5"}
                 className="market-traffic-particle"
                 pointerEvents="none"
               />;
@@ -499,7 +567,10 @@ export default function MarketMap() {
               const color = flowColor(n);
               const total = Math.max(1, n.buys1h + n.sells1h);
               const imbalance = (n.buys1h - n.sells1h) / total;
-              const pulse = n.isCore ? 1 + Math.sin(motionNow / 900 + i) * .025 : 1 + Math.sin(motionNow / 700 + i) * Math.min(.07, Math.abs(imbalance) * .08);
+              const activity = Math.min(1, Math.log10(Math.max(1, n.trades1h + 1)) / 4);
+              const pulseSpeed = 1200 - activity * 900;
+              const pulseAmp = n.expanded ? .025 : Math.min(.09, .018 + activity * .055 + Math.abs(imbalance) * .03);
+              const pulse = n.isCore ? 1 + Math.sin(motionNow / 900 + i) * .025 : 1 + Math.sin(motionNow / pulseSpeed + i) * pulseAmp;
               return <g key={n.mint} transform={`translate(${n.x} ${n.y}) scale(${pulse})`}>
                 <circle
                   r={n.r + 5}
@@ -521,7 +592,10 @@ export default function MarketMap() {
                   onPointerUp={endMarketDrag}
                   onPointerCancel={endMarketDrag}
                   onClick={() => {
-                    if (!drag.current.moved && !n.isCore) setSelected(n);
+                    if (!drag.current.moved && !n.isCore) {
+                      setSelected(n);
+                      expandToken(n);
+                    }
                     drag.current.moved = false;
                   }}
                   onDoubleClick={() => {
@@ -565,7 +639,8 @@ export default function MarketMap() {
         <aside className="market-side">
           {!selected ? <>
             <h2>Пазарен поток</h2>
-            <p>Кликни върху токен, за да видиш данните му и да отвориш holder картата.</p>
+            <p>Кликни токен, за да разшириш мрежата около него. Double click отваря holder картата.</p>
+            {expansionLoading && <div className="market-expanding">Разгръщам wallet връзките…</div>}
             <div className="market-rank">
               {tokens.slice(0, 12).map((t, i) => <button key={t.mint} onClick={() => setSelected(t)}>
                 <span>{i + 1}</span>
@@ -588,6 +663,7 @@ export default function MarketMap() {
               <dt>Покупки 1ч.</dt><dd>{selected.buys1h}</dd>
               <dt>Продажби 1ч.</dt><dd>{selected.sells1h}</dd>
               <dt>Промяна 1ч.</dt><dd className={selected.priceChange1h >= 0 ? "buy" : "sell"}>{selected.priceChange1h.toFixed(2)}%</dd>
+              <dt>Мрежа</dt><dd>{expandedMints.includes(selected.mint) ? "разгърната" : "клик за разгръщане"}</dd>
             </dl>
             <button className="open-token-button" onClick={() => openToken(selected)} disabled={loadingMint === selected.mint}>
               {loadingMint === selected.mint ? "Зареждам holders…" : "Отвори holder картата"}
