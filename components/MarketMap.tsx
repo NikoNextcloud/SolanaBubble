@@ -807,6 +807,11 @@ export default function MarketMap() {
                 <stop offset="55%" stopColor="#ffc56e" stopOpacity=".34" />
                 <stop offset="100%" stopColor="#fff2c7" stopOpacity="1" />
               </linearGradient>
+              <linearGradient id="cometFutureFade" x1="0%" x2="100%">
+                <stop offset="0%" stopColor="#ffffff" stopOpacity=".72" />
+                <stop offset="45%" stopColor="#eefaff" stopOpacity=".38" />
+                <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+              </linearGradient>
               <pattern id="tinyStars" width="220" height="220" patternUnits="userSpaceOnUse">
                 <circle cx="18" cy="22" r="1" fill="#ffffff" opacity=".55" />
                 <circle cx="74" cy="38" r="1.2" fill="#dfe8ff" opacity=".38" />
