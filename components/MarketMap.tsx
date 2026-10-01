@@ -22,6 +22,7 @@ type MarketToken = {
   boost: number;
   quoteMint?: string | null;
   quoteSymbol?: string | null;
+  imageUrl?: string | null;
 };
 
 type Node = MarketToken & {
@@ -31,6 +32,8 @@ type Node = MarketToken & {
   vy?: number;
   r: number;
   isCore?: boolean;
+  fx?: number | null;
+  fy?: number | null;
 };
 
 type DataSource = "free" | "solscan";
@@ -107,6 +110,78 @@ export default function MarketMap() {
   const [solscanInfo, setSolscanInfo] = useState<any>(null);
   const [error, setError] = useState("");
   const lastActivity = useRef(Date.now());
+  const drag = useRef({ active: false, pointerId: -1, mint: "", lastX: 0, lastY: 0, moved: false });
+
+  const savePinnedMarketNodes = () => {
+    try {
+      const pinned: Record<string, { x: number; y: number }> = {};
+      for (const n of nodeMap.current.values()) {
+        if (n.fx != null && n.fy != null) pinned[n.mint] = { x: n.fx, y: n.fy };
+      }
+      localStorage.setItem("solanabubble:market-pinned", JSON.stringify(pinned));
+    } catch {}
+  };
+
+  const beginMarketDrag = (e: React.PointerEvent<SVGCircleElement>, mint: string) => {
+    e.stopPropagation();
+    const n = nodeMap.current.get(mint);
+    if (!n) return;
+    n.fx = n.x;
+    n.fy = n.y;
+    n.vx = 0;
+    n.vy = 0;
+    drag.current = { active: true, pointerId: e.pointerId, mint, lastX: e.clientX, lastY: e.clientY, moved: false };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    sim.current?.alpha(0.8).alphaTarget(0.22).restart();
+    setTick((x) => x + 1);
+  };
+
+  const moveMarketDrag = (e: React.PointerEvent<SVGCircleElement>) => {
+    const d = drag.current;
+    if (!d.active || d.pointerId !== e.pointerId) return;
+    e.stopPropagation();
+    const n = nodeMap.current.get(d.mint);
+    if (!n) return;
+    const dx = e.clientX - d.lastX;
+    const dy = e.clientY - d.lastY;
+    if (Math.abs(dx) + Math.abs(dy) > 1) d.moved = true;
+    d.lastX = e.clientX;
+    d.lastY = e.clientY;
+    n.fx = (n.fx ?? n.x) + dx;
+    n.fy = (n.fy ?? n.y) + dy;
+    n.x = n.fx;
+    n.y = n.fy;
+    sim.current?.alpha(0.72).restart();
+    setTick((x) => x + 1);
+  };
+
+  const endMarketDrag = (e: React.PointerEvent<SVGCircleElement>) => {
+    const d = drag.current;
+    if (!d.active || d.pointerId !== e.pointerId) return;
+    e.stopPropagation();
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    const n = nodeMap.current.get(d.mint);
+    if (n) {
+      n.fx = n.x;
+      n.fy = n.y;
+      n.vx = 0;
+      n.vy = 0;
+    }
+    d.active = false;
+    savePinnedMarketNodes();
+    sim.current?.alpha(0.45).alphaTarget(0).restart();
+    setTick((x) => x + 1);
+  };
+
+  const resetMarketPositions = () => {
+    for (const n of nodeMap.current.values()) {
+      n.fx = null;
+      n.fy = null;
+    }
+    try { localStorage.removeItem("solanabubble:market-pinned"); } catch {}
+    sim.current?.alpha(0.85).alphaTarget(0).restart();
+    setTick((x) => x + 1);
+  };
 
   const totals = useMemo(() => {
     return tokens.reduce((a, t) => ({
@@ -185,6 +260,8 @@ export default function MarketMap() {
 
   const applySnapshot = (j: any) => {
     const list = (j.tokens ?? []) as MarketToken[];
+    let pinned: Record<string, { x: number; y: number }> = {};
+    try { pinned = JSON.parse(localStorage.getItem("solanabubble:market-pinned") || "{}"); } catch {}
     const nextFlows = (j.flows ?? []) as Flow[];
     setTokens(list);
     setFlows(nextFlows);
@@ -195,13 +272,18 @@ export default function MarketMap() {
     for (const t of list) {
       const prev = nodeMap.current.get(t.mint);
       if (prev) Object.assign(prev, t, { r: radius(t), isCore: false });
-      else nodeMap.current.set(t.mint, {
-        ...t,
-        x: size.w / 2 + (Math.random() - 0.5) * 180,
-        y: size.h / 2 + (Math.random() - 0.5) * 140,
-        r: radius(t),
-        isCore: false,
-      });
+      else {
+        const pin = pinned[t.mint];
+        nodeMap.current.set(t.mint, {
+          ...t,
+          x: pin?.x ?? size.w / 2 + (Math.random() - 0.5) * 180,
+          y: pin?.y ?? size.h / 2 + (Math.random() - 0.5) * 140,
+          fx: pin?.x ?? null,
+          fy: pin?.y ?? null,
+          r: radius(t),
+          isCore: false,
+        });
+      }
     }
 
     const usedCore = new Set<string>();
@@ -372,6 +454,7 @@ export default function MarketMap() {
               className={`go-live-control ${streamLive === true ? "is-live" : ""}`}
               onClick={() => changeLive(streamLive !== true)}
             >{streamLive === true ? "◉ Live" : "◉ Go Live"}</button>
+            <button className="ghost-control reset-layout-control" onClick={resetMarketPositions}>↺ Нулирай позиции</button>
           </div>
           <button
             className={`market-pause-orb ${streamLive === false ? "paused" : ""}`}
@@ -460,16 +543,36 @@ export default function MarketMap() {
                 />
                 <circle
                   r={n.r}
-                  fill={n.isCore ? "#202733" : "#15191f"}
-                  fillOpacity={n.isCore ? ".98" : ".94"}
-                  stroke={selected?.mint === n.mint ? "#ffffff" : n.isCore ? "#a8b2c0" : color}
+                  fill={n.isCore ? "#2b3138" : "#20262c"}
+                  fillOpacity={n.isCore ? ".98" : ".96"}
+                  stroke={selected?.mint === n.mint ? "#ffffff" : n.isCore ? "#b8c0c8" : color}
                   strokeWidth={selected?.mint === n.mint ? 2.5 : 1.5}
                   className={n.isCore ? "market-token-bubble market-core-bubble" : "market-token-bubble"}
-                  onClick={() => { if (!n.isCore) setSelected(n); }}
+                  onPointerDown={(e) => beginMarketDrag(e, n.mint)}
+                  onPointerMove={moveMarketDrag}
+                  onPointerUp={endMarketDrag}
+                  onPointerCancel={endMarketDrag}
+                  onClick={() => {
+                    if (!drag.current.moved && !n.isCore) setSelected(n);
+                    drag.current.moved = false;
+                  }}
                 >
                   <title>{n.symbol || n.name || n.mint}</title>
                 </circle>
-                {n.r >= 17 && <text textAnchor="middle" dy="4" className="market-symbol">{n.symbol || "?"}</text>}
+                {n.imageUrl && !n.isCore ? <>
+                  <clipPath id={`token-clip-${n.mint}`}><circle r={Math.max(5, n.r - 3)} /></clipPath>
+                  <image
+                    href={n.imageUrl}
+                    x={-(n.r - 3)}
+                    y={-(n.r - 3)}
+                    width={(n.r - 3) * 2}
+                    height={(n.r - 3) * 2}
+                    preserveAspectRatio="xMidYMid slice"
+                    clipPath={`url(#token-clip-${n.mint})`}
+                    pointerEvents="none"
+                    className="market-token-icon"
+                  />
+                </> : n.r >= 17 && <text textAnchor="middle" dy="4" className="market-symbol">{n.symbol || "?"}</text>}
                 {n.volume1h > 0 && <circle
                   className="market-flow-dot"
                   r="2"
