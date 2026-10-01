@@ -1691,3 +1691,54 @@ body{background:#1b2025!important}
 .holder-comet-future{
   stroke:rgba(244,252,255,.62);
 }
+
+
+/* Impact flash + stronger accumulated hype glow */
+.holder-impact{
+  opacity:0;
+  animation:holderImpact var(--impact-duration,6s) linear infinite var(--impact-delay,0s);
+  transform-box:fill-box;
+  transform-origin:center;
+}
+.holder-impact-core{
+  fill:rgba(255,255,255,.95);
+  filter:
+    drop-shadow(0 0 4px #fff)
+    drop-shadow(0 0 10px rgba(96,225,255,.95))
+    drop-shadow(0 0 18px rgba(141,89,255,.72));
+}
+.holder-impact-ring{
+  fill:none;
+  stroke:rgba(226,248,255,.9);
+  stroke-width:1.4;
+  transform-box:fill-box;
+  transform-origin:center;
+}
+.holder-impact-ring-a{
+  filter:drop-shadow(0 0 7px rgba(103,223,255,.72));
+}
+.holder-impact-ring-b{
+  stroke:rgba(154,106,255,.72);
+  filter:drop-shadow(0 0 10px rgba(142,89,255,.54));
+}
+@keyframes holderImpact{
+  0%,95.4%{opacity:0}
+  96%{opacity:.15}
+  97.2%{opacity:calc(.7 * var(--impact-power,1))}
+  98.2%{opacity:calc(1 * var(--impact-power,1));transform:scale(.86)}
+  99.1%{opacity:calc(.55 * var(--impact-power,1));transform:scale(1.18)}
+  100%{opacity:0;transform:scale(1.45)}
+}
+.planet-hype-aura-inner{
+  mix-blend-mode:screen;
+}
+.planet-hype-aura-outer{
+  mix-blend-mode:screen;
+}
+.market-token-bubble.hot-path-node,
+.planet-atmosphere.hot-path-node{
+  filter:
+    drop-shadow(0 0 12px rgba(255,255,255,.4))
+    drop-shadow(0 0 26px rgba(142,88,255,.82))
+    drop-shadow(0 0 42px rgba(74,218,255,.22))!important;
+}
