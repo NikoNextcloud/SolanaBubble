@@ -557,3 +557,67 @@ body{background:#1b2025!important}
 .market-hot-list button i.in{color:#58dc97}
 .market-hot-list button i.out{color:#ff7380}
 .market-hot-list button i.flat{color:#9aa4ad}
+
+
+/* Live hot-path guidance */
+.market-hot-title{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-bottom:7px;
+}
+.market-hot-title>strong{margin:0!important}
+.follow-hot-path{
+  border:1px solid #66512e;
+  border-radius:7px;
+  background:#31291d;
+  color:#ffd083;
+  padding:5px 7px;
+  font-size:8px;
+  font-weight:800;
+  cursor:pointer;
+}
+.follow-hot-path:hover{background:#3b3020}
+.market-hot-path-list{
+  margin:0 0 10px;
+  padding:9px;
+  border:1px solid #4b4030;
+  border-radius:9px;
+  background:#26231d;
+}
+.market-hot-path-list>strong{
+  display:block;
+  margin-bottom:6px;
+  color:#ffd083;
+  font-size:10px;
+}
+.market-hot-path-list button{
+  width:100%;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 15px minmax(0,1fr) auto;
+  align-items:center;
+  gap:5px;
+  padding:6px 2px;
+  border:0;
+  border-top:1px solid #393227;
+  background:transparent;
+  color:#e9edf0;
+  font-size:9px;
+  cursor:pointer;
+}
+.market-hot-path-list button:first-of-type{border-top:0}
+.market-hot-path-list button:hover{background:#2e2921}
+.market-hot-path-list i{font-style:normal;color:#ffc46c;text-align:center}
+.market-hot-path-list b{color:#b7c0c7;font-size:8px}
+.market-token-bubble.hot-path-node{
+  filter:drop-shadow(0 0 8px rgba(255,190,95,.55));
+}
+.market-token-bubble.trade-hit{
+  animation:marketTradeHit 1.4s ease-out;
+}
+@keyframes marketTradeHit{
+  0%{filter:brightness(1) drop-shadow(0 0 0 rgba(255,255,255,0))}
+  22%{filter:brightness(1.45) drop-shadow(0 0 13px rgba(255,255,255,.55))}
+  100%{filter:brightness(1) drop-shadow(0 0 0 rgba(255,255,255,0))}
+}
