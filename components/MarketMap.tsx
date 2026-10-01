@@ -685,7 +685,7 @@ export default function MarketMap() {
             <div className="market-map-filters">
               <button className="sector-control">◉ All Sectors⌄</button>
               <div className="timeframe-switch">
-                <button>1H</button><button>6H</button><button className="active">24H</button><button>7D</button>
+                <button className="active">1H</button><button>6H</button>
               </div>
             </div>
             <div className="market-toolbar-actions">
@@ -695,7 +695,6 @@ export default function MarketMap() {
                 <option value="liquidityUsd">Liquidity</option>
                 <option value="volume24h">24h volume</option>
               </select>}
-              <button className={showTrafficOverlay ? "active" : ""} onClick={() => setShowTrafficOverlay((v) => !v)}>⇄ Traffic</button>
               <button
                 className={`go-live-control ${streamLive === true ? "is-live" : ""}`}
                 onClick={() => changeLive(streamLive !== true)}
@@ -715,7 +714,7 @@ export default function MarketMap() {
             <div>
               <strong>{viewMode === "map" ? "Solana Market Map" : "Solana Token List"}</strong>
               <span>{viewMode === "map"
-                ? "Y = price change 24h · X = selected market metric · size = activity · color = price movement"
+                ? "Y = price change 24h · X = selected market metric · size = activity · glow = Hype strength"
                 : "Подреден списък с market, hype и traffic показатели"}</span>
             </div>
             <span>{updated ? `обновено ${new Date(updated).toLocaleTimeString("bg-BG")}` : "зареждане…"}</span>
@@ -813,42 +812,6 @@ export default function MarketMap() {
                 <text x={size.w / 2} y={size.h - 18} textAnchor="middle" className="axis-title">{xAxis === "marketCap" ? "MARKET CAP" : xAxis === "liquidityUsd" ? "LIQUIDITY" : "24H VOLUME"}</text>
               </g>
             </>}
-            {showTrafficOverlay && viewMode === "map" && visibleFlows.map((f, i) => {
-              const source = f.source as Node;
-              const target = f.target as Node;
-              const p = edgePoint(source, target, 5);
-              const inferred = f.kind === "rotation";
-              const hot = hotFlowKeys.has(`${f.from}>${f.to}:${f.kind}`);
-              const color = inferred ? "#f4b860" : f.kind === "buy" ? "#46d58d" : "#ff6473";
-              const width = Math.max(.7, Math.min(hot ? 5.4 : 4.2, .55 + Math.log10(Math.max(1, f.usd1h)) * .55 + (hot ? 1.1 : 0)));
-              const opacity = hot ? .94 : Math.max(.18, Math.min(.82, .2 + Math.log10(Math.max(1, f.usd1h)) * .08));
-              const mx = (p.x1 + p.x2) / 2;
-              const my = (p.y1 + p.y2) / 2;
-              const dx = p.x2 - p.x1;
-              const dy = p.y2 - p.y1;
-              const len = Math.hypot(dx, dy) || 1;
-              const bend = Math.min(42, len * .12) * (i % 2 === 0 ? 1 : -1);
-              const cx = mx - (dy / len) * bend;
-              const cy = my + (dx / len) * bend;
-              const d = `M ${p.x1} ${p.y1} Q ${cx} ${cy} ${p.x2} ${p.y2}`;
-              return <path
-                key={`flow:${f.from}:${f.to}:${f.kind}:${i}`}
-                d={d}
-                fill="none"
-                stroke={color}
-                strokeWidth={width}
-                strokeOpacity={opacity}
-                strokeDasharray={inferred ? "3 7" : "4 5"}
-                markerEnd={f.kind === "sell" ? "url(#marketArrowSell)" : "url(#marketArrowBuy)"}
-                className={`market-flow-line flow-trail ${hot ? "hot-path" : ""} ${inferred ? "inferred-flow" : ""}`}
-              >
-                <title>{inferred
-                  ? `Вероятен wallet-overlap поток · ${f.sharedWallets ?? f.trades1h} общи wallet-а · ${Math.round((f.confidence ?? .5) * 100)}% увереност`
-                  : `${f.kind === "buy" ? "Капитал към" : "Капитал от"} ${target.symbol || target.mint.slice(0, 5)} · ${fmtUsd(f.usd1h)} / 1ч. · ${f.trades1h} tx`
-                }</title>
-              </path>;
-            })}
-
             {renderedNodes.map((n, i) => {
               const color = flowColor(n);
               const total = Math.max(1, n.buys1h + n.sells1h);
@@ -867,9 +830,20 @@ export default function MarketMap() {
               >
                 <circle
                   r={n.r + 8}
-                  className={`planet-atmosphere ${planetGlowClass(n)} ${hotNodeMints.has(n.mint) ? "hot-path-node" : ""}`}
+                  className="market-hype-glow"
+                  strokeWidth={1.2 + hype * .032}
+                  strokeOpacity={Math.min(.92, .12 + hype / 112)}
+                  style={{ ["--hype-strength" as any]: Math.max(.08, hype / 100) }}
                   pointerEvents="none"
                 />
+                {hype >= 55 && <circle
+                  r={n.r + 14 + hype * .07}
+                  className="market-hype-glow market-hype-glow-outer"
+                  strokeWidth={.8 + hype * .018}
+                  strokeOpacity={Math.min(.58, .08 + hype / 190)}
+                  style={{ ["--hype-strength" as any]: hype / 100 }}
+                  pointerEvents="none"
+                />}
                 <circle
                   r={n.r}
                   fill={n.isCore ? "#2b3138" : `url(#${planetGradientId(n)})`}
