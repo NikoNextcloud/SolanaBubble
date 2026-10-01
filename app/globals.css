@@ -714,3 +714,56 @@ body{background:#1b2025!important}
   70%{opacity:.2}
   100%{opacity:0;transform:scale(1.65)}
 }
+
+
+/* Space planets / hype stars */
+.space-background{opacity:1}
+.space-nebula-core{
+  fill:rgba(188,211,238,.07);
+  filter:blur(34px);
+}
+.planet-bubble{
+  transition:stroke-width .18s ease,filter .18s ease,opacity .18s ease;
+  filter:drop-shadow(0 0 7px rgba(255,255,255,.08));
+}
+.planet-bubble:hover{
+  filter:drop-shadow(0 0 12px rgba(255,255,255,.2));
+}
+.planet-atmosphere{
+  fill:rgba(255,255,255,.03);
+  opacity:.95;
+}
+.planet-glow-in{
+  fill:rgba(77,221,151,.16);
+  filter:drop-shadow(0 0 9px rgba(77,221,151,.28));
+}
+.planet-glow-out{
+  fill:rgba(255,110,130,.15);
+  filter:drop-shadow(0 0 9px rgba(255,110,130,.24));
+}
+.planet-glow-flat{
+  fill:rgba(170,184,198,.11);
+  filter:drop-shadow(0 0 7px rgba(170,184,198,.16));
+}
+.planet-highlight{
+  fill:rgba(255,255,255,.13);
+  opacity:.42;
+}
+.planet-hype-star-core{
+  fill:#ffe7a3;
+}
+.planet-hype-star-glow{
+  fill:rgba(255,216,128,.22);
+  filter:drop-shadow(0 0 4px rgba(255,218,136,.72));
+}
+.flow-trail{
+  stroke-linecap:round;
+  filter:drop-shadow(0 0 4px rgba(255,255,255,.08));
+}
+.market-flow-line.hot-path{
+  filter:drop-shadow(0 0 9px rgba(255,208,120,.82));
+}
+.market-token-bubble.hot-path-node,
+.planet-atmosphere.hot-path-node{
+  filter:drop-shadow(0 0 13px rgba(255,199,97,.58));
+}
