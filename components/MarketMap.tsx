@@ -556,6 +556,9 @@ export default function MarketMap() {
                     if (!drag.current.moved && !n.isCore) setSelected(n);
                     drag.current.moved = false;
                   }}
+                  onDoubleClick={() => {
+                    if (!n.isCore) openToken(n);
+                  }}
                 >
                   <title>{n.symbol || n.name || n.mint}</title>
                 </circle>
