@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import type { Intelligence, SignalAlert } from "@/lib/market/signals";
 import MoversPanel from "./MoversPanel";
 import AlertsPanel from "./AlertsPanel";
+import WatchlistPanel from "./WatchlistPanel";
+import DataQuality from "./DataQuality";
 
 type MarketToken = Intelligence & {
   mint: string;
@@ -36,23 +38,18 @@ export default function MarketSection({ section }: { section: string }) {
   const router = useRouter();
   const [tokens, setTokens] = useState<MarketToken[]>([]);
   const [alerts, setAlerts] = useState<SignalAlert[]>([]);
-  const [watchlist, setWatchlist] = useState<MarketToken[]>([]);
   const [loading, setLoading] = useState(true);
+  const [marketAt,setMarketAt]=useState<string|null>(null);
 
   useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem("solanabubble:wishlist") || "[]");
-      if (Array.isArray(saved)) setWatchlist(saved);
-    } catch {}
-  }, []);
-
-  useEffect(() => {
+    if(section==="watchlist") return;
     let stopped = false;
     const load = () => fetch("/api/market", { cache: "no-store" })
       .then((r) => r.ok ? r.json() : Promise.reject())
       .then((j) => {
         if (stopped) return;
         setTokens(Array.isArray(j.tokens) ? j.tokens : []);
+        setMarketAt(j.fetchedAt??null);
         setAlerts(Array.isArray(j.alerts) ? j.alerts : []);
       })
       .catch(() => {})
@@ -60,7 +57,7 @@ export default function MarketSection({ section }: { section: string }) {
     load();
     const interval = window.setInterval(load, 30_000);
     return () => { stopped = true; window.clearInterval(interval); };
-  }, []);
+  }, [section]);
 
   const narratives = useMemo(() => {
     const groups = new Map<string, MarketToken[]>();
@@ -101,15 +98,8 @@ export default function MarketSection({ section }: { section: string }) {
 
     {loading && section !== "watchlist" && <div className="market-section-empty">Зареждам market данни…</div>}
 
-    {section === "watchlist" && (
-      watchlist.length ? <div className="market-section-grid">
-        {watchlist.map((t) => <button className="market-section-card" key={t.mint} onClick={() => openToken(t.mint)}>
-          <strong>{t.symbol || t.name || t.mint.slice(0, 6)}</strong>
-          <span>{t.name || "Saved token"}</span>
-          <b>{fmtUsd(Number(t.priceUsd || 0))}</b>
-        </button>)}
-      </div> : <div className="market-section-empty">Watchlist-ът е празен. Отвори токен, за да го добавиш автоматично.</div>
-    )}
+    {section === "watchlist" && <WatchlistPanel/>}
+    {section !== "watchlist" && <DataQuality marketAt={marketAt}/>}
 
     {section === "movers" && !loading && <MoversPanel tokens={tokens} onSelect={t => openToken(t.mint)} limit={30} />}
 

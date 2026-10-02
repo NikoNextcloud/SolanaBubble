@@ -8,8 +8,13 @@ import { separateMapNodes } from "@/lib/market/layout";
 import TokenSignalCard from "./TokenSignalCard";
 import MoversPanel from "./MoversPanel";
 import AlertsPanel from "./AlertsPanel";
+import DataQuality from "./DataQuality";
+import SavedMarketFilters from "./SavedMarketFilters";
+import {useWatchlist} from "./useWatchlist";
+import {matchesWatchFilters} from "@/lib/watchlist";
 
 type MarketToken = Intelligence & {
+  marketObservedAt?:string|null;
   mint: string;
   name: string | null;
   symbol: string | null;
@@ -173,6 +178,7 @@ function edgePoint(a: Node, b: Node, gap = 4) {
 
 export default function MarketMap() {
   const router = useRouter();
+  const watch=useWatchlist();
   const wrap = useRef<HTMLDivElement>(null);
   const sim = useRef<Simulation<any, any> | null>(null);
   const nodeMap = useRef(new Map<string, Node>());
@@ -191,6 +197,7 @@ export default function MarketMap() {
   const [activityPulse, setActivityPulse] = useState<string[]>([]);
   const previousActivity = useRef(new Map<string, number>());
   const [updated, setUpdated] = useState<string | null>(null);
+  useEffect(()=>{if(tokens.length)watch.evaluate(tokens.map(t=>({...t,marketObservedAt:updated})));},[tokens,updated,watch.evaluate]);
   const [networkSwaps1h, setNetworkSwaps1h] = useState(0);
   const [streamLive, setStreamLive] = useState(true);
   const [viewMode, setViewMode] = useState<MarketViewMode>("map");
@@ -446,7 +453,7 @@ export default function MarketMap() {
   }, [size, tokens, flows, expansionFlows, viewMode, xAxis, showTrafficOverlay, axisStats]);
 
   const applySnapshot = (j: any) => {
-    const list = (j.tokens ?? []) as MarketToken[];
+    const list = (j.tokens ?? []).map((t:MarketToken)=>({...t,marketObservedAt:j.fetchedAt??null})) as MarketToken[];
     let pinned: Record<string, { x: number; y: number }> = {};
     try { pinned = JSON.parse(localStorage.getItem("solanabubble:market-pinned") || "{}"); } catch {}
     const nextFlows = (j.flows ?? []) as Flow[];
@@ -469,7 +476,7 @@ export default function MarketMap() {
       setActivityPulse(changed.slice(0, 24));
       window.setTimeout(() => setActivityPulse([]), 1800);
     }
-    setUpdated(j.fetchedAt ?? new Date().toISOString());
+    setUpdated(j.fetchedAt ?? null);
     setNetworkSwaps1h(Number(j.network?.swaps1h ?? 0));
     setError(j.stale ? "Snapshot is stale; waiting for the ingestion worker." : "");
 
@@ -684,7 +691,8 @@ export default function MarketMap() {
     }
   }
 
-  const nodes = [...nodeMap.current.values()];
+  const filteredTokens=tokens.filter(t=>matchesWatchFilters(t,watch.state.filters,watch.state.entries));
+  const nodes = [...nodeMap.current.values()].filter(n=>n.isCore||matchesWatchFilters(n,watch.state.filters,watch.state.entries));
   const renderedNodes = viewMode === "map" ? nodes.filter((n) => !n.isCore) : nodes;
   const combinedFlows = [...flows, ...expansionFlows];
   const hotFlowKeys = new Set([
@@ -703,9 +711,10 @@ export default function MarketMap() {
       if (flow.to === selected.mint) focusMints.add(flow.from);
     }
   }
+  const visibleMints=new Set(nodes.map(n=>n.mint));
   const visibleFlows = combinedFlows
     .map((f) => ({ ...f, source: nodeMap.current.get(f.from), target: nodeMap.current.get(f.to) }))
-    .filter((f) => f.source && f.target)
+    .filter((f) => f.source && f.target && visibleMints.has(f.from) && visibleMints.has(f.to))
     .slice(0, 100);
 
   const netFlowByMint = new Map<string, number>();
@@ -764,7 +773,7 @@ export default function MarketMap() {
             <button className={viewMode === "list" ? "active" : ""} onClick={() => setViewMode("list")}>☷ List</button>
           </div>
           <div className="market-toolbar-actions">
-            <div className="market-inline-search">⌕ <span>Search tokens, wallets, or narratives…</span></div>
+
             {viewMode === "map" && <select value={xAxis} onChange={(e) => setXAxis(e.target.value as MarketAxis)} aria-label="Хоризонтална ос">
               <option value="marketCap">Market cap</option>
               <option value="liquidityUsd">Liquidity</option>
@@ -787,6 +796,8 @@ export default function MarketMap() {
           <button type="button" onClick={resetMarketPositions}>↺ Нулирай позиции</button>
         </div>
       </div>
+      <SavedMarketFilters/>
+      <DataQuality marketAt={updated}/>
       <section className="market-stats reference-market-stats">
         <div>
           <span>MARKET SENTIMENT</span>
@@ -813,6 +824,7 @@ export default function MarketMap() {
       <section className="market-workspace reference-market-workspace">
         <div className="market-map" ref={wrap}>
           {viewMode === "map" && <div className="lovable-map-hint">✥ Drag to explore · Scroll to zoom</div>}
+          {watch.ready && (viewMode === "list" ? !filteredTokens.length : !renderedNodes.length) && tokens.length > 0 && <div className="pause-banner">No tokens match your saved filters. Reset filters or add favorites.</div>}
           {streamLive === false && <div className="pause-banner">
             {autoPaused ? "Автоматична пауза след 2 мин. без активност" : "Live режимът е на пауза"} · данните са от кеша
           </div>}
@@ -820,7 +832,7 @@ export default function MarketMap() {
             <div className="market-list-header">
               <span>Token</span><span>Price</span><span>24h</span><span>24h Volume</span><span>Hype</span><span>Traffic</span>
             </div>
-            {[...tokens].sort((a,b) => b.volume24h - a.volume24h).map((t) => {
+            {[...filteredTokens].sort((a,b) => b.volume24h - a.volume24h).map((t) => {
               const traffic = trafficState(t);
               return <button key={t.mint} onClick={() => setSelected(t)} onDoubleClick={() => openToken(t)}>
                 <span className="market-list-token">

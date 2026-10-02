@@ -97,3 +97,13 @@ Market deltas and separate holder membership comparisons support 5m / 15m / 1h /
 At 499,000,000 bytes of Postgres database allocation, a minute cron guard and ingestion guard recycle bounded batches of old market snapshots/alerts (preserving seven hours), holder observations older than eight hours and analytics holder caches older than 24 hours. Current market cache, token records, holdings, transaction records and relationship data are preserved. This deliberately does not reset the database. DELETE frees reusable pages after vacuum and does not immediately shrink allocated database files; this policy cannot guarantee a hard total database cap or control Storage object usage.
 
 FoMo links use its direct `/coin?address=<mint>&chainId=1399811149` route. FoMo controls its own authentication. Map forces and collision resolution keep a gap around bubbles; deliberately pinned tokens retain their chosen positions.
+
+## Personal Watchlist and Data Quality
+
+Use ☆ Add to Watchlist in the Token Signal Card, or add a mint on `/market/watchlist`. Favorites (up to 50), search/minimum Hype/maximum Risk/favorites-only filters and per-token alert thresholds are stored in versioned browser localStorage. Existing `solanabubble:wishlist` entries migrate on the first edit. Storage failures are displayed, never silently presented as saved. Browser settings do not sync between devices and are removed if browser storage is cleared.
+
+Watchlist reads fresh market cache or the latest persisted snapshot for mints outside the current discovery universe; missing observations remain unknown. GET `/api/market/watchlist?mints=...` validates and bounds requests and never triggers collection. Open a token's holder page to track a token with no observation yet. Filters apply to Map and List and are shared with Watchlist. Drag/pan/zoom and the Map/List modes remain intact.
+
+Personal alerts evaluate cached observations while Map or Watchlist is open. Rules cover Hype, Hype Velocity, roughly-five-minute holder growth, buy count pressure (at least 20 trades) and liquidity drop. Unknown/stale observations cannot fire. Crossings persist once and rearm after the condition clears; edits reset that rule's condition. These are in-app alerts, not server-side subscriptions, push, email or unattended background delivery.
+
+Data Quality exposes actual market and holder observation timestamps and age, recent/stale/unknown status, sampled wallet relationship coverage and available comparison baselines. Market becomes stale at 10 minutes, holders at 60 minutes. It distinguishes upstream/RPC observations, computed scores/deltas, estimated flow and heuristic risk/relationships. Unknown timestamps are never replaced with the current time.

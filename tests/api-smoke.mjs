@@ -10,7 +10,7 @@ const db=http.createServer((req,res)=>{
   res.setHeader('Content-Type','application/json');
   const path=new URL(req.url,'http://localhost').pathname;
   if(path==='/rest/v1/api_cache') res.end(JSON.stringify([{payload:{fetchedAt:at,tokens:[token],flows:[],alerts:[]},updated_at:at}]));
-  else if(path==='/rest/v1/market_snapshots') res.end(JSON.stringify([{observed_at:at,payload:token}]));
+  else if(path==='/rest/v1/market_snapshots') {const requested=new URL(req.url,'http://localhost').searchParams.get('mint')?.replace(/^eq\./,'')??mint;res.end(JSON.stringify([{observed_at:at,payload:{...token,mint:requested}}]));}
   else {res.statusCode=500;res.end(JSON.stringify({error:'Unexpected database request'}));}
 });
 await new Promise(resolve=>db.listen(0,'127.0.0.1',resolve));
@@ -25,12 +25,17 @@ try {
   const get=path=>fetch(`http://127.0.0.1:${appPort}${path}`);
   const home=await (await get('/')).text();
   assert.match(home,/Token map/);assert.match(home,/▦ Map/);assert.match(home,/☷ List/);assert.doesNotMatch(home,/>Galaxy</);
-  for(const section of ['movers','alerts']) assert.equal((await get(`/market/${section}`)).status,200);
+  for(const section of ['movers','alerts','watchlist']) assert.equal((await get(`/market/${section}`)).status,200);
   const market=await get('/api/market'); assert.equal(market.status,200);
   const cached=await market.json();assert.equal(cached.cached,true);assert.equal(cached.stale,false);assert.equal(cached.tokens[0].holderCount,12);
   assert.equal((await get('/api/market/history?mint=bad')).status,400);
   const history=await get(`/api/market/history?mint=${mint}&hours=999`);assert.equal(history.status,200);const body=await history.json();assert.equal(body.hours,168);assert.equal(body.snapshots.length,1);
   assert.equal((await fetch(`http://127.0.0.1:${appPort}/api/market/ingest`,{method:'POST'})).status,401);
-  assert.equal(databaseCalls,2,'Cache reads must not run collection');
+  assert.equal((await get('/api/market/watchlist?mints=bad')).status,400);
+  assert.equal((await (await get('/api/market/watchlist')).json()).tokens.length,0);
+  const favorites=await (await get(`/api/market/watchlist?mints=${mint}`)).json();assert.equal(favorites.tokens[0].marketObservedAt,at);
+  const other='EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+  const fallback=await (await get(`/api/market/watchlist?mints=${other}`)).json();assert.equal(fallback.tokens[0].mint,other);assert.equal(fallback.tokens[0].marketObservedAt,at);
+  assert.equal(databaseCalls,5,'Cache reads must not run collection');
   console.log('API smoke passed: cached GET, bounded history, ingest auth, Map/List and section routes.');
 } finally {app.kill('SIGTERM'); await new Promise(resolve=>db.close(resolve));}

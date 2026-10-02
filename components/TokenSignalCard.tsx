@@ -2,8 +2,11 @@
 import { useEffect, useState } from 'react';
 import type { SignalToken, WindowMinutes } from '@/lib/market/signals';
 const number = (v: number | null | undefined, suffix = '') => v == null || !Number.isFinite(v) ? '—' : `${v.toLocaleString(undefined,{maximumFractionDigits:2})}${suffix}`;
+import FavoriteButton from './FavoriteButton';
+import DataQuality from './DataQuality';
+import type {WatchToken} from '@/lib/watchlist';
 type History = { observed_at: string; payload: SignalToken };
-export default function TokenSignalCard({ token }: { token: SignalToken }) {
+export default function TokenSignalCard({ token }: { token: WatchToken }) {
   const [windowMinutes,setWindowMinutes]=useState<WindowMinutes>('5');
   const [chartMetric,setChartMetric]=useState<'hypeScore'|'volume1h'|'liquidityUsd'|'priceUsd'|'holderCount'>('hypeScore');
   const [history, setHistory] = useState<History[]>([]);
@@ -39,6 +42,8 @@ export default function TokenSignalCard({ token }: { token: SignalToken }) {
   ];
   return <section className="signal-card reference-side-card" aria-label="Token Signal Card">
     <div className="market-hot-title"><strong>Token Signal Card</strong><b className={(token.riskScore ?? 0) >= 50 ? 'sell' : ''}>Risk {number(token.riskScore)} / 100</b></div>
+    <FavoriteButton token={token}/>
+    <DataQuality token={token}/>
     {token.liquidityWarning && <p className="signal-warning" role="alert">⚠ Liquidity disappearing: {number(token.liquidityChangePct,'%')}</p>}
     <dl className="market-token-stats">{rows.map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
     <div className="signal-comparisons">
