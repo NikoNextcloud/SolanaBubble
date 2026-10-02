@@ -39,3 +39,9 @@ test('quality distinguishes age, unknown timestamps and holder freshness boundar
   for(const value of [null,'bad','2026-10-02T08:00:00Z'])assert.equal(observationQuality(value,now).status,'unknown');
   assert.equal(observationQuality(at,NaN).status,'unknown');
 });
+
+test('out-of-order cached observations cannot rearm a newer alert',()=>{
+  const first=evaluatePersonalAlerts(state(),[token],now);
+  const older=evaluatePersonalAlerts(first,[{...token,hypeScore:60,marketObservedAt:'2026-10-02T06:59:00Z'}],now);
+  assert.equal(older,first);assert.equal(older.active[`${mint}:hypeScore`],true);
+});

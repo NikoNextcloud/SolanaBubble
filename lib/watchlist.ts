@@ -34,7 +34,10 @@ export function evaluatePersonalAlerts(state:WatchState,tokens:WatchToken[],now=
       const value=key==='holderGrowthPct'?t.holderWindows?.['5']?.holderGrowthPct:t[key];
       if(!at||!Number.isFinite(Date.parse(at))||now-Date.parse(at)>10*60_000||Date.parse(at)>now+60_000||typeof value!=='number'||!Number.isFinite(value)) continue;
       if(key==='buyPressure'&&(t.buys1h??0)+(t.sells1h??0)<20) continue;
-      const id=`${entry.mint}:${key}`,revision=`${at}:${threshold}`;if(next.seen[id]===revision) continue;
+      const id=`${entry.mint}:${key}`;
+      const last=next.seen[id];const lastTime=last?Date.parse(last.slice(0,last.lastIndexOf(':'))):NaN;
+      if(Number.isFinite(lastTime)&&Date.parse(at)<lastTime)continue;
+      const revision=`${at}:${threshold}`;if(next.seen[id]===revision) continue;
       const crossed=key==='liquidityChangePct'?value<=-threshold:value>=threshold;
       if(crossed&&!next.active[id]&&!next.alerts.some(a=>a.id===`${id}:${revision}`)) next.alerts.unshift({id:`${id}:${revision}`,mint:entry.mint,symbol:t.symbol??entry.symbol,key,value,threshold,at});
       next.seen[id]=revision;next.active[id]=crossed;changed=true;
