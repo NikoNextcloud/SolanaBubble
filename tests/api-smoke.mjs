@@ -24,7 +24,7 @@ try {
   assert.ok(ready,`App startup failed: ${logs}`);
   const get=path=>fetch(`http://127.0.0.1:${appPort}${path}`);
   const home=await (await get('/')).text();
-  assert.match(home,/Token map/);assert.match(home,/▦ Map/);assert.match(home,/☷ List/);assert.doesNotMatch(home,/>Galaxy</);
+  assert.match(home,/Token map/);assert.match(home,/Как да четеш балоните/);assert.match(home,/Анимации/);assert.match(home,/▦ Map/);assert.match(home,/☷ List/);assert.doesNotMatch(home,/>Galaxy</);
   for(const section of ['movers','alerts','watchlist']) assert.equal((await get(`/market/${section}`)).status,200);
   const market=await get('/api/market'); assert.equal(market.status,200);
   const cached=await market.json();assert.equal(cached.cached,true);assert.equal(cached.stale,false);assert.equal(cached.tokens[0].holderCount,12);

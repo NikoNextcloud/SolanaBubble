@@ -9,6 +9,7 @@ import TokenSignalCard from "./TokenSignalCard";
 import MoversPanel from "./MoversPanel";
 import AlertsPanel from "./AlertsPanel";
 import DataQuality from "./DataQuality";
+import {bubbleSignal} from "@/lib/market/map-signals";
 import SavedMarketFilters from "./SavedMarketFilters";
 import {useWatchlist} from "./useWatchlist";
 import {matchesWatchFilters} from "@/lib/watchlist";
@@ -200,6 +201,18 @@ export default function MarketMap() {
   useEffect(()=>{if(tokens.length)watch.evaluate(tokens.map(t=>({...t,marketObservedAt:updated})));},[tokens,updated,watch.evaluate]);
   const [networkSwaps1h, setNetworkSwaps1h] = useState(0);
   const [streamLive, setStreamLive] = useState(true);
+  const [pulsesEnabled,setPulsesEnabled]=useState(true);
+  const [reducedMotion,setReducedMotion]=useState(false);
+  const [signalNow,setSignalNow]=useState<number|null>(null);
+  useEffect(()=>{
+    try {setPulsesEnabled(localStorage.getItem('solanabubble:map-pulses')!=='off');}catch{}
+    const media=window.matchMedia('(prefers-reduced-motion: reduce)');
+    const sync=()=>setReducedMotion(media.matches);sync();media.addEventListener('change',sync);
+    setSignalNow(Date.now());const timer=setInterval(()=>setSignalNow(Date.now()),30000);
+    return()=>{media.removeEventListener('change',sync);clearInterval(timer);};
+  },[]);
+  const animateSignals=streamLive&&pulsesEnabled&&!reducedMotion;
+  function togglePulses(){setPulsesEnabled(v=>{try{localStorage.setItem('solanabubble:map-pulses',v?'off':'on');}catch{}return !v;});}
   const [viewMode, setViewMode] = useState<MarketViewMode>("map");
   const [xAxis, setXAxis] = useState<MarketAxis>("marketCap");
   const [showTrafficOverlay, setShowTrafficOverlay] = useState(true);
@@ -395,7 +408,7 @@ export default function MarketMap() {
       .on("tick", () => {
         const now = performance.now();
         if (now - lastSimRender.current < 34) return;
-        separateMapNodes([...nodeMap.current.values()]);
+        separateMapNodes([...nodeMap.current.values()],95);
         lastSimRender.current = now;
         setTick((x) => x + 1);
       });
@@ -448,7 +461,7 @@ export default function MarketMap() {
       .id((d: any) => d.mint)
       .distance((l: any) => 190 + Math.max(0, 100 - Math.log10(Math.max(1, l.usd1h)) * 10))
       .strength((l: any) => Math.min(0.12, 0.025 + Math.log10(Math.max(1, l.usd1h)) * 0.03)));
-    s.force("collide", forceCollide<any>((d) => d.r + 40).strength(1).iterations(4));
+    s.force("collide", forceCollide<any>((d) => d.r + 55).strength(1).iterations(4));
     s.alpha(.58).restart();
   }, [size, tokens, flows, expansionFlows, viewMode, xAxis, showTrafficOverlay, axisStats]);
 
@@ -793,6 +806,7 @@ export default function MarketMap() {
             onClick={() => setAutoGraph((v) => !v)}
             title="Автоматично разгръща токени със surge или buy pressure, най-много веднъж на 45 секунди."
           >{autoGraph ? "✦ Auto graph" : "○ Auto graph"}</button>
+          <button type="button" aria-pressed={pulsesEnabled&&!reducedMotion} disabled={reducedMotion} onClick={togglePulses} title={reducedMotion?'Reduced motion е включен в системата.':'Спира визуалните ефекти; обновяването на данните остава активно.'}>◌ Анимации: {pulsesEnabled&&!reducedMotion?'Вкл':'Изкл'}</button>
           <button type="button" onClick={resetMarketPositions}>↺ Нулирай позиции</button>
         </div>
       </div>
@@ -847,7 +861,7 @@ export default function MarketMap() {
               </button>;
             })}
           </div> : <svg
-            className={`market-pan-surface ${mapPanDrag.current.active ? "is-panning" : ""}`}
+            className={`market-pan-surface ${animateSignals?"signals-animated":"signals-paused"} ${mapPanDrag.current.active ? "is-panning" : ""}`}
             onWheel={handleMapWheel}
             onPointerDown={beginMapPan}
             onPointerMove={moveMapPan}
@@ -939,20 +953,21 @@ export default function MarketMap() {
               />)}
             </g>
             {renderedNodes.map((n, i) => {
-              const color = flowColor(n);
+              const signal=bubbleSignal(n,signalNow??NaN);
+              const color=signal.flow==='in'?'#66d39a':signal.flow==='out'?'#ee746c':'#a9afb7';
               const total = Math.max(1, n.buys1h + n.sells1h);
               const imbalance = (n.buys1h - n.sells1h) / total;
               const activity = Math.min(1, Math.log10(Math.max(1, n.trades1h + 1)) / 4);
               const hype = hypeScore(n);
-              const traffic = trafficState(n);
+              const traffic = {...trafficState(n),cls:signal.flow};
               const netFlow = Number.isFinite(Number(n.netFlowUsd1h)) ? Number(n.netFlowUsd1h) : (netFlowByMint.get(n.mint) ?? 0);
               const focusDimmed = Boolean(selected?.mint && !focusMints.has(n.mint) && !n.isCore);
-              const pulseDuration = n.isCore ? 3.2 : Math.max(.8, Math.min(5, 4 - Math.tanh(Number(n.hypeAcceleration ?? 0) / .3) * 3));
-              const brightness = Math.max(.65, Math.min(1.5, 1 + Math.tanh(Math.abs(Number(n.hypeVelocity ?? 0))) * .5));
+              const pulseDuration = n.isCore ? 3.2 : Math.max(.8, Math.min(5, 4 - Math.tanh(Number(signal.fresh?n.hypeAcceleration??0:0) / .3) * 3));
+              const brightness = Math.max(.65, Math.min(1.5, 1 + Math.tanh(Math.abs(Number(signal.fresh?n.hypeVelocity??0:0))) * .5));
               return <g
                 key={n.mint}
                 transform={`translate(${n.x} ${n.y})`}
-                className={`market-node-group ${streamLive ? "is-animated" : "is-paused"}`}
+                className={`market-node-group ${animateSignals ? "is-animated" : "is-paused"}`}
                 style={{ ["--node-pulse-duration" as any]: `${pulseDuration}s` }}
               >
                 <circle
@@ -986,13 +1001,17 @@ export default function MarketMap() {
                   fill={n.isCore ? "#2b3138" : `url(#${planetGradientId(n)})`}
                   fillOpacity={n.isCore ? ".98" : ".94"}
                   stroke={selected?.mint === n.mint ? "#ffffff" : n.isCore ? "#b8c0c8" : color}
-                  strokeWidth={(selected?.mint === n.mint ? 2.5 : 1.5) + Math.max(0, Math.min(4, Number(n.holderGrowthPct ?? 0) / 5))}
+                  strokeWidth={(selected?.mint === n.mint ? 2.5 : 1.5) + Math.max(0, Math.min(4, Number(signal.fresh&&n.holderObservedAt&&signalNow!=null&&signalNow-Date.parse(n.holderObservedAt)<60*60_000?n.holderGrowthPct??0:0) / 5))}
                   className={[
                     n.isCore ? "market-token-bubble market-core-bubble planet-bubble" : "market-token-bubble planet-bubble",
                     hotNodeMints.has(n.mint) ? "hot-path-node" : "",
                     activityPulse.includes(n.mint) ? "trade-hit" : "",
                     focusDimmed ? "focus-dimmed" : "",
                   ].filter(Boolean).join(" ")}
+                  tabIndex={n.isCore?-1:0}
+                  role="button"
+                  aria-label={`${n.symbol||n.name||n.mint}: ${signal.label}${signal.liquidityDrop?', Liquidity ↓':''}${signal.whaleLabel?', '+signal.whaleLabel:''}`}
+                  onKeyDown={e=>{if(!n.isCore&&(e.key==='Enter'||e.key===' ')){e.preventDefault();setSelected(n);expandToken(n);}}}
                   onPointerDown={(e) => beginMarketDrag(e, n.mint)}
                   onPointerMove={moveMarketDrag}
                   onPointerUp={endMarketDrag}
@@ -1008,9 +1027,9 @@ export default function MarketMap() {
                     if (!n.isCore) openToken(n);
                   }}
                 >
-                  <title>{n.symbol || n.name || n.mint}</title>
+                  <title>{`${n.symbol||n.name||n.mint} · ${signal.label}\n${signal.reasons.join("\n")}\nПосоката е оценка от rolling 1h trade counts + Hype, не измерен паричен поток и не прогноза за цена.`}</title>
                 </circle>
-                {!n.isCore && ((n.riskScore ?? 0) >= 50 || n.liquidityWarning) && <circle r={n.r + 9} fill="none" stroke={n.liquidityWarning ? "#ff6473" : "#f5bd62"} strokeWidth="2" strokeDasharray="5 4" pointerEvents="none"><title>Risk {n.riskScore}/100 · {n.riskReasons?.join("; ")}</title></circle>}
+                {!n.isCore && (signal.riskWarning || signal.liquidityDrop) && <circle r={n.r + 9} fill="none" stroke={signal.liquidityDrop ? "#ff6473" : "#f5bd62"} strokeWidth="2" strokeDasharray="5 4" pointerEvents="none"/>}
                 {!n.isCore && <circle
                   r={Math.max(4, n.r * .7)}
                   cx={-n.r * .16}
@@ -1020,12 +1039,12 @@ export default function MarketMap() {
                 />}
                 
                 {viewMode === "map" && !n.isCore && <g className="reference-node-label" pointerEvents="none">
-                  <text x="0" y={-n.r - 30} textAnchor="middle" className="reference-token-name">{n.symbol || n.name || n.mint.slice(0,5)}</text>
-                  <text x="0" y={-n.r - 18} textAnchor="middle" className={n.priceChange24h >= 0 ? "reference-token-change buy" : "reference-token-change sell"}>
-                    {n.priceChange24h >= 0 ? "+" : ""}{n.priceChange24h.toFixed(1)}%
-                  </text>
-                  <rect x="-22" y={n.r + 8} width="44" height="13" rx="2" className="reference-pool-chip" />
-                  <text x="0" y={n.r + 17} textAnchor="middle" className="reference-pool-text">{n.dex ? n.dex.slice(0,8) : "Pool"} · live</text>
+                  <text x="0" y={-n.r - 32} textAnchor="middle" className="reference-token-name">{(n.symbol||n.name||n.mint.slice(0,5)).slice(0,12)} <tspan className={`map-direction direction-${signal.state}`}>{signal.arrow}</tspan></text>
+                  <text x="0" y={-n.r - 18} textAnchor="middle" className={`map-signal-status direction-${signal.state}`}>{signal.label}</text>
+                  <rect x="-42" y={n.r + 8} width="84" height="15" rx="3" className="reference-pool-chip"/>
+                  <text x="0" y={n.r + 19} textAnchor="middle" className="reference-pool-text">H {Math.round(hype)} · {n.dex?n.dex.slice(0,6):'Pool'}</text>
+                  {(signal.liquidityDrop||signal.whaleLabel) && <text x="0" y={n.r + 37} textAnchor="middle" className={signal.liquidityDrop?'map-event-badge liquidity-badge':'map-event-badge whale-badge'}>{signal.liquidityDrop?'⚠ Liquidity ↓':signal.whaleLabel}</text>}
+                  {signal.liquidityDrop&&signal.whaleLabel&&<text x="0" y={n.r+51} textAnchor="middle" className="map-event-badge whale-badge">{signal.whaleLabel}</text>}
                 </g>}
                 {n.imageUrl && !n.isCore ? <>
                   <clipPath id={`token-clip-${n.mint}`}><circle r={Math.max(5, n.r - 3)} /></clipPath>
@@ -1056,12 +1075,10 @@ export default function MarketMap() {
             <button onClick={() => zoomMapBy(1.18)} aria-label="Zoom in">＋</button>
             <button onClick={() => setMapView({ x: 0, y: 0, k: 1 })} aria-label="Reset zoom">⛶</button>
           </div>}
-          <div className="market-legend">
-            <span><i className="market-buy-dot" />inflow estimate</span>
-            <span><i className="market-neutral-dot" />SOL / USDC / USDT центрове</span>
-            <span><i className="market-sell-dot" />outflow estimate</span>
-            <span>Size: Hype · Brightness: Velocity · Pulse: Acceleration · Outline: Holder growth · Ring: Risk</span>
-          </div>
+          <details className="market-legend map-signal-legend" open>
+            <summary>Как да четеш балоните · оценка</summary>
+            <div><span><i className="market-buy-dot"/>Зелено: покупки по брой</span><span><i className="market-sell-dot"/>Червено: продажби по брой</span><span>↑ Засилва се · → Баланс · ↓ Отслабва · ? Unknown</span><span>Размер = Hype · Яркост = Velocity · Пулс = Acceleration</span><span>Контур = Holder growth · Жълт пръстен = Risk</span><span>⚠ Liquidity ↓: рязък спад · Whale +/−: праг 1% supply</span><small>Rolling 1h trade counts + Hype. Не измерен капитал. Посочи балон за причините; Risk остава отделен. Whale значките изчезват след 5m.</small></div>
+          </details>
         </div>
 
         <aside className="market-side reference-market-side">
