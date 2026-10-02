@@ -19,7 +19,7 @@ test('reject failed, unsigned, other pool, liquidity, truncated and routed trans
  const unsigned=fixture();unsigned.transaction.message.accountKeys.forEach(k=>k.signer=false);
  const liquidity=fixture();liquidity.transaction.message.instructions[0].data=b58(Array(24).fill(1));
  const truncated=fixture();truncated.transaction.message.instructions[0].data=b58([...swapPrograms[0].discriminators[0]]);
- const routed=fixture();routed.transaction.message.instructions.push({...routed.transaction.message.instructions[0],programId:'router'});
+ const routed=fixture() as any;routed.transaction.message.instructions.push({...routed.transaction.message.instructions[0],programId:'router'});
  const transfer=fixture() as any;transfer.transaction.message.instructions.push({programId:'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',parsed:{type:'transferChecked'}});
  const multiple=fixture();multiple.transaction.message.instructions.push(multiple.transaction.message.instructions[0]);
  for(const tx of [failed,unsigned,liquidity,truncated,routed,multiple,transfer])assert.equal(decodeDirectSwap(tx,'mint','pool',100),null);
