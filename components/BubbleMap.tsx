@@ -2,6 +2,7 @@
 import { fomoTokenUrl } from "@/lib/token-links";
 import HolderObservationStatus from "./HolderObservationStatus";
 import {balanceChanges,trackedFlow,walletFocus,type BalanceRow} from "@/lib/holder/insights";
+import WorkerStatus from "./WorkerStatus";
 import TrackedTokenSignal from "./TrackedTokenSignal";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY, type Simulation } from "d3-force";
@@ -335,7 +336,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
         if(stopped)return;
         if(!r.ok){setObservationError(true);return;}
         const j = await r.json();
-        if(graphReady.current)applyObservation(j);
+        if(graphReady.current){applyObservation(j);fetch(`/api/tokens/${mint}/priority`,{method:"POST"}).catch(()=>{});}
       } catch {}
     };
 
@@ -590,6 +591,8 @@ export default function BubbleMap({ mint }: { mint: string }) {
         });
       } catch {}
 
+      // Once per token open. SQL deduplicates for 5m, caps queue at 20, expires after 15m.
+      if(alive)fetch(`/api/tokens/${mint}/priority`,{method:'POST'}).catch(()=>{});
       const since = new Date(Date.now() - 24 * HOUR).toISOString();
       const [
         { data: t },
@@ -1214,6 +1217,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
       </section>
 
       <aside className="side insight-side">
+        <WorkerStatus/>
         <div className="side-section holder-change-panel"><strong>Какво се промени</strong><p className="note">{holderMetrics?.holderBaselineAt&&observationAt?`${new Date(holderMetrics.holderBaselineAt).toLocaleString('bg-BG')} → ${new Date(observationAt).toLocaleString('bg-BG')}`:'Необходими са две holder наблюдения за сравнение.'}</p><dl><dt>Нови / изчезнали holders</dt><dd>{holderMetrics?.newHolders??'—'} / {holderMetrics?.exitedHolders??'—'}</dd><dt>Top 10 supply</dt><dd>{holderMetrics?.top10SupplyPct!=null?`${holderMetrics.top10SupplyPct.toFixed(2)}%`:'—'}</dd></dl><p className="note">Промени в баланса между заредените извадки: {changeInterval?`${new Date(changeInterval.from).toLocaleTimeString('bg-BG')} → ${new Date(changeInterval.to).toLocaleTimeString('bg-BG')}`:'изчаква следващото наблюдение'}. Само адреси в двете top-500 извадки; не доказва покупки/продажби.</p>{changes.slice(0,5).map(c=><button key={c.wallet} className="holder-change-row" onClick={()=>setSel(c.wallet)}><span>{short(c.wallet)}</span><b className={c.delta>0?'buy':'sell'}>{c.delta>0?'+':''}{num(c.delta)} tokens</b></button>)}</div>
         {!selected && <TrackedTokenSignal mint={mint} />}
         {!selected ? <>

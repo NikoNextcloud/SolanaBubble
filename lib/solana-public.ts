@@ -1,6 +1,6 @@
 import { admin } from "./db";
 
-import { solanaRpc as rpc } from "./rpc-provider";
+import { SolanaRpcError, solanaRpc as rpc } from "./rpc-provider";
 const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const TOKEN_2022_PROGRAM = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 
@@ -141,17 +141,8 @@ export async function fetchRecentSignatures(address: string, limit = 8) {
   ]);
 }
 
-export async function fetchParsedTransaction(signature: string) {
-  try {
-    return await rpc<any>("getTransaction", [
-      signature,
-      {
-        commitment: "confirmed",
-        encoding: "jsonParsed",
-        maxSupportedTransactionVersion: 0,
-      },
-    ]);
-  } catch {
-    return null;
-  }
+export async function fetchParsedTransactionResult(signature:string){
+ try{return {transaction:await rpc<any>('getTransaction',[signature,{commitment:'confirmed',encoding:'jsonParsed',maxSupportedTransactionVersion:0}]),failure:null};}
+ catch(e){return {transaction:null,failure:e instanceof SolanaRpcError?e.kind:'network',failureCode:e instanceof SolanaRpcError?e.code:undefined};}
 }
+export async function fetchParsedTransaction(signature:string){return (await fetchParsedTransactionResult(signature)).transaction;}

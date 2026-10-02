@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import type { Intelligence, SignalAlert } from "@/lib/market/signals";
 import { separateMapNodes } from "@/lib/market/layout";
+import WorkerStatus from "./WorkerStatus";
 import TokenSignalCard from "./TokenSignalCard";
 import MoversPanel from "./MoversPanel";
 import AlertsPanel from "./AlertsPanel";
@@ -1083,6 +1084,7 @@ export default function MarketMap() {
         </div>
 
         <aside className="market-side reference-market-side">
+          <WorkerStatus/>
           {!selected ? <>
             <div className="side-section-title">
               <h2>Market intelligence</h2>

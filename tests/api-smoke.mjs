@@ -49,6 +49,7 @@ try {
   const refresh=await get(`/api/tokens/${mint}/refresh`);assert.equal(refresh.status,200);const observation=await refresh.json();assert.equal(observation.balances[0].balance,10);assert.equal(observation.cached,true);assert.equal(observation.metrics.top10SupplyPct,50);
   assert.equal((await fetch(`http://127.0.0.1:${appPort}/api/market/ingest`,{method:'POST',headers:{authorization:'Bearer fixture-secret'}})).status,409);
   missingMarket=true;assert.equal((await get('/api/market')).status,202);
+  const worker=await get("/api/market/status");assert.equal(worker.status,200);assert.match(worker.headers.get("vercel-cdn-cache-control")??"",/s-maxage=120/);
   assert.equal(mutations,0,'Cache endpoints must never mutate DB or start ingestion');
   console.log('API smoke passed: cached GET, bounded history, ingest auth, Map/List and section routes.');
 } finally {app.kill('SIGTERM'); await new Promise(resolve=>db.close(resolve));}

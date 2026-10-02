@@ -1,3 +1,4 @@
+import {selectHolderWork} from './scheduling';
 import { randomUUID } from 'node:crypto';
 import { admin } from '../db';
 import { collectMarket } from './collect';
@@ -14,7 +15,11 @@ export async function ingestMarket() {
   const claim = await db.rpc('claim_market_ingestion', { p_lease: lease });
   if (claim.error) throw claim.error;
   if (!claim.data) return { skipped: true, reason: 'Ingestion already running' };
+  let lastSuccessAt:string|null=null;
   try {
+    const status=await db.from('api_cache').select('payload').eq('cache_key','worker:status').maybeSingle();
+    lastSuccessAt=status.data?.payload?.lastSuccessAt??null;
+    const statusStart=await db.from('api_cache').upsert({cache_key:'worker:status',payload:{state:'running',startedAt:new Date(ingestionStarted).toISOString(),lastSuccessAt},updated_at:new Date().toISOString()});if(statusStart.error)throw statusStart.error;
     const storage = await db.rpc('enforce_market_storage_limit');
     if(storage.error) throw storage.error;
     const { data: cached, error } = await db.from('api_cache').select('payload').eq('cache_key', 'market:snapshot').maybeSingle();
@@ -22,7 +27,10 @@ export async function ingestMarket() {
     const previous = cached?.payload;
     const tracked=await db.from('tokens').select('mint').order('metadata_updated_at',{ascending:false,nullsFirst:false}).limit(20);
     if(tracked.error) throw tracked.error;
-    const base = await collectMarket(previous,(tracked.data ?? []).map(t=>t.mint));
+    const priorities=await db.from('holder_priorities').select('mint,requested_at').gt('expires_at',new Date().toISOString()).order('requested_at',{ascending:true}).limit(20);if(priorities.error)throw priorities.error;
+    const wanted=(priorities.data??[]).map(p=>p.mint);
+    const trackedMints=[...new Set([...wanted,...(tracked.data??[]).map(t=>t.mint)])].slice(0,20);
+    const base = await collectMarket(previous,trackedMints);
     const prevTokens = new Map<string, SignalToken>((previous?.tokens ?? []).map((t: SignalToken) => [t.mint, t]));
     const mints = base.tokens.map(t => t.mint);
     const { data: holders, error: holderError } = await db.from('api_cache').select('cache_key,payload,updated_at').in('cache_key', mints.map(m => `intelligence:holders:${m}`));
@@ -31,22 +39,22 @@ export async function ingestMarket() {
     const budget = Math.min(6, Math.max(0, Number(process.env.MARKET_HOLDER_BUDGET ?? 2) || 0));
     const cursor = Number(previous?.holderCursor ?? 0) % Math.max(1, mints.length);
     const failures: string[] = [];
-    // Keep one most active tracked token fresh each cycle; rotate the rest.
-    const trackedSet=new Set((tracked.data ?? []).map(t=>t.mint));
-    const priority=base.tokens.filter(t=>trackedSet.has(t.mint)).slice(0,1);
-    const rotation=base.tokens.filter(t=>!priority.some(p=>p.mint===t.mint));
-    const candidates=[...priority];
-    for(let i=0;i<rotation.length&&candidates.length<budget;i++) candidates.push(rotation[(cursor+i)%rotation.length]);
+    const trackedSet=new Set(trackedMints);
+    const work=selectHolderWork(base.tokens.filter(t=>trackedSet.has(t.mint)),wanted,cursor,budget);
+    const {priority,rotating:rotation,candidates}=work;
     let completed=0;
     for(const t of candidates.slice(0,budget)) {
       if(Date.now()-ingestionStarted>55_000) break;
-      try { observations.set(t.mint,await observeHolders(t.mint,t.priceUsd)); }
+      try { observations.set(t.mint,await observeHolders(t.mint,t.priceUsd));
+        const requested=(priorities.data??[]).find(p=>p.mint===t.mint);if(requested){const removed=await db.from('holder_priorities').delete().eq('mint',t.mint).lte('requested_at',requested.requested_at);if(removed.error)throw removed.error;}
+      }
       catch { failures.push(t.mint); }
       completed++;
     }
     // Traffic stays on the worker, under a global time and RPC budget.
-    const trafficCandidates=base.tokens.filter(t=>trackedSet.has(t.mint)&&t.pairAddress).slice(0,20);
-    const trafficCursor=Number(previous?.trafficCursor??0)%Math.max(1,trafficCandidates.length);
+    const trafficUniverse=base.tokens.filter(t=>trackedSet.has(t.mint)&&t.pairAddress).slice(0,20);
+    const trafficWork=selectHolderWork(trafficUniverse,wanted,Number(previous?.trafficCursor??0),2);
+    const trafficCandidates=trafficWork.candidates;
     let trafficCompleted=0,trafficFailures=0;
     const trafficByMint=new Map<string,any>();
     const trafficCache=await db.from('api_cache').select('cache_key,payload').in('cache_key',mints.map(m=>`intelligence:traffic:${m}`));
@@ -54,7 +62,7 @@ export async function ingestMarket() {
     for(const row of trafficCache.data??[])trafficByMint.set(row.cache_key.split(':').at(-1)!,row.payload);
     const solMarket=trafficCandidates.length?await fetchDexScreenerToken(WSOL_MINT).catch(()=>null):null;
     for(let i=0;i<Math.min(2,trafficCandidates.length)&&Date.now()-ingestionStarted<90000;i++){
-      const t=trafficCandidates[(trafficCursor+i)%trafficCandidates.length];
+      const t=trafficCandidates[i];
       try{trafficByMint.set(t.mint,await observeTraffic(t,solMarket?.priceUsd??null,observations.get(t.mint),ingestionStarted+110000));}catch{trafficFailures++;}
       trafficCompleted++;
     }
@@ -78,12 +86,16 @@ export async function ingestMarket() {
     const seen = new Set<string>();
     const recentAlerts = [...alerts, ...(history.data ?? []).map(r => r.payload as SignalAlert)].filter(a => !seen.has(a.id) && !!seen.add(a.id)).slice(0,80);
     const payload = { ...base, tokens, fetchedAt: at, holderCursor: (cursor+Math.max(0,completed-priority.length))%Math.max(1,rotation.length),
-      trafficCursor:(trafficCursor+trafficCompleted)%Math.max(1,trafficCandidates.length), alerts: recentAlerts, recentEvents: base.recentEvents,
-      storage: storage.data, ingestion: { trafficCompleted,trafficFailures,trafficUniverse:trafficCandidates.length,holderCompleted:completed, priorityMints:priority.map(t=>t.mint), holderBudget: budget, holderFailures: failures.length, source: 'server-worker', interval: '5m target; scheduler dependent' },
+      trafficCursor:(Number(previous?.trafficCursor??0)+Math.max(0,trafficCompleted-trafficWork.priority.length))%Math.max(1,trafficWork.rotating.length), alerts: recentAlerts, recentEvents: base.recentEvents,
+      storage: storage.data, ingestion: { trafficCompleted,trafficFailures,trafficUniverse:trafficUniverse.length,holderCompleted:completed, priorityMints:priority.map(t=>t.mint), holderBudget: budget, holderFailures: failures.length, source: 'server-worker', interval: '5m target; scheduler dependent' },
       metricNotes: { flow: 'USD estimate from rolling 1h trade counts', freshWallets: 'newly observed token holders; not wallet creation age', whales: 'owners ≥1% supply; pool/program owners included', smartMoney: 'whale balance change at current price; not verified swap flow', volumeAcceleration: 'acceleration of rolling 1h volume, USD/min²', risk: 'heuristic, not a security audit' } };
     const saved = await db.rpc('commit_market_snapshot', { p_lease: lease, p_payload: payload, p_alerts: alerts });
     if (saved.error) throw saved.error;
+    const finishedAt=new Date().toISOString();
+    const statusDone=await db.from('api_cache').upsert({cache_key:'worker:status',payload:{state:'ok',startedAt:new Date(ingestionStarted).toISOString(),finishedAt,lastSuccessAt:at,durationMs:Date.now()-ingestionStarted,holderFailures:failures.length,trafficFailures,holderCompleted:completed,trafficCompleted,tokens:tokens.length,recentHolders:tokens.filter(t=>t.holderObservedAt&&Date.now()-Date.parse(t.holderObservedAt)<3600000).length,trafficDiagnostics:tokens.reduce((acc:Record<string,number>,t)=>{for(const [k,v] of Object.entries(t.trafficSample?.failures??{}))acc[k]=(acc[k]??0)+Number(v);return acc;},{}),priorityMints:priority.map(t=>t.mint)},updated_at:finishedAt});if(statusDone.error)throw statusDone.error;
     return { ok: true, tokens: tokens.length, alerts: alerts.length, holderFailures: failures.length, fetchedAt: at };
+  } catch(error) {
+    await db.from('api_cache').upsert({cache_key:'worker:status',payload:{state:'error',startedAt:new Date(ingestionStarted).toISOString(),finishedAt:new Date().toISOString(),lastSuccessAt,error:'Background ingestion failed; previous market cache retained'},updated_at:new Date().toISOString()});throw error;
   } finally {
     await db.rpc('release_market_ingestion', { p_lease: lease });
   }
