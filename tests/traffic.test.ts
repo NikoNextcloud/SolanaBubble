@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {decodeDirectSwap,USDC_MINT,WSOL_MINT,type RecognizedSwap} from '../lib/market/traffic/decode';
 import {swapPrograms} from '../lib/market/traffic/programs';
 import {summarizeTraffic} from '../lib/market/traffic/summary';
-import {bubbleSignal} from '../lib/market/map-signals';
+import {bubbleSignal,trafficConfidence} from '../lib/market/map-signals';
 const at='2026-10-02T08:00:00Z',now=Date.parse(at);
 function b58(bytes:number[]){let v=0n;for(const b of bytes)v=v*256n+BigInt(b);let s='';const a='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';while(v){s=a[Number(v%58n)]+s;v/=58n;}return s;}
 function fixture(adapter=swapPrograms[0] as typeof swapPrograms[number],side:'buy'|'sell'='buy',quote=USDC_MINT){
@@ -38,6 +38,16 @@ test('traffic evidence distinguishes usable samples from RPC degradation',()=>{
  const usable=summarizeTraffic(Array.from({length:5},(_,i)=>row(`u${i}`,i)),[{listed:5,parsed:5,recognized:5,unavailable:0,unrecognized:0,failures:{}}],at,'pool');assert.equal(usable.evidence,'usable');
  const degraded=summarizeTraffic([], [{listed:5,parsed:0,recognized:0,unavailable:1,unrecognized:0,failures:{rate_limited:1}}],at,'pool');assert.equal(degraded.evidence,'degraded');
  const sparse=summarizeTraffic([], [{listed:5,parsed:5,recognized:0,unavailable:0,unrecognized:5,failures:{}}],at,'pool');assert.equal(sparse.evidence,'sparse');
+});
+test('traffic confidence separates reliable, partial and insufficient evidence',()=>{
+ const usable=summarizeTraffic(Array.from({length:5},(_,i)=>row(`c${i}`,i)),[{listed:5,parsed:5,recognized:5,unavailable:0,unrecognized:0,failures:{}}],at,'pool');
+ const degraded=summarizeTraffic([], [{listed:5,parsed:0,recognized:0,unavailable:1,unrecognized:0,failures:{rate_limited:1}}],at,'pool');
+ const sparse=summarizeTraffic([], [{listed:5,parsed:5,recognized:0,unavailable:0,unrecognized:5,failures:{}}],at,'pool');
+ assert.equal(trafficConfidence(usable,now).level,'reliable');
+ assert.equal(trafficConfidence(degraded,now).level,'partial');
+ assert.equal(trafficConfidence(sparse,now).level,'insufficient');
+ assert.equal(trafficConfidence({...usable,observedAt:new Date(now-11*60000).toISOString()},now).level,'insufficient');
+ assert.equal(trafficConfidence(null,now).level,'insufficient');
 });
 test('fresh sufficient swap sample drives map; stale or sparse sample keeps count heuristic',()=>{
  const sample=summarizeTraffic(Array.from({length:8},(_,i)=>row(`w${i}`,i)),[],at,'pool');const t={mint:'mint',marketObservedAt:at,buys1h:50,sells1h:50,hypeVelocity:0,trafficSample:sample};

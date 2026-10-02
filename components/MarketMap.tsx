@@ -10,7 +10,7 @@ import TokenSignalCard from "./TokenSignalCard";
 import MoversPanel from "./MoversPanel";
 import AlertsPanel from "./AlertsPanel";
 import DataQuality from "./DataQuality";
-import {bubbleSignal} from "@/lib/market/map-signals";
+import {bubbleSignal,trafficConfidence} from "@/lib/market/map-signals";
 import SavedMarketFilters from "./SavedMarketFilters";
 import {useWatchlist} from "./useWatchlist";
 import {matchesWatchFilters} from "@/lib/watchlist";
@@ -959,6 +959,7 @@ export default function MarketMap() {
             </g>
             {renderedNodes.map((n, i) => {
               const signal=bubbleSignal(n,signalNow??NaN);
+              const confidence=trafficConfidence(n.trafficSample,signalNow??NaN);
               const color=signal.flow==='in'?'#66d39a':signal.flow==='out'?'#ee746c':'#a9afb7';
               const total = Math.max(1, n.buys1h + n.sells1h);
               const imbalance = (n.buys1h - n.sells1h) / total;
@@ -1016,7 +1017,7 @@ export default function MarketMap() {
                   ].filter(Boolean).join(" ")}
                   tabIndex={n.isCore?-1:0}
                   role="button"
-                  aria-label={`${n.symbol||n.name||n.mint}: ${signal.label}${signal.liquidityDrop?', Liquidity ↓':''}${signal.whaleLabel?', '+signal.whaleLabel:''}`}
+                  aria-label={`${n.symbol||n.name||n.mint}: ${signal.label}; Traffic confidence: ${confidence.label}${signal.liquidityDrop?', Liquidity ↓':''}${signal.whaleLabel?', '+signal.whaleLabel:''}`}
                   onKeyDown={e=>{if(!n.isCore&&(e.key==='Enter'||e.key===' ')){e.preventDefault();setSelected(n);setQuickActionMint(n.mint);expandToken(n);}}}
                   onPointerDown={(e) => beginMarketDrag(e, n.mint)}
                   onPointerMove={moveMarketDrag}
@@ -1034,8 +1035,13 @@ export default function MarketMap() {
                     if (!n.isCore) openToken(n);
                   }}
                 >
-                  <title>{`${n.symbol||n.name||n.mint} · ${signal.label}\n${signal.reasons.join("\n")}\nПосоката е оценка от rolling 1h trade counts + Hype, не измерен паричен поток и не прогноза за цена.`}</title>
+                  <title>{`${n.symbol||n.name||n.mint} · ${signal.label}\nTraffic confidence: ${confidence.label}\n${signal.reasons.join("\n")}\nПосоката е оценка от rolling 1h trade counts + Hype, не измерен паричен поток и не прогноза за цена.`}</title>
                 </circle>
+                {!n.isCore && <g className={`traffic-confidence confidence-${confidence.level}`} pointerEvents="none">
+                  <title>Traffic Confidence · {confidence.label}</title>
+                  <circle cx={n.r * .7} cy={-n.r * .7} r="7" className="traffic-confidence-rim" />
+                  <circle cx={n.r * .7} cy={-n.r * .7} r="4" className="traffic-confidence-core" />
+                </g>}
                 {!n.isCore && (signal.riskWarning || signal.liquidityDrop) && <circle r={n.r + 9} fill="none" stroke={signal.liquidityDrop ? "#ff6473" : "#f5bd62"} strokeWidth="2" strokeDasharray="5 4" pointerEvents="none"/>}
                 {!n.isCore && <circle
                   r={Math.max(4, n.r * .7)}
@@ -1103,7 +1109,7 @@ export default function MarketMap() {
           </div>}
           <details className="market-legend map-signal-legend" open>
             <summary>Как да четеш балоните · оценка</summary>
-            <div><span><i className="market-buy-dot"/>Зелено: покупки по брой</span><span><i className="market-sell-dot"/>Червено: продажби по брой</span><span>↑ Засилва се · → Баланс · ↓ Отслабва · ? Unknown</span><span>Размер = Hype · Яркост = Velocity · Пулс = Acceleration</span><span>Контур = Holder growth · Жълт пръстен = Risk</span><span>⚠ Liquidity ↓: рязък спад · Whale +/−: праг 1% supply</span><small>Rolling 1h counts + Hype; “sample” = разпознати swaps от един pool (непълна извадка), цветът следва net USD в нея. Не общ пазарен капитал. Посочи балон за причините; Risk остава отделен. Whale значките изчезват след 5m.</small></div>
+            <div><span><i className="market-buy-dot"/>Зелено: покупки по брой</span><span><i className="market-sell-dot"/>Червено: продажби по брой</span><span>↑ Засилва се · → Баланс · ↓ Отслабва · ? Unknown</span><span>Размер = Hype · Яркост = Velocity · Пулс = Acceleration</span><span>Контур = Holder growth · Жълт пръстен = Risk</span><span className="traffic-confidence-legend"><i className="reliable"/>Traffic: надежден <i className="partial"/>частичен <i className="insufficient"/>недостатъчен</span><span>⚠ Liquidity ↓: рязък спад · Whale +/−: праг 1% supply</span><small>Rolling 1h counts + Hype; “sample” = разпознати swaps от един pool (непълна извадка), цветът следва net USD в нея. Не общ пазарен капитал. Посочи балон за причините; Risk остава отделен. Whale значките изчезват след 5m.</small></div>
           </details>
         </div>
 

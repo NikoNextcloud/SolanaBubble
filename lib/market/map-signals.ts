@@ -1,6 +1,17 @@
 import type {WatchToken} from '../watchlist';
+import type {TrafficSummary} from './traffic/summary';
 import {observationQuality} from './quality';
 export type BubbleState='up'|'down'|'stable'|'unbacked'|'unknown';
+export type TrafficConfidenceLevel='reliable'|'partial'|'insufficient';
+
+export function trafficConfidence(sample:TrafficSummary|null|undefined,now=Date.now()) {
+  const fresh=sample&&observationQuality(sample.observedAt,now).status==='recent';
+  if(!sample||!fresh)return {level:'insufficient' as const,label:'Недостатъчни данни'};
+  if(sample.evidence==='usable'&&sample.recognizedTransactions>=5)return {level:'reliable' as const,label:'Надеждна извадка'};
+  if(sample.evidence==='degraded')return {level:'partial' as const,label:'Частична извадка'};
+  return {level:'insufficient' as const,label:'Недостатъчни данни'};
+}
+
 /** Descriptive heuristic using rolling 1h trade counts, not measured swap dollars. */
 export function bubbleSignal(t:WatchToken,now=Date.now()) {
   const fresh=observationQuality(t.marketObservedAt,now).status==='recent';
