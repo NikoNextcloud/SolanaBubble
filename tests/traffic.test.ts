@@ -40,3 +40,7 @@ test('fresh sufficient swap sample drives map; stale or sparse sample keeps coun
  assert.equal(bubbleSignal({...t,trafficSample:{...sample,observedAt:new Date(now-11*60000).toISOString()}},now).state,'stable');
  assert.equal(bubbleSignal({...t,trafficSample:summarizeTraffic([row('one',1)],[],at,'pool')},now).state,'stable');
 });
+
+test('parsed v1 resource config preserves direct swap evidence; future/binary formats stay unknown',()=>{
+ const tx:any=fixture();tx.version=1;tx.transaction.message.transactionConfig={computeUnitLimit:30000,heapSize:null,loadedAccountsDataSizeLimit:200000,priorityFee:null};assert.equal(decodeDirectSwap(tx,'mint','pool',null)?.side,'buy');tx.version=2;assert.equal(decodeDirectSwap(tx,'mint','pool',null),null);assert.equal(decodeDirectSwap({version:1,blockTime:now/1000,meta:{err:null},transaction:['bytes','base64']},'mint','pool',null),null);
+});

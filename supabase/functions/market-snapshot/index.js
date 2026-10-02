@@ -16,12 +16,17 @@ export class SolanaRpcError extends Error {
         this.code = code;
     }
 }
+/** Method routing keeps indexed holder scans on their own provider. Explicit URLs override defaults. */
+export function rpcEndpoint(method) {
+    const traffic = method === 'getTransaction' || method === 'getSignaturesForAddress';
+    return (traffic ? process.env.SOLANA_TRAFFIC_RPC_URL : process.env.SOLANA_HOLDER_RPC_URL) || process.env.SOLANA_RPC_URL || (traffic ? 'https://solana-rpc.publicnode.com' : 'https://api.mainnet-beta.solana.com');
+}
 export class PublicSolanaRpcProvider {
     endpoint;
     transactionQueue = Promise.resolve();
     cooldownUntil = 0;
     cooldownFailure = "rate_limited";
-    constructor(endpoint = () => process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com') {
+    constructor(endpoint = rpcEndpoint) {
         this.endpoint = endpoint;
     }
     request(method, params) {
@@ -37,7 +42,7 @@ export class PublicSolanaRpcProvider {
             throw new SolanaRpcError(this.cooldownFailure, this.cooldownFailure === 'rate_limited' ? 429 : undefined);
         let response;
         try {
-            response = await fetch(this.endpoint(), { signal: AbortSignal.timeout(15000), method: 'POST', cache: 'no-store', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
+            response = await fetch(this.endpoint(method), { signal: AbortSignal.timeout(15000), method: 'POST', cache: 'no-store', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
         }
         catch (e) {
             const kind = e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError') ? 'timeout' : 'network';
@@ -207,7 +212,7 @@ export async function fetchRecentSignatures(address, limit = 8) {
 }
 export async function fetchParsedTransactionResult(signature) {
     try {
-        return { transaction: await rpc('getTransaction', [signature, { commitment: 'confirmed', encoding: 'jsonParsed', maxSupportedTransactionVersion: 0 }]), failure: null };
+        return { transaction: await rpc('getTransaction', [signature, { commitment: 'confirmed', encoding: 'jsonParsed', maxSupportedTransactionVersion: 1 }]), failure: null };
     }
     catch (e) {
         return { transaction: null, failure: e instanceof SolanaRpcError ? e.kind : 'network', failureCode: e instanceof SolanaRpcError ? e.code : undefined };
@@ -827,7 +832,11 @@ function decodeInstructionBytes(value) { const alphabet = '123456789ABCDEFGHJKLM
 } return bytes; }
 /** Conservative direct single-swap decoder. Routers, liquidity operations and ambiguous balance movements stay unrecognized. */
 export function decodeDirectSwap(tx, mint, pool, solUsd) {
-    if (!tx || tx.meta?.err || !tx.blockTime || !tx.transaction?.signatures?.[0])
+    if (!tx || !tx.meta || tx.meta.err || !tx.blockTime || !tx.transaction?.signatures?.[0])
+        return null;
+    if (tx.version != null && tx.version !== 'legacy' && tx.version !== 0 && tx.version !== 1)
+        return null;
+    if (!Array.isArray(tx.transaction.message?.accountKeys) || !Array.isArray(tx.transaction.message?.instructions))
         return null;
     const keys = tx.transaction.message?.accountKeys ?? [];
     const addresses = keys.map((k) => typeof k === 'string' ? k : k.pubkey);

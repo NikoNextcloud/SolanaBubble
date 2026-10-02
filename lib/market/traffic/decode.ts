@@ -6,7 +6,9 @@ const safePrograms=new Set(['11111111111111111111111111111111','TokenkegQfeZyiNw
 function decodeInstructionBytes(value:string){const alphabet='123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';let n=0n;for(const c of value){const i=alphabet.indexOf(c);if(i<0)return [];n=n*58n+BigInt(i);}const bytes:number[]=[];while(n){bytes.unshift(Number(n&255n));n>>=8n;}for(const c of value){if(c!=='1')break;bytes.unshift(0);}return bytes;}
 /** Conservative direct single-swap decoder. Routers, liquidity operations and ambiguous balance movements stay unrecognized. */
 export function decodeDirectSwap(tx:any,mint:string,pool:string,solUsd:number|null):RecognizedSwap|null {
- if(!tx||tx.meta?.err||!tx.blockTime||!tx.transaction?.signatures?.[0])return null;
+ if(!tx||!tx.meta||tx.meta.err||!tx.blockTime||!tx.transaction?.signatures?.[0])return null;
+ if(tx.version!=null&&tx.version!=='legacy'&&tx.version!==0&&tx.version!==1)return null;
+ if(!Array.isArray(tx.transaction.message?.accountKeys)||!Array.isArray(tx.transaction.message?.instructions))return null;
  const keys=tx.transaction.message?.accountKeys??[];
  const addresses=keys.map((k:any)=>typeof k==='string'?k:k.pubkey);
  const instructions=tx.transaction.message?.instructions??[];

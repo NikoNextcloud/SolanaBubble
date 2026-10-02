@@ -142,7 +142,7 @@ export async function fetchRecentSignatures(address: string, limit = 8) {
 }
 
 export async function fetchParsedTransactionResult(signature:string){
- try{return {transaction:await rpc<any>('getTransaction',[signature,{commitment:'confirmed',encoding:'jsonParsed',maxSupportedTransactionVersion:0}]),failure:null};}
+ try{return {transaction:await rpc<any>('getTransaction',[signature,{commitment:'confirmed',encoding:'jsonParsed',maxSupportedTransactionVersion:1}]),failure:null};}
  catch(e){return {transaction:null,failure:e instanceof SolanaRpcError?e.kind:'network',failureCode:e instanceof SolanaRpcError?e.code:undefined};}
 }
 export async function fetchParsedTransaction(signature:string){return (await fetchParsedTransactionResult(signature)).transaction;}
