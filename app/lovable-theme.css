@@ -924,3 +924,61 @@ button.market-section-row:hover{background:#35373b!important}
 .intelligence-alerts button small { width: 100%; font-size: 11px; color: #999; }
 .market-legend { flex-wrap: wrap; max-width: calc(100% - 120px); }
 @media (prefers-reduced-motion: reduce) { .market-node-group *, .market-hype-glow { animation: none !important; } }
+
+
+/* Latest Lovable visual accents merged into the existing SolanaBubble map */
+.lovable-map-hint{
+  position:absolute;
+  top:10px;
+  left:50%;
+  transform:translateX(-50%);
+  z-index:18;
+  display:flex;
+  align-items:center;
+  gap:5px;
+  height:23px;
+  padding:0 9px;
+  border:1px solid var(--lov-line);
+  border-radius:999px;
+  background:rgba(45,47,50,.92);
+  color:var(--lov-muted);
+  font-size:8px;
+  letter-spacing:.02em;
+  pointer-events:none;
+  backdrop-filter:blur(8px);
+}
+.market-signal-dust .signal-dust-dot{
+  transition:opacity .2s ease;
+}
+.market-signal-dust .signal-dust-dot.in{
+  fill:var(--lov-positive);
+}
+.market-signal-dust .signal-dust-dot.out{
+  fill:var(--lov-negative);
+}
+.market-signal-dust .signal-dust-dot.flat{
+  fill:#a9afb7;
+}
+.market-axis-grid line{
+  stroke-dasharray:2 4!important;
+  opacity:.28!important;
+}
+.market-axis-grid line:nth-of-type(3){
+  opacity:.55!important;
+}
+.market-zoom-controls{
+  border-radius:3px!important;
+  box-shadow:none!important;
+}
+.market-zoom-controls button{
+  width:26px!important;
+  min-width:26px!important;
+}
+.market-zoom-controls span{
+  min-width:38px!important;
+  text-align:center!important;
+}
+
+@media(max-width:760px){
+  .lovable-map-hint{display:none}
+}
