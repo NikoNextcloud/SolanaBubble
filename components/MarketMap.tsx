@@ -101,6 +101,11 @@ function marketMapRadius(t: MarketToken) {
   return Math.max(13, Math.min(62, 13 + hype * 0.49));
 }
 
+function visualNoise(seed: number) {
+  const x = Math.sin(seed * 9301.17) * 49297.31;
+  return x - Math.floor(x);
+}
+
 function flowColor(t: MarketToken) {
   const total = Math.max(1, t.buys1h + t.sells1h);
   const ratio = t.netFlowUsd1h == null ? (t.buys1h - t.sells1h) / total : t.netFlowUsd1h / Math.max(1, t.volume1h);
@@ -712,6 +717,34 @@ export default function MarketMap() {
     .sort((a, b) => hypeScore(b) - hypeScore(a))
     .slice(0, 5);
 
+  // Latest Lovable visual: a lightweight signal cloud around active tokens.
+  // It is static and capped so it does not bring back the old Galaxy performance cost.
+  const signalDust = viewMode === "map"
+    ? [...renderedNodes]
+        .filter((n) => !n.isCore && hypeScore(n) >= 20)
+        .sort((a, b) => hypeScore(b) - hypeScore(a))
+        .slice(0, 20)
+        .flatMap((n, nodeIndex) => {
+          const hype = hypeScore(n);
+          const traffic = trafficState(n);
+          const count = Math.min(10, Math.max(3, Math.round(hype / 11)));
+          return Array.from({ length: count }, (_, i) => {
+            const seed = nodeIndex * 1000 + i * 17 + n.mint.charCodeAt(i % n.mint.length);
+            const angle = visualNoise(seed) * Math.PI * 2;
+            const distance = n.r + 10 + Math.pow(visualNoise(seed + 1.4), .72) * (16 + hype * .18);
+            return {
+              key: `${n.mint}:signal:${i}`,
+              x: n.x + Math.cos(angle) * distance,
+              y: n.y + Math.sin(angle) * distance * .8,
+              r: visualNoise(seed + 2.2) > .84 ? 1.3 : .7,
+              opacity: .10 + visualNoise(seed + 3.1) * Math.min(.42, .14 + hype / 210),
+              cls: traffic.cls,
+            };
+          });
+        })
+        .slice(0, 180)
+    : [];
+
   void tick;
 
   return (
@@ -777,6 +810,7 @@ export default function MarketMap() {
 
       <section className="market-workspace reference-market-workspace">
         <div className="market-map" ref={wrap}>
+          {viewMode === "map" && <div className="lovable-map-hint">✥ Drag to explore · Scroll to zoom</div>}
           {streamLive === false && <div className="pause-banner">
             {autoPaused ? "Автоматична пауза след 2 мин. без активност" : "Live режимът е на пауза"} · данните са от кеша
           </div>}
@@ -880,6 +914,16 @@ export default function MarketMap() {
               </g>
             </>}
             <g transform={`translate(${mapView.x} ${mapView.y}) scale(${mapView.k})`} className="market-pan-layer">
+            <g className="market-signal-dust" pointerEvents="none">
+              {signalDust.map((p) => <circle
+                key={p.key}
+                cx={p.x}
+                cy={p.y}
+                r={p.r}
+                className={`signal-dust-dot ${p.cls}`}
+                opacity={p.opacity}
+              />)}
+            </g>
             {renderedNodes.map((n, i) => {
               const color = flowColor(n);
               const total = Math.max(1, n.buys1h + n.sells1h);
