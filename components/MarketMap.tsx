@@ -14,7 +14,8 @@ import {bubbleSignal,trafficConfidence} from "@/lib/market/map-signals";
 import SavedMarketFilters from "./SavedMarketFilters";
 import {useWatchlist} from "./useWatchlist";
 import {matchesWatchFilters} from "@/lib/watchlist";
-import { fomoTokenUrl } from "@/lib/token-links";
+import { fomoTokenUrl, gmgnTokenUrl } from "@/lib/token-links";
+import { positionQuickActions } from "@/lib/market/quick-actions";
 
 type MarketToken = Intelligence & {
   marketObservedAt?:string|null;
@@ -712,6 +713,19 @@ export default function MarketMap() {
   const filteredTokens=tokens.filter(t=>matchesWatchFilters(t,watch.state.filters,watch.state.entries));
   const nodes = [...nodeMap.current.values()].filter(n=>n.isCore||matchesWatchFilters(n,watch.state.filters,watch.state.entries));
   const renderedNodes = viewMode === "map" ? nodes.filter((n) => !n.isCore) : nodes;
+  const quickActionNode = quickActionMint ? nodeMap.current.get(quickActionMint) : null;
+  const quickActionLayout = quickActionNode ? positionQuickActions({
+    nodeX: quickActionNode.x,
+    nodeY: quickActionNode.y,
+    nodeRadius: quickActionNode.r,
+    viewX: mapView.x,
+    viewY: mapView.y,
+    scale: mapView.k,
+    viewportWidth: size.w,
+    viewportHeight: size.h,
+    preferredWidth: size.w <= 640 ? 176 : 148,
+    panelHeight: size.w <= 640 ? 52 : 42,
+  }) : null;
   const combinedFlows = [...flows, ...expansionFlows];
   const hotFlowKeys = new Set([
     ...[...combinedFlows]
@@ -970,7 +984,6 @@ export default function MarketMap() {
               const focusDimmed = Boolean(selected?.mint && !focusMints.has(n.mint) && !n.isCore);
               const pulseDuration = n.isCore ? 3.2 : Math.max(.8, Math.min(5, 4 - Math.tanh(Number(signal.fresh?n.hypeAcceleration??0:0) / .3) * 3));
               const brightness = Math.max(.65, Math.min(1.5, 1 + Math.tanh(Math.abs(Number(signal.fresh?n.hypeVelocity??0:0))) * .5));
-              const quickActionsBelow = mapView.y + (n.y + n.r + 88) * mapView.k < size.h;
               return <g
                 key={n.mint}
                 transform={`translate(${n.x} ${n.y})`}
@@ -1073,25 +1086,6 @@ export default function MarketMap() {
                     className="market-token-icon"
                   />
                 </> : n.r >= 17 && <text textAnchor="middle" dy="4" className="market-symbol">{n.symbol || "?"}</text>}
-                {!n.isCore && quickActionMint === n.mint && (
-                  <foreignObject
-                    x={-74}
-                    y={quickActionsBelow ? n.r + 27 + (signal.liquidityDrop || signal.whaleLabel ? 18 : 0) : -n.r - 76}
-                    width="148"
-                    height="42"
-                    className="token-quick-actions-object"
-                  >
-                    <div
-                      className="token-quick-actions"
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onClick={(event) => event.stopPropagation()}
-                      onDoubleClick={(event) => event.stopPropagation()}
-                    >
-                      <a href={fomoTokenUrl(n.mint)} target="_blank" rel="noreferrer">FoMo ↗</a>
-                      <a href={`https://gmgn.ai/sol/token/${n.mint}`} target="_blank" rel="noreferrer">GmGn ↗</a>
-                    </div>
-                  </foreignObject>
-                )}
                 {activityPulse.includes(n.mint) && !n.isCore && <>
                   <circle r={n.r + 8} className="market-shockwave shockwave-a" pointerEvents="none" />
                   <circle r={n.r + 8} className="market-shockwave shockwave-b" pointerEvents="none" />
@@ -1100,6 +1094,18 @@ export default function MarketMap() {
             })}
             </g>
           </svg>}
+
+          {viewMode === "map" && quickActionNode && quickActionLayout && <div
+            className="token-quick-actions token-quick-actions-overlay"
+            style={{ left: quickActionLayout.left, top: quickActionLayout.top, width: quickActionLayout.width }}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+          >
+            <a href={fomoTokenUrl(quickActionNode.mint)} target="_blank" rel="noreferrer">FoMo ↗</a>
+            <a href={gmgnTokenUrl(quickActionNode.mint)} target="_blank" rel="noreferrer">GmGn ↗</a>
+            <button className="quick-holder-action" onClick={() => openToken(quickActionNode)} disabled={loadingMint === quickActionNode.mint}>Holders</button>
+          </div>}
 
           {viewMode === "map" && <div className="market-zoom-controls">
             <button onClick={() => zoomMapBy(1 / 1.18)} aria-label="Zoom out">−</button>
