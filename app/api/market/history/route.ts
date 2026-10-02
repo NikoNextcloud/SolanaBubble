@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import {publicObservationHeaders} from '@/lib/http-cache';
 import { admin } from '@/lib/db';
 export const dynamic = 'force-dynamic';
 export async function GET(req: Request) {
@@ -17,6 +18,6 @@ export async function GET(req: Request) {
       snapshots.push(...(data ?? []));
       if((data?.length ?? 0)<size) break;
     }
-    return NextResponse.json({ mint, hours, snapshots:snapshots.reverse() },{headers:{'cache-control':'public, max-age=30'}});
+    return NextResponse.json({ mint, hours, snapshots:snapshots.reverse() },{headers:publicObservationHeaders(300)});
   } catch { return NextResponse.json({error:'History unavailable'},{status:503}); }
 }

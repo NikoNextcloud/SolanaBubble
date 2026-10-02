@@ -4,14 +4,14 @@ import { sampleWalletRelationships } from './relationships';
 import type { Intelligence } from './signals';
 
 export interface HolderProvider {
-  observe(mint: string): Promise<{ supply: number; balances: { wallet: string; balance: number }[] }>;
+  observe(mint: string): Promise<{ supply: number; decimals?:number; balances: { wallet: string; balance: number }[] }>;
 }
 // One adapter boundary: replace this to use any indexer or RPC provider.
 export const rpcHolderProvider: HolderProvider = {
   async observe(mint) {
     const [{ supply, decimals }, holders] = await Promise.all([fetchPublicSupply(mint), fetchPublicHolders(mint, 0)]);
     if (!supply || !holders.length) throw new Error('Incomplete holder observation');
-    return { supply, balances: holders.map(h => ({ wallet: h.wallet, balance: Number(h.raw) / 10 ** decimals })) };
+    return { supply, decimals, balances: holders.map(h => ({ wallet: h.wallet, balance: Number(h.raw) / 10 ** decimals })) };
   }
 };
 export async function observeHolders(mint: string, price: number, provider = rpcHolderProvider): Promise<Intelligence> {
@@ -66,7 +66,7 @@ export async function observeHolders(mint: string, price: number, provider = rpc
     walletEvidence: relationSample.evidence,
     holderObservedAt: at, holderBaselineAt: previous ? prev!.updated_at : null,
   };
-  const { error } = await db.rpc('save_holder_observation',{p_mint:mint,p_at:at,p_payload:{ ...current, metrics },p_wallets:[...wallets]});
+  const { error } = await db.rpc('save_holder_observation',{p_mint:mint,p_at:at,p_payload:{ ...current, price, metrics },p_wallets:[...wallets]});
   if (error) throw error;
   return metrics;
 }

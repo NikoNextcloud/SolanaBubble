@@ -139,6 +139,7 @@ export async function fetchPublicHolders(mint, maxAgeMs = 5 * 60 * 1000) {
 export async function fetchDexScreenerToken(mint) {
     const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(mint)}`, {
         headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(10000),
         cache: "no-store",
     });
     if (!res.ok)
@@ -615,7 +616,7 @@ export const rpcHolderProvider = {
         const [{ supply, decimals }, holders] = await Promise.all([fetchPublicSupply(mint), fetchPublicHolders(mint, 0)]);
         if (!supply || !holders.length)
             throw new Error('Incomplete holder observation');
-        return { supply, balances: holders.map(h => ({ wallet: h.wallet, balance: Number(h.raw) / 10 ** decimals })) };
+        return { supply, decimals, balances: holders.map(h => ({ wallet: h.wallet, balance: Number(h.raw) / 10 ** decimals })) };
     }
 };
 export async function observeHolders(mint, price, provider = rpcHolderProvider) {
@@ -679,13 +680,235 @@ export async function observeHolders(mint, price, provider = rpcHolderProvider) 
         walletEvidence: relationSample.evidence,
         holderObservedAt: at, holderBaselineAt: previous ? prev.updated_at : null,
     };
-    const { error } = await db.rpc('save_holder_observation', { p_mint: mint, p_at: at, p_payload: { ...current, metrics }, p_wallets: [...wallets] });
+    const { error } = await db.rpc('save_holder_observation', { p_mint: mint, p_at: at, p_payload: { ...current, price, metrics }, p_wallets: [...wallets] });
     if (error)
         throw error;
     return metrics;
 }
+// Verified against official PumpSwap IDL and Raydium cp-swap Swap accounts.
+// https://github.com/pump-fun/pump-public-docs/blob/main/idl/pump_amm.json
+// https://github.com/raydium-io/raydium-cp-swap/tree/master/programs/cp-swap/src/instructions
+export const swapPrograms = [
+    {
+        "program": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+        "name": "PumpSwap",
+        "poolIndex": 0,
+        "userIndex": 1,
+        "userTokenIndices": [
+            5,
+            6
+        ],
+        "vaultIndices": [
+            7,
+            8
+        ],
+        "discriminators": [
+            [
+                102,
+                6,
+                61,
+                18,
+                1,
+                218,
+                235,
+                234
+            ],
+            [
+                198,
+                46,
+                21,
+                82,
+                180,
+                217,
+                232,
+                112
+            ],
+            [
+                51,
+                230,
+                133,
+                164,
+                1,
+                127,
+                131,
+                173
+            ]
+        ]
+    },
+    {
+        "program": "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C",
+        "name": "Raydium CPMM",
+        "poolIndex": 3,
+        "userIndex": 0,
+        "userTokenIndices": [
+            4,
+            5
+        ],
+        "vaultIndices": [
+            6,
+            7
+        ],
+        "discriminators": [
+            [
+                143,
+                190,
+                90,
+                218,
+                196,
+                30,
+                51,
+                222
+            ],
+            [
+                55,
+                217,
+                98,
+                86,
+                163,
+                74,
+                180,
+                173
+            ]
+        ]
+    }
+];
+export const WSOL_MINT = 'So11111111111111111111111111111111111111112';
+export const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+const safePrograms = new Set(['11111111111111111111111111111111', 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb', 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL', 'ComputeBudget111111111111111111111111111111', 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr']);
+function decodeInstructionBytes(value) { const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'; let n = 0n; for (const c of value) {
+    const i = alphabet.indexOf(c);
+    if (i < 0)
+        return [];
+    n = n * 58n + BigInt(i);
+} const bytes = []; while (n) {
+    bytes.unshift(Number(n & 255n));
+    n >>= 8n;
+} for (const c of value) {
+    if (c !== '1')
+        break;
+    bytes.unshift(0);
+} return bytes; }
+/** Conservative direct single-swap decoder. Routers, liquidity operations and ambiguous balance movements stay unrecognized. */
+export function decodeDirectSwap(tx, mint, pool, solUsd) {
+    if (!tx || tx.meta?.err || !tx.blockTime || !tx.transaction?.signatures?.[0])
+        return null;
+    const keys = tx.transaction.message?.accountKeys ?? [];
+    const addresses = keys.map((k) => typeof k === 'string' ? k : k.pubkey);
+    const instructions = tx.transaction.message?.instructions ?? [];
+    const candidates = instructions.filter((i) => swapPrograms.some(p => p.program === (i.programId ?? addresses[i.programIdIndex])));
+    if (candidates.length !== 1)
+        return null;
+    const ix = candidates[0], program = ix.programId ?? addresses[ix.programIdIndex], adapter = swapPrograms.find(p => p.program === program);
+    // Reject extra program calls, including routing/multiple DEX legs.
+    if (instructions.some((i) => { const id = i.programId ?? addresses[i.programIdIndex]; return id !== program && !safePrograms.has(id); }))
+        return null;
+    // Top-level token transfers could contaminate net account deltas.
+    if (instructions.some((i) => { const id = i.programId ?? addresses[i.programIdIndex]; if (id !== 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' && id !== 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb')
+        return false; return i.parsed?.type?.startsWith('transfer') || (typeof i.data === 'string' && [3, 12].includes(decodeInstructionBytes(i.data)[0])); }))
+        return null;
+    if (typeof ix.data !== 'string')
+        return null;
+    const bytes = decodeInstructionBytes(ix.data);
+    if (bytes.length < 24)
+        return null;
+    if (!adapter.discriminators.some(d => d.every((b, i) => bytes[i] === b)))
+        return null;
+    const accounts = (ix.accounts ?? []).map((a) => typeof a === 'number' ? addresses[a] : a);
+    if (accounts[adapter.poolIndex] !== pool)
+        return null;
+    const wallet = accounts[adapter.userIndex], walletKey = keys.find((k) => k.pubkey === wallet);
+    if (!wallet || !walletKey?.signer)
+        return null;
+    const balances = new Map();
+    for (const [field, sign] of [['preTokenBalances', -1], ['postTokenBalances', 1]])
+        for (const b of tx.meta[field] ?? []) {
+            const amount = Number(b.uiTokenAmount?.uiAmountString ?? b.uiTokenAmount?.uiAmount);
+            if (!Number.isFinite(amount))
+                return null;
+            const before = balances.get(b.accountIndex);
+            if (before && before.mint !== b.mint)
+                return null;
+            balances.set(b.accountIndex, { mint: b.mint, owner: b.owner ?? before?.owner, delta: (before?.delta ?? 0) + sign * amount });
+        }
+    const user = adapter.userTokenIndices.map(i => balances.get(addresses.indexOf(accounts[i])));
+    const target = user.find(b => b?.mint === mint && b.owner === wallet);
+    if (!target || !target.delta)
+        return null;
+    const vaults = adapter.vaultIndices.map(i => balances.get(addresses.indexOf(accounts[i])));
+    const targetVault = vaults.find(b => b?.mint === mint), quote = vaults.find(b => b && b.mint !== mint && (b.mint === WSOL_MINT || b.mint === USDC_MINT));
+    if (!targetVault || !quote || !quote.delta || Math.sign(target.delta) === Math.sign(targetVault.delta) || Math.sign(target.delta) !== Math.sign(quote.delta))
+        return null;
+    const quoteAmount = Math.abs(quote.delta), price = quote.mint === USDC_MINT ? 1 : solUsd;
+    return { pool, signature: tx.transaction.signatures[0], wallet, side: target.delta > 0 ? 'buy' : 'sell', token_amount: Math.abs(target.delta), quote_mint: quote.mint, quote_amount: quoteAmount, usd_value: price != null && price > 0 ? quoteAmount * price : null, block_at: new Date(tx.blockTime * 1000).toISOString(), program: adapter.name };
+}
+export function summarizeTraffic(rows, scans, at, pool, context, rowLimitReached = false) {
+    const now = Date.parse(at), sorted = [...rows].filter(s => s.pool === pool && Date.parse(s.block_at) <= now).sort((a, b) => Date.parse(a.block_at) - Date.parse(b.block_at));
+    const windows = {};
+    for (const minutes of [5, 15, 60]) {
+        const cutoff = now - minutes * 60000, sample = sorted.filter(s => Date.parse(s.block_at) >= cutoff), buy = sample.filter(s => s.side === 'buy'), sell = sample.filter(s => s.side === 'sell');
+        const buyers = new Set(buy.map(s => s.wallet)), sellers = new Set(sell.map(s => s.wallet));
+        const earlier = new Set(sorted.filter(s => Date.parse(s.block_at) < cutoff && s.side === 'buy').map(s => s.wallet));
+        const quick = new Set();
+        for (const b of buy)
+            if (sample.some(s => s.wallet === b.wallet && s.side === 'sell' && Date.parse(s.block_at) > Date.parse(b.block_at) && Date.parse(s.block_at) - Date.parse(b.block_at) <= 15 * 60000))
+                quick.add(b.wallet);
+        const allPriced = sample.length > 0 && sample.every(s => s.usd_value != null && Number.isFinite(s.usd_value));
+        const amount = (r) => allPriced ? r.reduce((n, s) => n + (s.usd_value ?? 0), 0) : null;
+        const buyUsd = amount(buy), sellUsd = amount(sell), sizes = buy.filter(s => s.usd_value != null).map(s => s.usd_value).sort((a, b) => a - b);
+        const spend = new Map();
+        for (const b of buy)
+            spend.set(b.wallet, (spend.get(b.wallet) ?? 0) + (b.usd_value ?? 0));
+        const holderTime = context?.holderAt ? Date.parse(context.holderAt) : NaN, holderFresh = Number.isFinite(holderTime) && now - holderTime >= 0 && now - holderTime < 60 * 60000 && context?.wallets;
+        const assessed = holderFresh ? [...buyers].filter(w => buy.filter(s => s.wallet === w).every(s => Date.parse(s.block_at) <= holderTime)) : [];
+        windows[minutes] = { minutes, swaps: sample.length, buys: buy.length, sells: sell.length, buyers: buyers.size, sellers: sellers.size, newSampleBuyers: [...buyers].filter(w => !earlier.has(w)).length, repeatSampleBuyers: [...buyers].filter(w => earlier.has(w)).length, quickResellers: quick.size, buyUsd, sellUsd, netUsd: buyUsd != null && sellUsd != null ? buyUsd - sellUsd : null, medianBuyUsd: sizes.length ? (sizes[Math.floor((sizes.length - 1) / 2)] + sizes[Math.floor(sizes.length / 2)]) / 2 : null, largestBuyUsd: sizes.length ? sizes.at(-1) : null, top3BuyerSharePct: buyUsd != null && buyUsd > 0 ? [...spend.values()].sort((a, b) => b - a).slice(0, 3).reduce((n, v) => n + v, 0) / buyUsd * 100 : null, retainedBuyers: assessed.length ? assessed.filter(w => context?.wallets?.has(w)).length : null, retentionChecked: assessed.length, linkedBuyers: context?.linkedWallets ? [...buyers].filter(w => context.linkedWallets.has(w)).length : null, firstSwapAt: sample[0]?.block_at ?? null, lastSwapAt: sample.at(-1)?.block_at ?? null };
+    }
+    return { observedAt: at, pool, coverage: 'partial', scans: scans.length, listedSignatures: scans.reduce((n, s) => n + (s.listed ?? 0), 0), parsedTransactions: scans.reduce((n, s) => n + (s.parsed ?? 0), 0), recognizedTransactions: scans.reduce((n, s) => n + (s.recognized ?? 0), 0), unavailableTransactions: scans.reduce((n, s) => n + (s.unavailable ?? 0), 0), unrecognizedTransactions: scans.reduce((n, s) => n + (s.unrecognized ?? 0), 0), limitedScans: scans.filter(s => s.limited).length, rowLimitReached, windows, note: 'Partial sample of one selected pool; direct PumpSwap / Raydium CPMM only. Pool-vault quote movement excludes some fees. USD uses USDC=$1 or SOL price at scan time, not historical execution USD. New buyers means first seen in retained 2h sample; quick resale does not establish profit. No completeness or bot verdict.' };
+}
+export async function observeTraffic(token, solUsd, holder, deadline = Date.now() + 45000) {
+    if (!token.pairAddress)
+        throw new Error('No selected pool');
+    const db = admin(), at = new Date().toISOString();
+    const recent = await fetchRecentSignatures(token.pairAddress, 12);
+    const since = new Date(Date.now() - 2 * 3600000).toISOString();
+    const prior = await db.from('traffic_swaps').select('mint,pool,signature,wallet,side,token_amount,quote_mint,quote_amount,usd_value,block_at,program').eq('mint', token.mint).gte('block_at', since).order('block_at', { ascending: false }).limit(1000);
+    if (prior.error)
+        throw prior.error;
+    const scans = await db.from('traffic_scans').select('payload').eq('mint', token.mint).gte('scanned_at', since).order('scanned_at', { ascending: false }).limit(100);
+    if (scans.error)
+        throw scans.error;
+    const seen = new Set((scans.data ?? []).flatMap(s => s.payload.processedSignatures ?? []));
+    const eligible = recent.filter(s => !s.err && s.blockTime && s.blockTime * 1000 >= Date.now() - 3600000 && !seen.has(s.signature));
+    const swaps = [];
+    const processed = [];
+    let parsed = 0, unavailable = 0, unrecognized = 0;
+    for (let i = 0; i < eligible.length && Date.now() < deadline - 15000; i += 3) {
+        const batch = eligible.slice(i, i + 3);
+        await Promise.all(batch.map(async (s) => { const tx = await fetchParsedTransaction(s.signature); if (!tx) {
+            unavailable++;
+            return;
+        } parsed++; processed.push(s.signature); const swap = decodeDirectSwap(tx, token.mint, token.pairAddress, solUsd); if (swap)
+            swaps.push(swap);
+        else
+            unrecognized++; }));
+    }
+    const scan = { pool: token.pairAddress, listed: recent.length, parsed, recognized: swaps.length, unavailable, unrecognized, limited: recent.length === 12 || eligible.length > processed.length, processedSignatures: processed, oldestListedAt: recent.at(-1)?.blockTime ? new Date(recent.at(-1).blockTime * 1000).toISOString() : null };
+    const save = await db.rpc('save_traffic_sample', { p_mint: token.mint, p_at: at, p_swaps: swaps, p_scan: scan });
+    if (save.error)
+        throw save.error;
+    const merged = new Map();
+    for (const row of [...(prior.data ?? []), ...swaps])
+        merged.set(`${row.signature}:${row.wallet}`, row);
+    const cache = await db.from('api_cache').select('payload,updated_at').eq('cache_key', `intelligence:holders:${token.mint}`).maybeSingle();
+    const linked = holder?.walletEvidence ? new Set(holder.walletEvidence.flatMap(e => e.wallets)) : undefined;
+    const summary = summarizeTraffic([...merged.values()], [scan, ...(scans.data ?? []).filter(s => s.payload.pool === token.pairAddress).map(s => s.payload)], at, token.pairAddress, { holderAt: cache.data?.updated_at, wallets: cache.data?.payload?.balances ? new Set(cache.data.payload.balances.map((h) => h.wallet)) : undefined, linkedWallets: linked }, (prior.data?.length ?? 0) >= 1000);
+    const write = await db.from('api_cache').upsert({ cache_key: `intelligence:traffic:${token.mint}`, payload: summary, updated_at: at });
+    if (write.error)
+        throw write.error;
+    return summary;
+}
 import { randomUUID } from 'node:crypto';
 export async function ingestMarket() {
+    const ingestionStarted = Date.now();
     const db = admin(), lease = randomUUID();
     const claim = await db.rpc('claim_market_ingestion', { p_lease: lease });
     if (claim.error)
@@ -710,20 +933,19 @@ export async function ingestMarket() {
         if (holderError)
             throw holderError;
         const observations = new Map((holders ?? []).map(h => [h.cache_key.split(':').at(-1), h.payload.metrics]));
-        const budget = Math.min(6, Math.max(0, Number(process.env.MARKET_HOLDER_BUDGET ?? 4) || 0));
+        const budget = Math.min(6, Math.max(0, Number(process.env.MARKET_HOLDER_BUDGET ?? 2) || 0));
         const cursor = Number(previous?.holderCursor ?? 0) % Math.max(1, mints.length);
         const failures = [];
-        // Keep the two most active tracked tokens fresh each cycle; rotate the rest.
+        // Keep one most active tracked token fresh each cycle; rotate the rest.
         const trackedSet = new Set((tracked.data ?? []).map(t => t.mint));
-        const priority = base.tokens.filter(t => trackedSet.has(t.mint)).slice(0, 2);
+        const priority = base.tokens.filter(t => trackedSet.has(t.mint)).slice(0, 1);
         const rotation = base.tokens.filter(t => !priority.some(p => p.mint === t.mint));
         const candidates = [...priority];
         for (let i = 0; i < rotation.length && candidates.length < budget; i++)
             candidates.push(rotation[(cursor + i) % rotation.length]);
         let completed = 0;
-        const started = Date.now();
         for (const t of candidates.slice(0, budget)) {
-            if (Date.now() - started > 85_000)
+            if (Date.now() - ingestionStarted > 55_000)
                 break;
             try {
                 observations.set(t.mint, await observeHolders(t.mint, t.priceUsd));
@@ -732,6 +954,27 @@ export async function ingestMarket() {
                 failures.push(t.mint);
             }
             completed++;
+        }
+        // Traffic stays on the worker, under a global time and RPC budget.
+        const trafficCandidates = base.tokens.filter(t => trackedSet.has(t.mint) && t.pairAddress).slice(0, 20);
+        const trafficCursor = Number(previous?.trafficCursor ?? 0) % Math.max(1, trafficCandidates.length);
+        let trafficCompleted = 0, trafficFailures = 0;
+        const trafficByMint = new Map();
+        const trafficCache = await db.from('api_cache').select('cache_key,payload').in('cache_key', mints.map(m => `intelligence:traffic:${m}`));
+        if (trafficCache.error)
+            throw trafficCache.error;
+        for (const row of trafficCache.data ?? [])
+            trafficByMint.set(row.cache_key.split(':').at(-1), row.payload);
+        const solMarket = trafficCandidates.length ? await fetchDexScreenerToken(WSOL_MINT).catch(() => null) : null;
+        for (let i = 0; i < Math.min(2, trafficCandidates.length) && Date.now() - ingestionStarted < 90000; i++) {
+            const t = trafficCandidates[(trafficCursor + i) % trafficCandidates.length];
+            try {
+                trafficByMint.set(t.mint, await observeTraffic(t, solMarket?.priceUsd ?? null, observations.get(t.mint), ingestionStarted + 110000));
+            }
+            catch {
+                trafficFailures++;
+            }
+            trafficCompleted++;
         }
         const at = new Date().toISOString();
         const baselines = await db.rpc('market_window_baselines', { p_mints: mints, p_at: at });
@@ -743,7 +986,8 @@ export async function ingestMarket() {
             const metrics = fresh ? holder : { holderCount: null, holderGrowth: null, holderGrowthPct: null, freshWallets: null, top10SupplyPct: null, linkedWallets: null, suspiciousWallets: null, whaleEnter: null, whaleExit: null, smartMoneyFlowUsd: null, holderObservedAt: holder?.holderObservedAt ?? null };
             if (!fresh)
                 Object.assign(metrics, { newHolders: null, exitedHolders: null, largestHolderPct: null, whaleConcentrationPct: null, linkedSupplyPct: null, holderWindows: {}, topHolderSales: [] });
-            const enriched = { ...t, ...metrics };
+            const sample = trafficByMint.get(t.mint);
+            const enriched = { ...t, ...metrics, trafficSample: sample?.pool === t.pairAddress ? sample : null };
             return { ...enriched, windows: compareMarketWindows(enriched, at, (baselines.data ?? [])), ...deriveSignals(enriched, prevTokens.get(t.mint), at, previous?.fetchedAt),
                 // Directional volume estimate based on trade counts, not measured capital transfers.
                 netFlowUsd1h: t.volume1h * (t.buys1h - t.sells1h) / Math.max(1, t.trades1h) };
@@ -755,8 +999,8 @@ export async function ingestMarket() {
         const seen = new Set();
         const recentAlerts = [...alerts, ...(history.data ?? []).map(r => r.payload)].filter(a => !seen.has(a.id) && !!seen.add(a.id)).slice(0, 80);
         const payload = { ...base, tokens, fetchedAt: at, holderCursor: (cursor + Math.max(0, completed - priority.length)) % Math.max(1, rotation.length),
-            alerts: recentAlerts, recentEvents: base.recentEvents,
-            storage: storage.data, ingestion: { holderCompleted: completed, priorityMints: priority.map(t => t.mint), holderBudget: budget, holderFailures: failures.length, source: 'server-worker', interval: '5m target; scheduler dependent' },
+            trafficCursor: (trafficCursor + trafficCompleted) % Math.max(1, trafficCandidates.length), alerts: recentAlerts, recentEvents: base.recentEvents,
+            storage: storage.data, ingestion: { trafficCompleted, trafficFailures, trafficUniverse: trafficCandidates.length, holderCompleted: completed, priorityMints: priority.map(t => t.mint), holderBudget: budget, holderFailures: failures.length, source: 'server-worker', interval: '5m target; scheduler dependent' },
             metricNotes: { flow: 'USD estimate from rolling 1h trade counts', freshWallets: 'newly observed token holders; not wallet creation age', whales: 'owners ≥1% supply; pool/program owners included', smartMoney: 'whale balance change at current price; not verified swap flow', volumeAcceleration: 'acceleration of rolling 1h volume, USD/min²', risk: 'heuristic, not a security audit' } };
         const saved = await db.rpc('commit_market_snapshot', { p_lease: lease, p_payload: payload, p_alerts: alerts });
         if (saved.error)

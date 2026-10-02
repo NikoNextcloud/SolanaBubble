@@ -474,7 +474,8 @@ export default function MarketMap() {
     setTokens(list);
     setSelected(current => current ? list.find(t => t.mint === current.mint) ?? current : null);
     setAlerts(Array.isArray(j.alerts) ? j.alerts : []);
-    setSnapshotStale(Boolean(j.stale));
+    const stale=Boolean(j.stale)||!j.fetchedAt||Date.now()-Date.parse(j.fetchedAt)>=600000;
+    setSnapshotStale(stale);
     setFlows(nextFlows);
     setHotPath(Array.isArray(j.hotPath) ? j.hotPath : []);
     setRecentEvents(Array.isArray(j.recentEvents) ? j.recentEvents : []);
@@ -491,7 +492,7 @@ export default function MarketMap() {
     }
     setUpdated(j.fetchedAt ?? null);
     setNetworkSwaps1h(Number(j.network?.swaps1h ?? 0));
-    setError(j.stale ? "Snapshot is stale; waiting for the ingestion worker." : "");
+    setError(stale ? "Snapshot is stale; waiting for the ingestion worker." : "");
 
     for (const t of list) {
       const prev = nodeMap.current.get(t.mint);
@@ -557,7 +558,7 @@ export default function MarketMap() {
 
     async function load() {
       try {
-        const r = await fetch("/api/market", { cache: "no-store" });
+        const r = await fetch("/api/market");
         const j = await r.json();
         if (!r.ok) throw new Error(j?.message || "market");
         if (stopped) return;
@@ -574,7 +575,7 @@ export default function MarketMap() {
     } catch {}
 
     load();
-    const id = window.setInterval(load, 30000);
+    const id = window.setInterval(load, 120000);
     return () => { stopped = true; window.clearInterval(id); };
   }, [streamLive, tabVisible]);
 
@@ -1077,7 +1078,7 @@ export default function MarketMap() {
           </div>}
           <details className="market-legend map-signal-legend" open>
             <summary>Как да четеш балоните · оценка</summary>
-            <div><span><i className="market-buy-dot"/>Зелено: покупки по брой</span><span><i className="market-sell-dot"/>Червено: продажби по брой</span><span>↑ Засилва се · → Баланс · ↓ Отслабва · ? Unknown</span><span>Размер = Hype · Яркост = Velocity · Пулс = Acceleration</span><span>Контур = Holder growth · Жълт пръстен = Risk</span><span>⚠ Liquidity ↓: рязък спад · Whale +/−: праг 1% supply</span><small>Rolling 1h trade counts + Hype. Не измерен капитал. Посочи балон за причините; Risk остава отделен. Whale значките изчезват след 5m.</small></div>
+            <div><span><i className="market-buy-dot"/>Зелено: покупки по брой</span><span><i className="market-sell-dot"/>Червено: продажби по брой</span><span>↑ Засилва се · → Баланс · ↓ Отслабва · ? Unknown</span><span>Размер = Hype · Яркост = Velocity · Пулс = Acceleration</span><span>Контур = Holder growth · Жълт пръстен = Risk</span><span>⚠ Liquidity ↓: рязък спад · Whale +/−: праг 1% supply</span><small>Rolling 1h counts + Hype; “sample” = разпознати swaps от един pool (непълна извадка), цветът следва net USD в нея. Не общ пазарен капитал. Посочи балон за причините; Risk остава отделен. Whale значките изчезват след 5m.</small></div>
           </details>
         </div>
 

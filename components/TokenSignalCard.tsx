@@ -4,6 +4,7 @@ import type { SignalToken, WindowMinutes } from '@/lib/market/signals';
 const number = (v: number | null | undefined, suffix = '') => v == null || !Number.isFinite(v) ? '—' : `${v.toLocaleString(undefined,{maximumFractionDigits:2})}${suffix}`;
 import FavoriteButton from './FavoriteButton';
 import DataQuality from './DataQuality';
+import TrafficCard from './TrafficCard';
 import type {WatchToken} from '@/lib/watchlist';
 type History = { observed_at: string; payload: SignalToken };
 export default function TokenSignalCard({ token }: { token: WatchToken }) {
@@ -44,6 +45,7 @@ export default function TokenSignalCard({ token }: { token: WatchToken }) {
     <div className="market-hot-title"><strong>Token Signal Card</strong><b className={(token.riskScore ?? 0) >= 50 ? 'sell' : ''}>Risk {number(token.riskScore)} / 100</b></div>
     <FavoriteButton token={token}/>
     <DataQuality token={token}/>
+    <TrafficCard sample={token.trafficSample}/>
     {token.liquidityWarning && <p className="signal-warning" role="alert">⚠ Liquidity disappearing: {number(token.liquidityChangePct,'%')}</p>}
     <dl className="market-token-stats">{rows.map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
     <div className="signal-comparisons">

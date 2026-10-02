@@ -12,7 +12,7 @@ export default function WatchlistPanel(){
   const mints=state.entries.map(e=>e.mint).sort().join(',');
   useEffect(()=>{if(!ready)return;if(!mints){setTokens([]);return;}const controller=new AbortController();
     const load=async()=>{if(document.hidden)return;setLoading(true);try{const r=await fetch(`/api/market/watchlist?mints=${encodeURIComponent(mints)}`,{signal:controller.signal,cache:'no-store'});if(!r.ok)throw new Error();const j=await r.json();if(controller.signal.aborted)return;setTokens(j.tokens??[]);evaluate(j.tokens??[]);setStatus('');}catch{if(!controller.signal.aborted)setStatus('Update unavailable; previous observations are shown with their timestamps.');}finally{if(!controller.signal.aborted)setLoading(false);}};
-    load();const timer=setInterval(load,30000);document.addEventListener('visibilitychange',load);return()=>{controller.abort();clearInterval(timer);document.removeEventListener('visibilitychange',load);};
+    load();const timer=setInterval(load,120000);document.addEventListener('visibilitychange',load);return()=>{controller.abort();clearInterval(timer);document.removeEventListener('visibilitychange',load);};
   },[mints,ready,evaluate]);
   const setRule=(mint:string,key:RuleKey,value:number|undefined)=>update(s=>({...s,entries:s.entries.map(e=>e.mint===mint?{...e,rules:{...e.rules,[key]:value}}:e),active:{...s.active,[`${mint}:${key}`]:false},seen:{...s.seen,[`${mint}:${key}`]:''}}));
   const personalAlerts=state.alerts.filter(a=>state.entries.some(e=>e.mint===a.mint));

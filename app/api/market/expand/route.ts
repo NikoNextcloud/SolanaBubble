@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import {publicObservationHeaders} from '@/lib/http-cache';
 import { admin } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -42,7 +43,7 @@ export async function GET(req: Request) {
 
   const wallets = source.map((row) => row.wallet).filter(Boolean);
   if (!wallets.length) {
-    return NextResponse.json({ mint, tokens: [], flows: [], sharedWallets: 0 });
+    return NextResponse.json({ mint, tokens: [], flows: [], sharedWallets: 0 },{headers:publicObservationHeaders(300)});
   }
 
   const { data: relatedRows, error: relatedError } = await db
@@ -103,7 +104,7 @@ export async function GET(req: Request) {
 
   const neighborMints = ranked.map(([tokenMint]) => tokenMint);
   if (!neighborMints.length) {
-    return NextResponse.json({ mint, tokens: [], flows: [], sharedWallets: wallets.length });
+    return NextResponse.json({ mint, tokens: [], flows: [], sharedWallets: wallets.length },{headers:publicObservationHeaders(300)});
   }
 
   const { data: tokenRows } = await db
@@ -171,6 +172,6 @@ export async function GET(req: Request) {
     inferred: true,
     fetchedAt: new Date().toISOString(),
   }, {
-    headers: { "cache-control": "private, max-age=20, stale-while-revalidate=40" },
+    headers: publicObservationHeaders(300),
   });
 }

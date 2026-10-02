@@ -1,0 +1,21 @@
+import type {RecognizedSwap} from './decode';
+export type TrafficWindow={minutes:number;swaps:number;buys:number;sells:number;buyers:number;sellers:number;newSampleBuyers:number;repeatSampleBuyers:number;quickResellers:number;buyUsd:number|null;sellUsd:number|null;netUsd:number|null;medianBuyUsd:number|null;largestBuyUsd:number|null;top3BuyerSharePct:number|null;retainedBuyers:number|null;retentionChecked:number;linkedBuyers:number|null;firstSwapAt:string|null;lastSwapAt:string|null};
+export type TrafficSummary={observedAt:string;pool:string;coverage:'partial';scans:number;listedSignatures:number;parsedTransactions:number;recognizedTransactions:number;unavailableTransactions:number;unrecognizedTransactions:number;limitedScans:number;rowLimitReached:boolean;windows:Record<string,TrafficWindow>;note:string};
+export function summarizeTraffic(rows:RecognizedSwap[],scans:any[],at:string,pool:string,context?:{holderAt?:string|null;wallets?:Set<string>;linkedWallets?:Set<string>},rowLimitReached=false):TrafficSummary {
+ const now=Date.parse(at),sorted=[...rows].filter(s=>s.pool===pool&&Date.parse(s.block_at)<=now).sort((a,b)=>Date.parse(a.block_at)-Date.parse(b.block_at));
+ const windows:Record<string,TrafficWindow>={};
+ for(const minutes of [5,15,60]){
+  const cutoff=now-minutes*60000,sample=sorted.filter(s=>Date.parse(s.block_at)>=cutoff),buy=sample.filter(s=>s.side==='buy'),sell=sample.filter(s=>s.side==='sell');
+  const buyers=new Set(buy.map(s=>s.wallet)),sellers=new Set(sell.map(s=>s.wallet));
+  const earlier=new Set(sorted.filter(s=>Date.parse(s.block_at)<cutoff&&s.side==='buy').map(s=>s.wallet));
+  const quick=new Set<string>();for(const b of buy)if(sample.some(s=>s.wallet===b.wallet&&s.side==='sell'&&Date.parse(s.block_at)>Date.parse(b.block_at)&&Date.parse(s.block_at)-Date.parse(b.block_at)<=15*60000))quick.add(b.wallet);
+  const allPriced=sample.length>0&&sample.every(s=>s.usd_value!=null&&Number.isFinite(s.usd_value));
+  const amount=(r:RecognizedSwap[])=>allPriced?r.reduce((n,s)=>n+(s.usd_value??0),0):null;
+  const buyUsd=amount(buy),sellUsd=amount(sell),sizes=buy.filter(s=>s.usd_value!=null).map(s=>s.usd_value!).sort((a,b)=>a-b);
+  const spend=new Map<string,number>();for(const b of buy)spend.set(b.wallet,(spend.get(b.wallet)??0)+(b.usd_value??0));
+  const holderTime=context?.holderAt?Date.parse(context.holderAt):NaN,holderFresh=Number.isFinite(holderTime)&&now-holderTime>=0&&now-holderTime<60*60000&&context?.wallets;
+  const assessed=holderFresh?[...buyers].filter(w=>buy.filter(s=>s.wallet===w).every(s=>Date.parse(s.block_at)<=holderTime)):[];
+  windows[minutes]={minutes,swaps:sample.length,buys:buy.length,sells:sell.length,buyers:buyers.size,sellers:sellers.size,newSampleBuyers:[...buyers].filter(w=>!earlier.has(w)).length,repeatSampleBuyers:[...buyers].filter(w=>earlier.has(w)).length,quickResellers:quick.size,buyUsd,sellUsd,netUsd:buyUsd!=null&&sellUsd!=null?buyUsd-sellUsd:null,medianBuyUsd:sizes.length?(sizes[Math.floor((sizes.length-1)/2)]+sizes[Math.floor(sizes.length/2)])/2:null,largestBuyUsd:sizes.length?sizes.at(-1)!:null,top3BuyerSharePct:buyUsd!=null&&buyUsd>0?[...spend.values()].sort((a,b)=>b-a).slice(0,3).reduce((n,v)=>n+v,0)/buyUsd*100:null,retainedBuyers:assessed.length?assessed.filter(w=>context?.wallets?.has(w)).length:null,retentionChecked:assessed.length,linkedBuyers:context?.linkedWallets?[...buyers].filter(w=>context.linkedWallets!.has(w)).length:null,firstSwapAt:sample[0]?.block_at??null,lastSwapAt:sample.at(-1)?.block_at??null};
+ }
+ return {observedAt:at,pool,coverage:'partial',scans:scans.length,listedSignatures:scans.reduce((n,s)=>n+(s.listed??0),0),parsedTransactions:scans.reduce((n,s)=>n+(s.parsed??0),0),recognizedTransactions:scans.reduce((n,s)=>n+(s.recognized??0),0),unavailableTransactions:scans.reduce((n,s)=>n+(s.unavailable??0),0),unrecognizedTransactions:scans.reduce((n,s)=>n+(s.unrecognized??0),0),limitedScans:scans.filter(s=>s.limited).length,rowLimitReached,windows,note:'Partial sample of one selected pool; direct PumpSwap / Raydium CPMM only. Pool-vault quote movement excludes some fees. USD uses USDC=$1 or SOL price at scan time, not historical execution USD. New buyers means first seen in retained 2h sample; quick resale does not establish profit. No completeness or bot verdict.'};
+}

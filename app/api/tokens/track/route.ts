@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { admin } from "@/lib/db";
 import { bootstrapToken } from "@/lib/bootstrap";
-import { fetchDexScreenerToken } from "@/lib/solana-public";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -47,20 +46,7 @@ export async function POST(req: Request) {
     bootstrapped = true;
   } else {
     holders = holdingCount ?? 0;
-    const stale = !existing!.metadata_updated_at ||
-      Date.now() - new Date(existing!.metadata_updated_at).getTime() > 30 * 60 * 1000;
 
-    if (stale) {
-      const market = await fetchDexScreenerToken(mint).catch(() => null);
-      if (market) {
-        await db.from("tokens").update({
-          symbol: market.symbol ?? null,
-          name: market.name ?? null,
-          price_usd: Number(market.priceUsd ?? 0) || undefined,
-          metadata_updated_at: new Date().toISOString(),
-        }).eq("mint", mint);
-      }
-    }
   }
 
   return NextResponse.json({

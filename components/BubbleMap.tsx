@@ -43,6 +43,8 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const db = useMemo(() => browserDb(), []);
   const wrap = useRef<HTMLDivElement>(null);
   const nodes = useRef(new Map<string, N>());
+  const graphReady=useRef(false);
+  const holderObservationAt=useRef<string|null>(null);
   const baseLinks = useRef<L[]>([]);
   const edges = useRef<E[]>([]);
   const links = useRef<L[]>([]);
@@ -291,6 +293,19 @@ export default function BubbleMap({ mint }: { mint: string }) {
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, []);
 
+  function applyObservation(j:any){
+    if(j.priceUsd!=null&&Number.isFinite(Number(j.priceUsd)))setMeta(prev=>prev?{...prev,price_usd:Number(j.priceUsd)}:prev);
+    if(j.stale||!j.refreshedAt||!Array.isArray(j.balances)||!j.balances.length||!(j.supply>0)||Date.parse(j.refreshedAt)<=Date.parse(holderObservationAt.current??'1970-01-01'))return;
+    holderObservationAt.current=j.refreshedAt;
+    const present=new Set<string>(j.balances.map((b:any)=>b.wallet));
+    for(const wallet of nodes.current.keys())if(!present.has(wallet))nodes.current.delete(wallet);
+    for(const b of j.balances){const old=nodes.current.get(b.wallet);put({...old,wallet:b.wallet,balance:b.balance,usd_value:b.balance*(j.priceUsd??0),pct_supply:b.balance/j.supply*100,cluster_id:old?.cluster_id??null,funder:old?.funder??null,first_activity:old?.first_activity??null,last_activity:old?.last_activity??null,bought_usd:old?.bought_usd??0,sold_usd:old?.sold_usd??0},false);}
+    if(j.holders!=null)setHolderCount(j.holders);
+    setMeta(prev=>prev?{...prev,supply:j.supply,decimals:j.decimals??prev.decimals}:prev);
+    baseLinks.current=baseLinks.current.filter(l=>present.has(typeof l.source==='string'?l.source:l.source.wallet)&&present.has(typeof l.target==='string'?l.target:l.target.wallet));
+    restart();
+  }
+
   useEffect(() => {
     if (!streamLive || !tabVisible) return;
     let stopped = false;
@@ -298,19 +313,16 @@ export default function BubbleMap({ mint }: { mint: string }) {
     const refresh = async () => {
       try {
         const r = await fetch(`/api/tokens/${mint}/refresh`, {
-          method: "POST",
-          cache: "no-store",
+          method: "GET",
         });
         if (!r.ok || stopped) return;
         const j = await r.json();
-        if (Number.isFinite(Number(j.priceUsd))) {
-          setMeta((prev) => prev ? { ...prev, price_usd: Number(j.priceUsd) } : prev);
-        }
+        if(graphReady.current)applyObservation(j);
       } catch {}
     };
 
     refresh();
-    const id = window.setInterval(refresh, 60_000);
+    const id = window.setInterval(refresh, 300_000);
     return () => {
       stopped = true;
       window.clearInterval(id);
@@ -543,6 +555,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
 
   useEffect(() => {
     let alive = true;
+    graphReady.current=false;holderObservationAt.current=null;
     const s = forceSimulation<N>().alphaDecay(0.026).velocityDecay(0.34);
     s.on("tick", () => bump((x) => x + 1)); sim.current = s;
 
@@ -588,6 +601,8 @@ export default function BubbleMap({ mint }: { mint: string }) {
         .filter((l: any) => nodes.current.has(l.wallet_a) && nodes.current.has(l.wallet_b))
         .map((l: any) => ({ source: l.wallet_a, target: l.wallet_b, kind: l.kind, signalCount: Number(l.signal_count ?? 1) }));
       edges.current = (es ?? []) as E[];
+      graphReady.current=true;
+      try{const r=await fetch(`/api/tokens/${mint}/refresh`);if(r.ok&&alive)applyObservation(await r.json());}catch{}
       restart();
     })();
 

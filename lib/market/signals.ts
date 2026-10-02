@@ -6,6 +6,7 @@ export type WindowComparison = {
 };
 export type MarketWindows = Partial<Record<WindowMinutes,WindowComparison>>;
 export type Intelligence = {
+  trafficSample?: import('./traffic/summary').TrafficSummary | null;
   hypeDelta?: number | null;
   hypeVelocity?: number | null;
   hypeAcceleration?: number | null;

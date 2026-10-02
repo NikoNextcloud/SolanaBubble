@@ -116,6 +116,7 @@ export async function fetchPublicHolders(mint: string, maxAgeMs = 5 * 60 * 1000)
 export async function fetchDexScreenerToken(mint: string) {
   const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(mint)}`, {
     headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(10000),
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`DexScreener failed: ${res.status}`);

@@ -44,7 +44,7 @@ export default function MarketSection({ section }: { section: string }) {
   useEffect(() => {
     if(section==="watchlist") return;
     let stopped = false;
-    const load = () => fetch("/api/market", { cache: "no-store" })
+    const load = () => document.hidden ? Promise.resolve() : fetch("/api/market")
       .then((r) => r.ok ? r.json() : Promise.reject())
       .then((j) => {
         if (stopped) return;
@@ -55,7 +55,7 @@ export default function MarketSection({ section }: { section: string }) {
       .catch(() => {})
       .finally(() => { if (!stopped) setLoading(false); });
     load();
-    const interval = window.setInterval(load, 30_000);
+    const interval = window.setInterval(load, 120_000);
     return () => { stopped = true; window.clearInterval(interval); };
   }, [section]);
 

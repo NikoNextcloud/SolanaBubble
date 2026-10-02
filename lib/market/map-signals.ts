@@ -13,7 +13,7 @@ export function bubbleSignal(t:WatchToken,now=Date.now()) {
   const holderSupport=holderFresh&&growth&&observationQuality(growth.observedAt,now,5).status==='recent'?growth.holderGrowthPct:null;
   const reasons:string[]=[];
   let state:BubbleState='unknown',arrow='?',label='Недостатъчно данни';
-  const flow=fresh&&pressure!=null&&velocity!=null?(pressure>=60?'in':pressure<=40?'out':'flat'):'flat';
+  let flow=fresh&&pressure!=null&&velocity!=null?(pressure>=60?'in':pressure<=40?'out':'flat'):'flat';
   if(fresh&&pressure!=null&&velocity!=null){
     reasons.push(`Покупки: ${pressure.toFixed(0)}% от ${trades} сделки за последния 1h.`,`Hype velocity: ${velocity.toFixed(2)} H/min.`);
     if(velocity>=.5&&(pressure<=50||(t.liquidityChangePct??0)<=-10||(holderSupport!=null&&holderSupport<0))){state='unbacked';arrow='↓';label='Hype без подкрепа';reasons.push('Hype расте, но покупки, ликвидност или наблюдавани holders не го подкрепят.');}
@@ -21,6 +21,20 @@ export function bubbleSignal(t:WatchToken,now=Date.now()) {
     else if(pressure<=40||(pressure<60&&velocity<=-.5)){state='down';arrow='↓';label='Продажби ↑ · оц.';reasons.push('Преобладават продажби или покупателната подкрепа отслабва с Hype.');}
     else {state='stable';arrow='→';label='Баланс → · оц.';reasons.push('Няма съгласуван сигнал за ускоряване.');}
   }else reasons.push(!fresh?'Market snapshot липсва или е стар (≥10m).':trades<20?'Твърде малко сделки (<20 за 1h).':'Липсва сравнима Hype velocity.');
+  const sample=t.trafficSample, sw=sample?.windows['15'];
+  if(sample&&sw&&observationQuality(sample.observedAt,now).status==='recent'&&sw.swaps>=5){
+    reasons.push(`Partial swap sample: ${sw.buyers} buyers / ${sw.sellers} sellers, ${sw.buys} buys / ${sw.sells} sells in 15m ending ${sample.observedAt}. Selected pool only.`);
+    if(sw.netUsd!=null){
+      flow=sw.netUsd>0?'in':sw.netUsd<0?'out':'flat';
+      reasons.push(`Sample net: $${sw.netUsd.toFixed(0)}; USDC=$1 / SOL valued at scan time. Not whole-market inflow.`);
+      if(state!=='unbacked'&&!liquidityDrop){
+        if(sw.netUsd<0){state='down';arrow='↓';label='Продажби · sample';}
+        else if(sw.buyers>=5&&sw.netUsd>0){state='up';arrow='↑';label=(sw.top3BuyerSharePct??0)>=80?'Концентрация · sample':'Купувачи ↑ · sample';}
+        else if(sw.netUsd>0){state='stable';arrow='→';label='Малко buyers · sample';}
+      }
+    }
+    if(sw.quickResellers>=3&&sw.quickResellers/Math.max(1,sw.buyers)>=.5){label='Препродаване · sample';reasons.push('At least half of sampled buyers sold again within 15m; does not establish profit or bots.');}
+  }
   if(holderSupport!=null)reasons.push(`Holder growth за приблизително 5m: ${holderSupport.toFixed(1)}%.`);else reasons.push('Holder потвърждението за 5m е неизвестно.');
   if(liquidityDrop)reasons.push(`Liquidity ↓ ${t.liquidityChangePct?.toFixed(1)??'—'}%; спад спрямо предходния snapshot.`);
   const whaleEnter=fresh&&holderFresh?Math.max(0,t.whaleEnter??0):0,whaleExit=fresh&&holderFresh?Math.max(0,t.whaleExit??0):0;
