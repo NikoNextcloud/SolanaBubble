@@ -21,7 +21,7 @@ test('risk score bounded with transparent missing-holder coverage',()=>{
   assert.match(deriveSignals(token,prev,at,before).riskCoverage!,/holder risk unknown/);
 });
 test('alerts fire on crossings; repeated observations do not repeat whale events',()=>{
-  const t={...token,...deriveSignals(token,prev,at,before),holderObservedAt:at,holderGrowthPct:10,whaleEnter:2,whaleExit:1};
+  const t={...token,...deriveSignals(token,prev,at,before),holderObservedAt:at,holderBaselineAt:before,holderGrowthPct:10,whaleEnter:2,whaleExit:1};
   const first=evaluateAlerts(t,{...prev,buyPressure:50},at);
   assert.deepEqual(first.map(a=>a.kind).sort(),['buy-pressure','holder-growth','hype','liquidity-disappearing','whale-enter','whale-exit'].sort());
   assert.equal(evaluateAlerts(t,t,at).length,0);

@@ -33,17 +33,28 @@ export async function observeHolders(mint: string, price: number, provider = rpc
     linked.add(link.wallet_a); linked.add(link.wallet_b);
     if (link.kind === 'funder' || link.signal_count >= 3) { suspicious.add(link.wallet_a); suspicious.add(link.wallet_b); }
   }
-  const relationSample = await sampleWalletRelationships(current.balances);
+  const previousLargest = before ? [...before.balances].sort((a,b)=>b.balance-a.balance)[0]?.wallet : undefined;
+  const relationSample = await sampleWalletRelationships(current.balances,mint,prev?.updated_at,previousLargest);
   for (const group of relationSample.evidence) for (const wallet of group.wallets) {
     linked.add(wallet); suspicious.add(wallet);
   }
   const relationshipKnown = !!links?.length || relationSample.analyzed > 0;
   const whaleWallets = new Set([...whales, ...(previousWhales ?? [])]);
   const balanceNow = new Map(current.balances.map(h => [h.wallet, h.balance]));
+  const sorted = [...current.balances].sort((a,b)=>b.balance-a.balance);
+  const {data:holderWindows,error:windowError}=await db.rpc('holder_window_comparisons',{p_mint:mint,p_at:at,p_wallets:[...wallets]});
+  if(windowError) throw windowError;
   const metrics: Intelligence = {
     holderCount: current.balances.length,
     holderGrowth: previous ? current.balances.length - previous.size : null,
     holderGrowthPct: previous?.size ? (current.balances.length - previous.size) / previous.size * 100 : null,
+    newHolders: previous ? current.balances.filter(h=>!previous.has(h.wallet)).length : null,
+    exitedHolders: previous ? [...previous.keys()].filter(w=>!wallets.has(w)).length : null,
+    largestHolderPct: sorted.length ? sorted[0].balance/current.supply*100 : null,
+    whaleConcentrationPct: current.balances.filter(h=>whales.has(h.wallet)).reduce((n,h)=>n+h.balance,0)/current.supply*100,
+    linkedSupplyPct: relationshipKnown ? current.balances.filter(h=>linked.has(h.wallet)).reduce((n,h)=>n+h.balance,0)/current.supply*100 : null,
+    holderWindows:holderWindows ?? {},
+    topHolderSales: relationSample.sales,
     freshWallets: previous ? current.balances.filter(h => !previous.has(h.wallet)).length : null,
     top10SupplyPct: Math.min(100, [...current.balances].sort((a,b) => b.balance - a.balance).slice(0,10).reduce((n,h) => n + h.balance, 0) / current.supply * 100),
     linkedWallets: !relationshipKnown ? null : linked.size,
@@ -55,7 +66,7 @@ export async function observeHolders(mint: string, price: number, provider = rpc
     walletEvidence: relationSample.evidence,
     holderObservedAt: at, holderBaselineAt: previous ? prev!.updated_at : null,
   };
-  const { error } = await db.from('api_cache').upsert({ cache_key: key, payload: { ...current, metrics }, updated_at: at });
+  const { error } = await db.rpc('save_holder_observation',{p_mint:mint,p_at:at,p_payload:{ ...current, metrics },p_wallets:[...wallets]});
   if (error) throw error;
   return metrics;
 }

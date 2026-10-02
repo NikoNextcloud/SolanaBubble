@@ -1,4 +1,5 @@
 "use client";
+import { fomoTokenUrl } from "@/lib/token-links";
 import TrackedTokenSignal from "./TrackedTokenSignal";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY, type Simulation } from "d3-force";
@@ -1185,7 +1186,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
             </div>
 
             <div className="token-external-actions">
-              <a href="https://fomo.family" target="_blank" rel="noreferrer">FoMo ↗</a>
+              <a href={fomoTokenUrl(mint)} target="_blank" rel="noreferrer">FoMo ↗</a>
               <a href={`https://gmgn.ai/sol/token/${mint}`} target="_blank" rel="noreferrer">GmGn ↗</a>
             </div>
           </div>

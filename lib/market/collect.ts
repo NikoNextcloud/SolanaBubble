@@ -30,7 +30,7 @@ async function getJson<T>(url: string): Promise<T | null> {
   }
 }
 
-export async function collectMarket(previousPayload: any) {
+export async function collectMarket(previousPayload: any, trackedMints: string[] = []) {
   const [profiles, boosts] = await Promise.all([
     getJson<Profile[]>("https://api.dexscreener.com/token-profiles/latest/v1"),
     getJson<Boost[]>("https://api.dexscreener.com/token-boosts/top/v1"),
@@ -58,7 +58,7 @@ export async function collectMarket(previousPayload: any) {
   for (const p of profiles ?? []) if (p.chainId === "solana") push(p.tokenAddress);
 
   const tracked = (previousPayload?.tokens ?? []).map((t: any) => String(t.mint));
-  const picked = [...new Set([...tracked.slice(0, 70), ...addresses, ...tracked.slice(70)])].slice(0, 100);
+  const picked = [...new Set([...trackedMints.slice(0, 20), ...tracked.slice(0, 50), ...addresses, ...tracked])].slice(0, 100);
   const chunks: string[][] = [];
   for (let i = 0; i < picked.length; i += 30) chunks.push(picked.slice(i, i + 30));
 
@@ -91,6 +91,7 @@ export async function collectMarket(previousPayload: any) {
       quoteSymbol: p.quoteToken?.symbol ?? null,
       priceUsd: Number(p.priceUsd ?? 0),
       marketCap: Number(p.marketCap ?? p.fdv ?? 0),
+      fdv: p.fdv == null ? null : Number(p.fdv),
       liquidityUsd: Number(p.liquidity?.usd ?? 0),
       volume1h: Number(p.volume?.h1 ?? 0),
       volume24h: Number(p.volume?.h24 ?? 0),

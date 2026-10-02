@@ -5,6 +5,7 @@ import TokenSignalCard from './TokenSignalCard';
 export default function TrackedTokenSignal({mint}:{mint:string}) {
   const [token,setToken]=useState<SignalToken>({mint});
   useEffect(()=>{
+    setToken({mint});
     const controller=new AbortController();
     const load=()=>fetch(`/api/market/history?mint=${encodeURIComponent(mint)}&hours=24`,{signal:controller.signal})
       .then(r=>r.ok?r.json():Promise.reject()).then(j=>setToken(j.snapshots?.at(-1)?.payload ?? {mint})).catch(()=>{});

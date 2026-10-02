@@ -4,6 +4,7 @@ import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, f
 import { useRouter } from "next/navigation";
 
 import type { Intelligence, SignalAlert } from "@/lib/market/signals";
+import { separateMapNodes } from "@/lib/market/layout";
 import TokenSignalCard from "./TokenSignalCard";
 import MoversPanel from "./MoversPanel";
 import AlertsPanel from "./AlertsPanel";
@@ -387,6 +388,7 @@ export default function MarketMap() {
       .on("tick", () => {
         const now = performance.now();
         if (now - lastSimRender.current < 34) return;
+        separateMapNodes([...nodeMap.current.values()]);
         lastSimRender.current = now;
         setTick((x) => x + 1);
       });
@@ -408,7 +410,7 @@ export default function MarketMap() {
 
     s.nodes(nodes);
     s.force("center", forceCenter(size.w / 2, size.h / 2).strength(0.005));
-    s.force("charge", forceManyBody().strength((d: any) => d.isCore ? -20 : -18));
+    s.force("charge", forceManyBody().strength((d: any) => d.isCore ? -65 : -75));
     s.force("x", forceX<any>((d) => {
       if (viewMode === "map") {
         if (d.isCore) return size.w / 2;
@@ -424,7 +426,7 @@ export default function MarketMap() {
       }
       const imbalance = (d.buys1h - d.sells1h) / Math.max(1, d.buys1h + d.sells1h);
       return size.w / 2 + imbalance * size.w * 0.28;
-    }).strength((d: any) => d.isCore ? .02 : .46));
+    }).strength((d: any) => d.isCore ? .02 : .12));
     s.force("y", forceY<any>((d) => {
       if (viewMode === "map") {
         if (d.isCore) return size.h * .58;
@@ -434,12 +436,12 @@ export default function MarketMap() {
       if (d.isCore) return d.symbol === "SOL" ? size.h * 0.52 : size.h * 0.48;
       const activityRank = Math.min(1, Math.log10(Math.max(1, d.volume1h)) / 7);
       return size.h * (0.58 - activityRank * 0.24);
-    }).strength((d: any) => d.isCore ? .02 : .5));
+    }).strength((d: any) => d.isCore ? .02 : .14));
     s.force("link", forceLink<any, any>(viewMode === "map" && !showTrafficOverlay ? [] : links)
       .id((d: any) => d.mint)
-      .distance((l: any) => 135 + Math.max(0, 100 - Math.log10(Math.max(1, l.usd1h)) * 10))
-      .strength((l: any) => Math.min(0.32, 0.06 + Math.log10(Math.max(1, l.usd1h)) * 0.03)));
-    s.force("collide", forceCollide<any>((d) => d.r + 24).strength(0.99));
+      .distance((l: any) => 190 + Math.max(0, 100 - Math.log10(Math.max(1, l.usd1h)) * 10))
+      .strength((l: any) => Math.min(0.12, 0.025 + Math.log10(Math.max(1, l.usd1h)) * 0.03)));
+    s.force("collide", forceCollide<any>((d) => d.r + 40).strength(1).iterations(4));
     s.alpha(.58).restart();
   }, [size, tokens, flows, expansionFlows, viewMode, xAxis, showTrafficOverlay, axisStats]);
 
@@ -933,19 +935,19 @@ export default function MarketMap() {
               const traffic = trafficState(n);
               const netFlow = Number.isFinite(Number(n.netFlowUsd1h)) ? Number(n.netFlowUsd1h) : (netFlowByMint.get(n.mint) ?? 0);
               const focusDimmed = Boolean(selected?.mint && !focusMints.has(n.mint) && !n.isCore);
-              const pulseDuration = n.isCore ? 3.2 : Math.max(.8, Math.min(5, 4 - Math.tanh(Number(n.volumeAcceleration ?? 0) / 500) * 3));
-              const brightness = Math.max(.65, Math.min(1.5, 1 + Math.tanh(Number(n.hypeVelocity ?? 0)) * .5));
+              const pulseDuration = n.isCore ? 3.2 : Math.max(.8, Math.min(5, 4 - Math.tanh(Number(n.hypeAcceleration ?? 0) / .3) * 3));
+              const brightness = Math.max(.65, Math.min(1.5, 1 + Math.tanh(Math.abs(Number(n.hypeVelocity ?? 0))) * .5));
               return <g
                 key={n.mint}
                 transform={`translate(${n.x} ${n.y})`}
                 className={`market-node-group ${streamLive ? "is-animated" : "is-paused"}`}
-                style={{ ["--node-pulse-duration" as any]: `${pulseDuration}s`, filter: `brightness(${brightness})` }}
+                style={{ ["--node-pulse-duration" as any]: `${pulseDuration}s` }}
               >
                 <circle
                   r={n.r + 6 + hype * .045}
                   className="market-hype-glow"
                   strokeWidth={1 + hype * .038}
-                  strokeOpacity={Math.min(.96, .10 + hype / 108)}
+                  strokeOpacity={Math.min(.96, (.10 + hype / 108) * brightness)}
                   style={{
                     ["--hype-strength" as any]: Math.max(.08, hype / 100),
                     ["--hype-color" as any]: traffic.cls === "in" ? "#66d39a" : traffic.cls === "out" ? "#ee746c" : "#a9afb7",
@@ -958,7 +960,7 @@ export default function MarketMap() {
                   r={n.r + 12 + hype * .075}
                   className="market-hype-glow market-hype-glow-outer"
                   strokeWidth={.8 + hype * .02}
-                  strokeOpacity={Math.min(.68, .08 + hype / 165)}
+                  strokeOpacity={Math.min(.85, (.08 + hype / 165) * brightness)}
                   style={{
                     ["--hype-strength" as any]: hype / 100,
                     ["--hype-color" as any]: traffic.cls === "in" ? "#66d39a" : traffic.cls === "out" ? "#ee746c" : "#c7cbd0",

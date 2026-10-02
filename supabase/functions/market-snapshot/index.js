@@ -5,26 +5,31 @@ import { timingSafeEqual } from 'node:crypto';
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 // Само server-side (service role).
 export const admin = () => createClient((process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL), process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
-const RPC_URL = () => process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
+export class PublicSolanaRpcProvider {
+    endpoint;
+    constructor(endpoint = () => process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com') {
+        this.endpoint = endpoint;
+    }
+    async request(method, params) {
+        const response = await fetch(this.endpoint(), {
+            signal: AbortSignal.timeout(15_000), method: 'POST', cache: 'no-store',
+            headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+        });
+        if (!response.ok)
+            throw new Error(`Solana RPC failed: ${response.status}`);
+        const data = await response.json();
+        if (data.error)
+            throw new Error(data.error.message || `Solana RPC error ${data.error.code ?? ''}`);
+        if (data.result == null)
+            throw new Error('Solana RPC returned no result');
+        return data.result;
+    }
+}
+let rpcProvider = new PublicSolanaRpcProvider();
+export const setSolanaRpcProvider = (provider) => { rpcProvider = provider; };
+export const solanaRpc = (method, params) => rpcProvider.request(method, params);
 const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const TOKEN_2022_PROGRAM = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
-async function rpc(method, params) {
-    const res = await fetch(RPC_URL(), {
-        signal: AbortSignal.timeout(15_000),
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-        cache: "no-store",
-    });
-    if (!res.ok)
-        throw new Error(`Solana RPC failed: ${res.status}`);
-    const json = await res.json();
-    if (json.error)
-        throw new Error(json.error.message || `Solana RPC error ${json.error.code ?? ""}`);
-    if (json.result == null)
-        throw new Error("Solana RPC returned no result");
-    return json.result;
-}
 export async function getRpcHealth() {
     try {
         const result = await rpc("getHealth", []);
@@ -183,7 +188,7 @@ async function getJson(url) {
         return null;
     }
 }
-export async function collectMarket(previousPayload) {
+export async function collectMarket(previousPayload, trackedMints = []) {
     const [profiles, boosts] = await Promise.all([
         getJson("https://api.dexscreener.com/token-profiles/latest/v1"),
         getJson("https://api.dexscreener.com/token-boosts/top/v1"),
@@ -215,7 +220,7 @@ export async function collectMarket(previousPayload) {
         if (p.chainId === "solana")
             push(p.tokenAddress);
     const tracked = (previousPayload?.tokens ?? []).map((t) => String(t.mint));
-    const picked = [...new Set([...tracked.slice(0, 70), ...addresses, ...tracked.slice(70)])].slice(0, 100);
+    const picked = [...new Set([...trackedMints.slice(0, 20), ...tracked.slice(0, 50), ...addresses, ...tracked])].slice(0, 100);
     const chunks = [];
     for (let i = 0; i < picked.length; i += 30)
         chunks.push(picked.slice(i, i + 30));
@@ -246,6 +251,7 @@ export async function collectMarket(previousPayload) {
             quoteSymbol: p.quoteToken?.symbol ?? null,
             priceUsd: Number(p.priceUsd ?? 0),
             marketCap: Number(p.marketCap ?? p.fdv ?? 0),
+            fdv: p.fdv == null ? null : Number(p.fdv),
             liquidityUsd: Number(p.liquidity?.usd ?? 0),
             volume1h: Number(p.volume?.h1 ?? 0),
             volume24h: Number(p.volume?.h24 ?? 0),
@@ -439,30 +445,31 @@ export function deriveSignals(t, previous, at, baselineAt) {
     const liquidityChangePct = comparable ? percentChange(t.liquidityUsd ?? 0, previous.liquidityUsd ?? 0) : null;
     const trades = (t.buys1h ?? 0) + (t.sells1h ?? 0);
     const liquidityWarning = liquidityChangePct != null && liquidityChangePct <= -25 && (previous?.liquidityUsd ?? 0) >= 5000;
-    const reasons = [];
-    let risk = 0;
-    if ((t.liquidityUsd ?? 0) < 10000) {
-        risk += 30;
-        reasons.push('Low liquidity (< $10k)');
-    }
-    if (liquidityWarning) {
-        risk += 35;
-        reasons.push('Liquidity disappeared ≥25% within the snapshot interval');
-    }
-    if (finite(t.top10SupplyPct) && t.top10SupplyPct > 40) {
-        risk += Math.min(25, (t.top10SupplyPct - 40) * .5);
-        reasons.push('Concentrated supply (may include pool / program owners)');
-    }
-    if (finite(t.suspiciousWallets) && t.suspiciousWallets > 0) {
-        risk += Math.min(15, t.suspiciousWallets * 2);
-        reasons.push('Wallet relationship evidence; investigate linked funding / timing');
-    }
-    if (trades > 20 && (t.buys1h ?? 0) / trades < .3) {
-        risk += 15;
-        reasons.push('Strong sell pressure');
-    }
+    const riskFactors = [];
+    const factor = (label, points, value) => riskFactors.push({ label, points: Math.round(points), value });
+    if ((t.liquidityUsd ?? 0) < 10000)
+        factor('Low liquidity (< $10k)', 20, t.liquidityUsd ?? 0);
+    if (liquidityWarning)
+        factor('Liquidity dropped ≥25%', 25, liquidityChangePct);
+    if (finite(t.top10SupplyPct) && t.top10SupplyPct > 40)
+        factor('Top 10 concentration (pool/program owners included)', Math.min(20, (t.top10SupplyPct - 40) * .4), t.top10SupplyPct);
+    if (finite(t.largestHolderPct) && t.largestHolderPct > 10)
+        factor('Large holder dominance', Math.min(20, (t.largestHolderPct - 10)), t.largestHolderPct);
+    if (finite(t.linkedSupplyPct) && t.linkedSupplyPct > 10)
+        factor('Linked-wallet supply concentration', Math.min(15, (t.linkedSupplyPct - 10) * .5), t.linkedSupplyPct);
+    else if (finite(t.suspiciousWallets) && t.suspiciousWallets > 0)
+        factor('Wallet relationship evidence', Math.min(10, t.suspiciousWallets * 2), t.suspiciousWallets);
+    if (trades > 20 && (t.buys1h ?? 0) / trades < .3)
+        factor('Strong sell pressure', 15, (t.sells1h ?? 0) / trades * 100);
+    const fdvLiquidityRatio = finite(t.fdv) && t.fdv > 0 && (t.liquidityUsd ?? 0) > 0 ? t.fdv / (t.liquidityUsd) : null;
+    if (fdvLiquidityRatio != null && fdvLiquidityRatio > 100)
+        factor('FDV / liquidity imbalance', Math.min(15, Math.log10(fdvLiquidityRatio / 100) * 15 + 5), fdvLiquidityRatio);
+    const risk = riskFactors.reduce((n, f) => n + f.points, 0);
+    const reasons = riskFactors.map(f => f.label);
+    const hypeVelocity = hypeDelta == null ? null : hypeDelta / minutes;
+    const hypeAcceleration = hypeVelocity != null && finite(previous?.hypeVelocity) ? (hypeVelocity - previous.hypeVelocity) / minutes : null;
     const acceleration = volumeVelocity != null && finite(previous?.volumeVelocity) ? (volumeVelocity - previous.volumeVelocity) / minutes : null;
-    return { hypeDelta, hypeVelocity: hypeDelta == null ? null : hypeDelta / minutes,
+    return { hypeDelta, hypeVelocity, hypeAcceleration, fdvLiquidityRatio, riskFactors,
         volumeDelta, volumeVelocity, volumeAcceleration: acceleration, liquidityChange, liquidityChangePct,
         buyPressure: trades ? (t.buys1h ?? 0) / trades * 100 : null,
         liquidityWarning, baselineAt: comparable ? baselineAt : null,
@@ -475,10 +482,19 @@ export function evaluateAlerts(t, previous, at) {
         id: `${t.mint}:${kind}:${at}`, mint: t.mint, symbol: t.symbol ?? null, kind, severity, value, message, at,
         deltaTrades: 0, deltaVolume: t.volumeDelta ?? 0, hypeDelta: t.hypeDelta ?? 0
     });
+    if ((t.hypeScore ?? 0) >= 70 && (previous?.hypeScore ?? 0) < 70)
+        add('hype-threshold', t.hypeScore, 'Hype crossed 70/100');
+    if ((t.hypeVelocity ?? 0) >= 3 && (previous?.hypeVelocity ?? 0) < 3)
+        add('hype-velocity', t.hypeVelocity, 'Hype rises ≥3 points/min');
+    if ((t.hypeAcceleration ?? 0) >= .3 && (previous?.hypeAcceleration ?? 0) < .3)
+        add('hype-acceleration', t.hypeAcceleration, 'Hype velocity accelerates ≥0.3 points/min²');
     if ((t.hypeDelta ?? 0) >= 5 && (previous?.hypeDelta ?? 0) < 5)
         add('hype', t.hypeDelta, 'Hype increased ≥5 points');
-    if ((t.holderGrowthPct ?? 0) >= 5 && t.holderObservedAt !== previous?.holderObservedAt)
-        add('holder-growth', t.holderGrowthPct, 'Observed holders grew ≥5%');
+    const holderGrowth = t.holderWindows?.['5']?.holderGrowthPct;
+    const holderMinutes = t.holderBaselineAt && t.holderObservedAt ? (Date.parse(t.holderObservedAt) - Date.parse(t.holderBaselineAt)) / 60000 : null;
+    const fastHolders = holderGrowth ?? (holderMinutes != null && holderMinutes <= 8 ? t.holderGrowthPct : null);
+    if ((fastHolders ?? 0) >= 5 && t.holderObservedAt !== previous?.holderObservedAt)
+        add('holder-growth', fastHolders, 'Observed holders grew ≥5% over roughly 5m');
     if (finite(t.buyPressure) && t.buyPressure >= 70 && (t.buys1h ?? 0) + (t.sells1h ?? 0) >= 20 && (previous?.buyPressure ?? 0) < 70)
         add('buy-pressure', t.buyPressure, 'Buy count share crossed 70%');
     if (t.liquidityWarning && !previous?.liquidityWarning)
@@ -491,6 +507,13 @@ export function evaluateAlerts(t, previous, at) {
         if ((t.whaleExit ?? 0) > 0)
             add('whale-exit', t.whaleExit, 'Owners left ≥1% supply positions', 'warning');
     }
+    if (t.holderObservedAt !== previous?.holderObservedAt)
+        for (const sale of t.topHolderSales ?? []) {
+            if ((previous?.topHolderSales ?? []).some(p => p.signature === sale.signature && p.wallet === sale.wallet))
+                continue;
+            add('top-holder-selling', sale.amount, `Top owner ${sale.wallet.slice(0, 6)} has swap-like outflow; inspect ${sale.signature}`, 'warning');
+            alerts.at(-1).id = `${t.mint}:top-holder-selling:${sale.wallet}:${sale.signature}`;
+        }
     return alerts;
 }
 export const moverCategories = [
@@ -503,9 +526,46 @@ export const moverCategories = [
 export function rankMovers(tokens, key) {
     return tokens.filter(t => finite(t[key])).sort((a, b) => Math.abs(b[key]) - Math.abs(a[key]));
 }
+export function compareMarketWindows(token, at, baselines) {
+    const windows = {};
+    for (const b of baselines) {
+        if (b.mint !== token.mint || b.payload.pairAddress !== token.pairAddress)
+            continue;
+        windows[String(b.window_minutes)] = { baselineAt: b.observed_at, observedAt: at, elapsedMinutes: (Date.parse(at) - Date.parse(b.observed_at)) / 60000,
+            hypeDelta: (token.hypeScore ?? 0) - (b.payload.hypeScore ?? 0),
+            volumeChangePct: percentChange(token.volume1h ?? 0, b.payload.volume1h ?? 0),
+            liquidityChangePct: percentChange(token.liquidityUsd ?? 0, b.payload.liquidityUsd ?? 0),
+            priceChangePct: percentChange(token.priceUsd ?? 0, b.payload.priceUsd ?? 0) };
+    }
+    return windows;
+}
+const QUOTES = new Set(['So11111111111111111111111111111111111111112', 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', 'Es9vMFrzaCERmJfrF4H2FYDgHkmPG8TbQnYQ8V4a8Qj']);
+/** Swap-like evidence only: a token transfer alone must never be labelled selling. */
+export function detectSwapLikeSale(tx, mint, wallet, since) {
+    if (!tx || tx.meta?.err || !tx.blockTime || tx.blockTime * 1000 <= Date.parse(since))
+        return null;
+    const delta = new Map();
+    for (const [key, sign] of [['preTokenBalances', -1], ['postTokenBalances', 1]])
+        for (const row of tx.meta?.[key] ?? []) {
+            if (row.owner !== wallet)
+                continue;
+            const amount = Number(row.uiTokenAmount?.uiAmountString ?? row.uiTokenAmount?.uiAmount ?? 0);
+            delta.set(row.mint, (delta.get(row.mint) ?? 0) + sign * amount);
+        }
+    const loss = -(delta.get(mint) ?? 0);
+    if (loss <= 0 || ![...delta].some(([quote, amount]) => quote !== mint && QUOTES.has(quote) && amount > 0))
+        return null;
+    const signature = tx.transaction?.signatures?.[0];
+    if (!signature)
+        return null;
+    return { wallet, signature: String(signature), amount: loss, at: new Date(tx.blockTime * 1000).toISOString() };
+}
 // Bounded sample, never a claim that every holder has been analyzed.
-export async function sampleWalletRelationships(balances) {
+export async function sampleWalletRelationships(balances, mint, since, previousLargest) {
     const sample = [...balances].sort((a, b) => b.balance - a.balance).slice(0, 4);
+    if (previousLargest && !sample.some(h => h.wallet === previousLargest))
+        sample[sample.length - 1] = { wallet: previousLargest, balance: 0 };
+    const sales = [];
     const funders = new Map();
     const signatures = new Map();
     let analyzed = 0;
@@ -518,6 +578,11 @@ export async function sampleWalletRelationships(balances) {
             return;
         analyzed++;
         for (const tx of txs) {
+            if (mint && since) {
+                const sale = detectSwapLikeSale(tx, mint, h.wallet, since);
+                if (sale)
+                    sales.push(sale);
+            }
             const instructions = [...(tx?.transaction?.message?.instructions ?? []), ...(tx?.meta?.innerInstructions ?? []).flatMap((x) => x.instructions ?? [])];
             for (const ix of instructions) {
                 if (ix?.program !== 'system' || ix.parsed?.type !== 'transfer')
@@ -542,7 +607,7 @@ export async function sampleWalletRelationships(balances) {
         else if (wallets.has(funder))
             evidence.push({ wallets: [funder, ...group], kind: 'direct-funder', evidence: [...(signatures.get(funder) ?? [])] });
     }
-    return { analyzed, sampled: sample.length, evidence };
+    return { analyzed, sampled: sample.length, evidence, sales };
 }
 // One adapter boundary: replace this to use any indexer or RPC provider.
 export const rpcHolderProvider = {
@@ -578,7 +643,8 @@ export async function observeHolders(mint, price, provider = rpcHolderProvider) 
             suspicious.add(link.wallet_b);
         }
     }
-    const relationSample = await sampleWalletRelationships(current.balances);
+    const previousLargest = before ? [...before.balances].sort((a, b) => b.balance - a.balance)[0]?.wallet : undefined;
+    const relationSample = await sampleWalletRelationships(current.balances, mint, prev?.updated_at, previousLargest);
     for (const group of relationSample.evidence)
         for (const wallet of group.wallets) {
             linked.add(wallet);
@@ -587,10 +653,21 @@ export async function observeHolders(mint, price, provider = rpcHolderProvider) 
     const relationshipKnown = !!links?.length || relationSample.analyzed > 0;
     const whaleWallets = new Set([...whales, ...(previousWhales ?? [])]);
     const balanceNow = new Map(current.balances.map(h => [h.wallet, h.balance]));
+    const sorted = [...current.balances].sort((a, b) => b.balance - a.balance);
+    const { data: holderWindows, error: windowError } = await db.rpc('holder_window_comparisons', { p_mint: mint, p_at: at, p_wallets: [...wallets] });
+    if (windowError)
+        throw windowError;
     const metrics = {
         holderCount: current.balances.length,
         holderGrowth: previous ? current.balances.length - previous.size : null,
         holderGrowthPct: previous?.size ? (current.balances.length - previous.size) / previous.size * 100 : null,
+        newHolders: previous ? current.balances.filter(h => !previous.has(h.wallet)).length : null,
+        exitedHolders: previous ? [...previous.keys()].filter(w => !wallets.has(w)).length : null,
+        largestHolderPct: sorted.length ? sorted[0].balance / current.supply * 100 : null,
+        whaleConcentrationPct: current.balances.filter(h => whales.has(h.wallet)).reduce((n, h) => n + h.balance, 0) / current.supply * 100,
+        linkedSupplyPct: relationshipKnown ? current.balances.filter(h => linked.has(h.wallet)).reduce((n, h) => n + h.balance, 0) / current.supply * 100 : null,
+        holderWindows: holderWindows ?? {},
+        topHolderSales: relationSample.sales,
         freshWallets: previous ? current.balances.filter(h => !previous.has(h.wallet)).length : null,
         top10SupplyPct: Math.min(100, [...current.balances].sort((a, b) => b.balance - a.balance).slice(0, 10).reduce((n, h) => n + h.balance, 0) / current.supply * 100),
         linkedWallets: !relationshipKnown ? null : linked.size,
@@ -602,7 +679,7 @@ export async function observeHolders(mint, price, provider = rpcHolderProvider) 
         walletEvidence: relationSample.evidence,
         holderObservedAt: at, holderBaselineAt: previous ? prev.updated_at : null,
     };
-    const { error } = await db.from('api_cache').upsert({ cache_key: key, payload: { ...current, metrics }, updated_at: at });
+    const { error } = await db.rpc('save_holder_observation', { p_mint: mint, p_at: at, p_payload: { ...current, metrics }, p_wallets: [...wallets] });
     if (error)
         throw error;
     return metrics;
@@ -616,37 +693,58 @@ export async function ingestMarket() {
     if (!claim.data)
         return { skipped: true, reason: 'Ingestion already running' };
     try {
+        const storage = await db.rpc('enforce_market_storage_limit');
+        if (storage.error)
+            throw storage.error;
         const { data: cached, error } = await db.from('api_cache').select('payload').eq('cache_key', 'market:snapshot').maybeSingle();
         if (error)
             throw error;
         const previous = cached?.payload;
-        const base = await collectMarket(previous);
+        const tracked = await db.from('tokens').select('mint').order('metadata_updated_at', { ascending: false, nullsFirst: false }).limit(20);
+        if (tracked.error)
+            throw tracked.error;
+        const base = await collectMarket(previous, (tracked.data ?? []).map(t => t.mint));
         const prevTokens = new Map((previous?.tokens ?? []).map((t) => [t.mint, t]));
         const mints = base.tokens.map(t => t.mint);
         const { data: holders, error: holderError } = await db.from('api_cache').select('cache_key,payload,updated_at').in('cache_key', mints.map(m => `intelligence:holders:${m}`));
         if (holderError)
             throw holderError;
         const observations = new Map((holders ?? []).map(h => [h.cache_key.split(':').at(-1), h.payload.metrics]));
-        const budget = Math.min(6, Math.max(0, Number(process.env.MARKET_HOLDER_BUDGET ?? 2) || 0));
+        const budget = Math.min(6, Math.max(0, Number(process.env.MARKET_HOLDER_BUDGET ?? 4) || 0));
         const cursor = Number(previous?.holderCursor ?? 0) % Math.max(1, mints.length);
         const failures = [];
-        // Sequential bounded work protects rate-limited providers. It never runs in a UI GET.
-        for (let i = 0; i < Math.min(budget, mints.length); i++) {
-            const t = base.tokens[(cursor + i) % mints.length];
+        // Keep the two most active tracked tokens fresh each cycle; rotate the rest.
+        const trackedSet = new Set((tracked.data ?? []).map(t => t.mint));
+        const priority = base.tokens.filter(t => trackedSet.has(t.mint)).slice(0, 2);
+        const rotation = base.tokens.filter(t => !priority.some(p => p.mint === t.mint));
+        const candidates = [...priority];
+        for (let i = 0; i < rotation.length && candidates.length < budget; i++)
+            candidates.push(rotation[(cursor + i) % rotation.length]);
+        let completed = 0;
+        const started = Date.now();
+        for (const t of candidates.slice(0, budget)) {
+            if (Date.now() - started > 85_000)
+                break;
             try {
                 observations.set(t.mint, await observeHolders(t.mint, t.priceUsd));
             }
             catch {
                 failures.push(t.mint);
             }
+            completed++;
         }
         const at = new Date().toISOString();
+        const baselines = await db.rpc('market_window_baselines', { p_mints: mints, p_at: at });
+        if (baselines.error)
+            throw baselines.error;
         const tokens = base.tokens.map(t => {
             const holder = observations.get(t.mint);
             const fresh = holder?.holderObservedAt && Date.now() - Date.parse(holder.holderObservedAt) < 60 * 60_000;
             const metrics = fresh ? holder : { holderCount: null, holderGrowth: null, holderGrowthPct: null, freshWallets: null, top10SupplyPct: null, linkedWallets: null, suspiciousWallets: null, whaleEnter: null, whaleExit: null, smartMoneyFlowUsd: null, holderObservedAt: holder?.holderObservedAt ?? null };
+            if (!fresh)
+                Object.assign(metrics, { newHolders: null, exitedHolders: null, largestHolderPct: null, whaleConcentrationPct: null, linkedSupplyPct: null, holderWindows: {}, topHolderSales: [] });
             const enriched = { ...t, ...metrics };
-            return { ...enriched, ...deriveSignals(enriched, prevTokens.get(t.mint), at, previous?.fetchedAt),
+            return { ...enriched, windows: compareMarketWindows(enriched, at, (baselines.data ?? [])), ...deriveSignals(enriched, prevTokens.get(t.mint), at, previous?.fetchedAt),
                 // Directional volume estimate based on trade counts, not measured capital transfers.
                 netFlowUsd1h: t.volume1h * (t.buys1h - t.sells1h) / Math.max(1, t.trades1h) };
         });
@@ -656,9 +754,9 @@ export async function ingestMarket() {
             throw history.error;
         const seen = new Set();
         const recentAlerts = [...alerts, ...(history.data ?? []).map(r => r.payload)].filter(a => !seen.has(a.id) && !!seen.add(a.id)).slice(0, 80);
-        const payload = { ...base, tokens, fetchedAt: at, holderCursor: (cursor + budget) % Math.max(1, mints.length),
+        const payload = { ...base, tokens, fetchedAt: at, holderCursor: (cursor + Math.max(0, completed - priority.length)) % Math.max(1, rotation.length),
             alerts: recentAlerts, recentEvents: base.recentEvents,
-            ingestion: { holderBudget: budget, holderFailures: failures.length, source: 'server-worker', interval: '5m target; scheduler dependent' },
+            storage: storage.data, ingestion: { holderCompleted: completed, priorityMints: priority.map(t => t.mint), holderBudget: budget, holderFailures: failures.length, source: 'server-worker', interval: '5m target; scheduler dependent' },
             metricNotes: { flow: 'USD estimate from rolling 1h trade counts', freshWallets: 'newly observed token holders; not wallet creation age', whales: 'owners ≥1% supply; pool/program owners included', smartMoney: 'whale balance change at current price; not verified swap flow', volumeAcceleration: 'acceleration of rolling 1h volume, USD/min²', risk: 'heuristic, not a security audit' } };
         const saved = await db.rpc('commit_market_snapshot', { p_lease: lease, p_payload: payload, p_alerts: alerts });
         if (saved.error)
@@ -669,6 +767,7 @@ export async function ingestMarket() {
         await db.rpc('release_market_ingestion', { p_lease: lease });
     }
 }
+const rpc = solanaRpc;
 Deno.serve(async (req) => {
     if (req.method !== 'POST')
         return new Response('Method not allowed', { status: 405 });

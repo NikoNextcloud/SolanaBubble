@@ -58,7 +58,7 @@ Solana Public RPC is rate-limited and is not a full blockchain firehose. DexScre
 
 `lib/market/collect.ts` collects DexScreener market observations. `signals.ts` derives Hype Δ and velocity (points/min), rolling 1h volume acceleration (USD/min²), liquidity changes and buy count pressure. Hype uses fixed normalization scales so changing the discovery universe does not change every score. Baselines are reset for changed pools or gaps over one hour.
 
-`holders.ts` uses the `HolderProvider` adapter, backed by `SOLANA_RPC_URL`. The worker observes two mints per run by default, rotating through the market universe. It aggregates token accounts by owner, calculates Top 10 supply %, holder growth, newly observed holders, whale threshold crossings and whale balance value changes. Counts are unknown until an observation exists; growth/enter/exit require a second holder observation. Holder metrics older than one hour are excluded from current rankings. Wallet relationship analysis samples four largest owners and two recent signatures each, combining common/direct funding evidence with existing stored wallet links. Sampling coverage and evidence are displayed in the card.
+`holders.ts` uses the `HolderProvider` adapter, backed by `SOLANA_RPC_URL`. The worker observes four mints per run by default: two active tracked tokens plus rotating market tokens. It aggregates token accounts by owner, calculates Top 10 supply %, holder growth, newly observed holders, whale threshold crossings and whale balance value changes. Counts are unknown until an observation exists; growth/enter/exit require a second holder observation. Holder metrics older than one hour are excluded from current rankings. Wallet relationship analysis samples four largest owners and two recent signatures each, combining common/direct funding evidence with existing stored wallet links. Sampling coverage and evidence are displayed in the card.
 
 ### Interpretation
 
@@ -71,7 +71,7 @@ Solana Public RPC is rate-limited and is not a full blockchain firehose. DexScre
 
 ### Storage and ingestion
 
-Apply migrations through `20261001195721_market_worker_schedule.sql`. Snapshot and alert writes plus cache publication are atomic. A four-minute database lease prevents overlapping worker executions. History and alerts are retained for seven days; the UI presents 24-hour Hype history and alerts. Failed upstream collections preserve the last successful market snapshot.
+Apply migrations through `20261002065000_storage_retention_guard.sql`. Snapshot and alert writes plus cache publication are atomic. A four-minute database lease prevents overlapping worker executions. History and alerts are retained for seven days; the UI presents 24-hour selectable Hype, rolling volume, liquidity, price and sampled holder history plus alerts. Failed upstream collections preserve the last successful market snapshot.
 
 `npm run worker:bundle` generates `supabase/functions/market-snapshot/index.js` from the shared TypeScript implementation. Redeploy this function after changing the ingestion implementation, using `deno.json` as the explicit import-map path. Its custom authorization validates a new task-scoped 72-character credential stored in a service-only RLS table; an unauthenticated request cannot collect data. The cron job reads this credential internally. Configure `market_worker_config.endpoint` to the project's `/functions/v1/market-snapshot` URL; do not expose or commit its credential.
 
@@ -89,3 +89,11 @@ The Lovable layout retains only Map/List, mouse panning, draggable tokens, pinne
 - `npm test` (baseline, normalization, risk, alert deduplication and mover data availability)
 - `npm run build`
 - `npm run test:api` (requires the production build; uses a local fixture database and checks cached reads, history validation/bounds, worker authentication, Map/List and section routes)
+
+### Window comparisons and retention guard
+
+Market deltas and separate holder membership comparisons support 5m / 15m / 1h / 6h. Each carries its actual elapsed interval and observation time. A missing comparable baseline remains unknown; changed pools cannot generate comparable market deltas. Holder membership is retained eight hours. Public RPC limits mean rotating tokens may not have short-window holder observations. Hype acceleration is the change in velocity per elapsed minute. Risk also covers largest holder dominance, linked supply concentration and FDV/liquidity imbalance. Top owner sell alerts require negative token and positive quote-token balance changes in the same transaction and are labelled swap-like evidence, not verified trades.
+
+At 499,000,000 bytes of Postgres database allocation, a minute cron guard and ingestion guard recycle bounded batches of old market snapshots/alerts (preserving seven hours), holder observations older than eight hours and analytics holder caches older than 24 hours. Current market cache, token records, holdings, transaction records and relationship data are preserved. This deliberately does not reset the database. DELETE frees reusable pages after vacuum and does not immediately shrink allocated database files; this policy cannot guarantee a hard total database cap or control Storage object usage.
+
+FoMo links use its direct `/coin?address=<mint>&chainId=1399811149` route. FoMo controls its own authentication. Map forces and collision resolution keep a gap around bubbles; deliberately pinned tokens retain their chosen positions.

@@ -1,8 +1,11 @@
 import { fetchRecentSignatures, fetchParsedTransaction } from '../solana-public';
+import { detectSwapLikeSale } from './sales';
 export type WalletEvidence = { wallets: string[]; kind: 'common-funder' | 'direct-funder'; evidence: string[] };
 // Bounded sample, never a claim that every holder has been analyzed.
-export async function sampleWalletRelationships(balances: { wallet: string; balance: number }[]) {
+export async function sampleWalletRelationships(balances: { wallet: string; balance: number }[], mint?:string, since?:string, previousLargest?:string) {
   const sample = [...balances].sort((a,b)=>b.balance-a.balance).slice(0,4);
+  if(previousLargest && !sample.some(h=>h.wallet===previousLargest)) sample[sample.length-1]={wallet:previousLargest,balance:0};
+  const sales: NonNullable<ReturnType<typeof detectSwapLikeSale>>[]=[];
   const funders = new Map<string, Set<string>>();
   const signatures = new Map<string, Set<string>>();
   let analyzed = 0;
@@ -13,6 +16,7 @@ export async function sampleWalletRelationships(balances: { wallet: string; bala
     if (!txs.some(Boolean)) return;
     analyzed++;
     for (const tx of txs) {
+      if(mint&&since) { const sale=detectSwapLikeSale(tx,mint,h.wallet,since); if(sale) sales.push(sale); }
       const instructions = [...(tx?.transaction?.message?.instructions ?? []), ...(tx?.meta?.innerInstructions ?? []).flatMap((x: {instructions?: unknown[]})=>x.instructions ?? [])];
       for (const ix of instructions) {
         if (ix?.program !== 'system' || ix.parsed?.type !== 'transfer') continue;
@@ -29,5 +33,5 @@ export async function sampleWalletRelationships(balances: { wallet: string; bala
     if (group.size >= 2) evidence.push({wallets:[...group],kind:'common-funder',evidence:[`funder:${funder}`,...(signatures.get(funder) ?? [])]});
     else if (wallets.has(funder)) evidence.push({wallets:[funder,...group],kind:'direct-funder',evidence:[...(signatures.get(funder) ?? [])]});
   }
-  return { analyzed, sampled: sample.length, evidence };
+  return { analyzed, sampled: sample.length, evidence, sales };
 }

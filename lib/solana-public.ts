@@ -1,25 +1,8 @@
 import { admin } from "./db";
 
-const RPC_URL = () => process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
+import { solanaRpc as rpc } from "./rpc-provider";
 const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const TOKEN_2022_PROGRAM = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
-
-type RpcResponse<T> = { result?: T; error?: { message?: string; code?: number } };
-
-async function rpc<T>(method: string, params: unknown[]): Promise<T> {
-  const res = await fetch(RPC_URL(), {
-    signal: AbortSignal.timeout(15_000),
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error(`Solana RPC failed: ${res.status}`);
-  const json = await res.json() as RpcResponse<T>;
-  if (json.error) throw new Error(json.error.message || `Solana RPC error ${json.error.code ?? ""}`);
-  if (json.result == null) throw new Error("Solana RPC returned no result");
-  return json.result;
-}
 
 export async function getRpcHealth() {
   try {
