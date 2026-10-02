@@ -41,28 +41,25 @@ export default function TokenSignalCard({ token }: { token: WatchToken }) {
     ['Suspicious wallets',number(token.suspiciousWallets)], ['Whale enter / exit',`${number(token.whaleEnter)} / ${number(token.whaleExit)}`],
     ['Whale balance Δ',number(token.smartMoneyFlowUsd,' $')],
   ];
+  const primaryRows:[string,string][]=[['Hype',number(token.hypeScore,' / 100')],['Hype Velocity',number(token.hypeVelocity,' H/min')],['Observed buy pressure · 15m',number(token.observedBuyPressure15m,'%')],['Observed net flow · 15m',number(token.observedNetFlowUsd15m,' $')],['Holder Growth',`${number(token.holderGrowth)} (${number(token.holderGrowthPct,'%')})`],['Liquidity Δ',number(token.liquidityChangePct,'%')],['Top 10 supply',number(token.top10SupplyPct,'%')]];
   return <section className="signal-card reference-side-card" aria-label="Token Signal Card">
     <div className="market-hot-title"><strong>Token Signal Card</strong><b className={(token.riskScore ?? 0) >= 50 ? 'sell' : ''}>Risk {number(token.riskScore)} / 100</b></div>
     <FavoriteButton token={token}/>
     <DataQuality token={token}/>
     <TrafficCard sample={token.trafficSample}/>
     {token.liquidityWarning && <p className="signal-warning" role="alert">⚠ Liquidity disappearing: {number(token.liquidityChangePct,'%')}</p>}
-    <dl className="market-token-stats">{rows.map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
-    <div className="signal-comparisons">
+    <dl className="market-token-stats signal-primary-stats">{primaryRows.map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+    <details className="signal-disclosure"><summary>Всички показатели</summary><dl className="market-token-stats">{rows.map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></details>
+    <details className="signal-disclosure signal-comparisons"><summary>Сравнения · 5m / 15m / 1h / 6h</summary>
       <label>Compare <select aria-label="Signal comparison interval" value={windowMinutes} onChange={e=>setWindowMinutes(e.target.value as WindowMinutes)}>{(['5','15','60','360'] as const).map((w,i)=><option key={w} value={w}>{['5m','15m','1h','6h'][i]}</option>)}</select></label>
       <dl className="market-token-stats">{windowRows.map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
       <small className="signal-note">{marketWindow ? `Market interval: ${number(marketWindow.elapsedMinutes)} min` : 'No comparable market baseline yet.'} · {holderWindow ? `Holder interval: ${number(holderWindow.elapsedMinutes)} min; observed ${new Date(holderWindow.observedAt).toLocaleTimeString()}` : 'Holder baseline unavailable for this interval.'}</small>
-    </div>
-    <small className="signal-note">{token.riskCoverage ?? 'Awaiting server observation'}</small>
-    {!!token.riskReasons?.length && <ul className="signal-reasons">{token.riskReasons.map(r => <li key={r}>{r}{token.riskFactors?.find(f=>f.label===r) ? ` · +${token.riskFactors.find(f=>f.label===r)!.points} risk` : ''}</li>)}</ul>}
-    <small className="signal-note">Holder observation: {token.holderObservedAt ? new Date(token.holderObservedAt).toLocaleString() : 'not available'}. Fresh = newly observed token holders. Whale signals include pool/program owners; balance changes are not verified buys/sells. Linked funding/timing indicates a relationship, not proof of abuse.</small>
-    <small className="signal-note">Relationships: {token.relationshipCoverage ?? 'not yet sampled'}</small>
-    {!!token.walletEvidence?.length && <details className="signal-note"><summary>Wallet relationship evidence</summary>{token.walletEvidence.map((e,i) => <p key={i}>{e.kind}: {e.wallets.map(w => `${w.slice(0,4)}…${w.slice(-4)}`).join(' ↔ ')}<br />{e.evidence.map(v=>v.startsWith('funder:') ? v : `tx:${v}`).join(' · ')}</p>)}</details>}
-    {!!token.topHolderSales?.length && <details className="signal-note"><summary>Top owner swap-like outflows</summary>{token.topHolderSales.map(s=><p key={`${s.wallet}:${s.signature}`}>{s.wallet.slice(0,6)}… · {number(s.amount)} tokens · {new Date(s.at).toLocaleString()}<br />Transaction: {s.signature}</p>)}</details>}
-    <div className="signal-history"><strong>History · 24h</strong>
+    </details>
+    <details className="signal-disclosure"><summary>Risk и wallet анализ</summary><small className="signal-note">{token.riskCoverage ?? 'Awaiting server observation'}</small>{!!token.riskReasons?.length && <ul className="signal-reasons">{token.riskReasons.map(r => <li key={r}>{r}{token.riskFactors?.find(f=>f.label===r) ? ` · +${token.riskFactors.find(f=>f.label===r)!.points} risk` : ''}</li>)}</ul>}<small className="signal-note">Holder observation: {token.holderObservedAt ? new Date(token.holderObservedAt).toLocaleString() : 'not available'}. Whale balance changes are not verified buys/sells.</small><small className="signal-note">Relationships: {token.relationshipCoverage ?? 'not yet sampled'}</small>{!!token.walletEvidence?.length&&token.walletEvidence.map((e,i)=><p className="signal-note" key={i}>{e.kind}: {e.wallets.map(w=>`${w.slice(0,4)}…${w.slice(-4)}`).join(' ↔ ')}<br/>{e.evidence.map(v=>v.startsWith('funder:')?v:`tx:${v}`).join(' · ')}</p>)}{!!token.topHolderSales?.length&&token.topHolderSales.map(s=><p className="signal-note" key={`${s.wallet}:${s.signature}`}>Top owner outflow: {s.wallet.slice(0,6)}… · {number(s.amount)} tokens · {new Date(s.at).toLocaleString()}</p>)}</details>
+    <details className="signal-disclosure signal-history"><summary>История · 24 часа</summary>
       <select aria-label="History metric" value={chartMetric} onChange={e=>setChartMetric(e.target.value as typeof chartMetric)}><option value="hypeScore">Hype</option><option value="volume1h">Volume · rolling 1h</option><option value="liquidityUsd">Liquidity</option><option value="priceUsd">Price</option><option value="holderCount">Holders · sampled</option></select>
       {samples.length > 1 && <svg viewBox="0 0 280 100" role="img" aria-label={`${chartMetric} over time, last 24 hours`}><title>{chartMetric}: {number(low)}–{number(high)}</title><line x1="10" y1="90" x2="270" y2="90" stroke="#444"/><polyline points={path} fill="none" stroke="#a391ef" strokeWidth="2"/></svg>}
       <small>{status || (samples.length>1 ? `${samples.length} snapshots · ${new Date(start).toLocaleTimeString()} → ${new Date(samples.at(-1)!.observed_at).toLocaleTimeString()}` : 'Not enough observations for this metric.')}</small>
-    </div>
+    </details>
   </section>;
 }

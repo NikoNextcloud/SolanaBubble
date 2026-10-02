@@ -1226,7 +1226,6 @@ export default function BubbleMap({ mint }: { mint: string }) {
             <div className="token-insight-title">
               <div>
                 <h2>{meta?.name || meta?.symbol || short(mint)}</h2>
-                <p className="mint-full">{mint}</p>
               </div>
               <span className={live ? "token-live-badge on" : "token-live-badge"}>{live?"● CONNECTED":"OFFLINE"}</span>
             </div>

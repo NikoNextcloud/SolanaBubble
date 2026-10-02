@@ -1175,7 +1175,7 @@ export default function MarketMap() {
               </div>
             </div>
             <TokenSignalCard token={selected} />
-            <dl className="market-token-stats">
+            <details className="signal-disclosure selected-market-details"><summary>Пазарни данни и промени</summary><dl className="market-token-stats">
               <dt>Цена</dt><dd>{fmtUsd(selected.priceUsd)}</dd>
               <dt>Market cap</dt><dd>{fmtUsd(selected.marketCap)}</dd>
               <dt>Ликвидност</dt><dd>{fmtUsd(selected.liquidityUsd)}</dd>
@@ -1189,11 +1189,10 @@ export default function MarketMap() {
               <dt>Δ trades</dt><dd className={Number(selected.activityDelta ?? 0) >= 0 ? "buy" : "sell"}>{Number(selected.activityDelta ?? 0) >= 0 ? "+" : ""}{Number(selected.activityDelta ?? 0)}</dd>
               <dt>Δ Hype</dt><dd className={Number(selected.hypeDelta ?? 0) >= 0 ? "buy" : "sell"}>{Number(selected.hypeDelta ?? 0) >= 0 ? "+" : ""}{Number(selected.hypeDelta ?? 0)}</dd>
               <dt>Мрежа</dt><dd>{expandedMints.includes(selected.mint) ? `разгърната · L${nodeMap.current.get(selected.mint)?.depth ?? 0}/3` : "клик за разгръщане"}</dd>
-            </dl>
+            </dl></details>
             <button className="open-token-button" onClick={() => openToken(selected)} disabled={loadingMint === selected.mint}>
               {loadingMint === selected.mint ? "Зареждам holders…" : "Отвори Holder Map →"}
             </button>
-            <p className="market-mint">{selected.mint}</p>
           </>}
           {error && <div className="market-error">{error}</div>}
         </aside>

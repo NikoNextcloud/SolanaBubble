@@ -919,6 +919,7 @@ button.market-section-row:hover{background:#35373b!important}
 .signal-warning { color: #ff817c; padding: 10px; border: 1px solid #ff647355; border-radius: 8px; background: #ff647311; }
 .signal-reasons { padding-left: 18px; color: #d8ac76; font-size: 11px; }
 .signal-history svg { width: 100%; height: 100px; }
+.signal-disclosure{margin:8px 0;border-top:1px solid #ffffff12;padding-top:8px}.signal-disclosure>summary{display:flex;justify-content:space-between;gap:10px;align-items:center;cursor:pointer;color:#dde0e6;font-size:12px;font-weight:650;list-style-position:inside}.signal-disclosure>summary b{color:#a9afb7;font-size:11px}.signal-disclosure[open]>summary{margin-bottom:10px}.signal-primary-stats{border:1px solid #ffffff12;border-radius:8px;padding:8px!important;background:#ffffff05}.selected-market-details{margin:10px 0}.selected-market-details .market-token-stats{margin-bottom:0}.signal-history select{margin:8px 0;width:100%}
 .intelligence-movers select, .intelligence-alerts select { background: #202027; color: #ddd; border: 1px solid #ffffff20; border-radius: 6px; padding: 7px; width: 100%; }
 .intelligence-movers button, .intelligence-alerts button { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; width: 100%; background: transparent; border: 0; border-bottom: 1px solid #ffffff0c; color: inherit; text-align: left; padding: 10px 0; cursor: pointer; }
 .intelligence-alerts button small { width: 100%; font-size: 11px; color: #999; }
