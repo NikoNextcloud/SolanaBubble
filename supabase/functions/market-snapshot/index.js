@@ -512,11 +512,16 @@ export function deriveSignals(t, previous, at, baselineAt) {
     const hypeVelocity = hypeDelta == null ? null : hypeDelta / minutes;
     const hypeAcceleration = hypeVelocity != null && finite(previous?.hypeVelocity) ? (hypeVelocity - previous.hypeVelocity) / minutes : null;
     const acceleration = volumeVelocity != null && finite(previous?.volumeVelocity) ? (volumeVelocity - previous.volumeVelocity) / minutes : null;
+    const sample = t.trafficSample, sampleAge = sample ? (Date.parse(at) - Date.parse(sample.observedAt)) / 60000 : null, sample15 = sample?.windows?.['15'];
+    const observedSample = sample && sample15 && sampleAge != null && sampleAge >= -1 && sampleAge < 10 && sample15.swaps >= 5;
     return { hypeDelta, hypeVelocity, hypeAcceleration, fdvLiquidityRatio, riskFactors,
         volumeDelta, volumeVelocity, volumeAcceleration: acceleration, liquidityChange, liquidityChangePct,
         buyPressure: trades ? (t.buys1h ?? 0) / trades * 100 : null,
         liquidityWarning, baselineAt: comparable ? baselineAt : null,
         riskScore: Math.round(Math.min(100, risk)), riskReasons: reasons,
+        trafficEvidence: sample?.evidence ?? null, trafficObservedAt: sample?.observedAt ?? null,
+        observedBuyPressure15m: observedSample ? sample15.buys / sample15.swaps * 100 : null,
+        observedNetFlowUsd15m: observedSample ? sample15.netUsd : null,
         riskCoverage: finite(t.top10SupplyPct) ? 'market + observed holders (heuristic)' : 'market only; holder risk unknown' };
 }
 export function evaluateAlerts(t, previous, at) {
@@ -538,8 +543,10 @@ export function evaluateAlerts(t, previous, at) {
     const fastHolders = holderGrowth ?? (holderMinutes != null && holderMinutes <= 8 ? t.holderGrowthPct : null);
     if ((fastHolders ?? 0) >= 5 && t.holderObservedAt !== previous?.holderObservedAt)
         add('holder-growth', fastHolders, 'Observed holders grew ≥5% over roughly 5m');
-    if (finite(t.buyPressure) && t.buyPressure >= 70 && (t.buys1h ?? 0) + (t.sells1h ?? 0) >= 20 && (previous?.buyPressure ?? 0) < 70)
-        add('buy-pressure', t.buyPressure, 'Buy count share crossed 70%');
+    const trades = (t.buys1h ?? 0) + (t.sells1h ?? 0), observed = finite(t.observedBuyPressure15m), pressure = observed ? t.observedBuyPressure15m : (trades >= 20 ? t.buyPressure : null);
+    const previousPressure = observed ? previous?.observedBuyPressure15m : previous?.buyPressure;
+    if (finite(pressure) && pressure >= 70 && (previousPressure ?? 0) < 70)
+        add('buy-pressure', pressure, observed ? 'Observed swap sample buy share crossed 70%' : 'Aggregated buy count share crossed 70%');
     if (t.liquidityWarning && !previous?.liquidityWarning)
         add('liquidity-disappearing', t.liquidityChangePct, 'Liquidity dropped ≥25%', 'critical');
     else if (finite(t.liquidityChangePct) && t.liquidityChangePct >= 20 && (previous?.liquidityChangePct ?? 0) < 20)
@@ -558,6 +565,27 @@ export function evaluateAlerts(t, previous, at) {
             alerts.at(-1).id = `${t.mint}:top-holder-selling:${sale.wallet}:${sale.signature}`;
         }
     return alerts;
+}
+export function suppressRepeatedAlerts(candidates, history, cooldownMinutes = 30) {
+    const ids = new Set(history.map(a => a.id)), latest = new Map();
+    for (const a of history) {
+        const key = `${a.mint}:${a.kind}`, time = Date.parse(a.at);
+        if (Number.isFinite(time) && time > (latest.get(key) ?? -Infinity))
+            latest.set(key, time);
+    }
+    return candidates.filter(a => { if (ids.has(a.id))
+        return false; const prior = latest.get(`${a.mint}:${a.kind}`), time = Date.parse(a.at); return prior == null || !Number.isFinite(time) || time - prior >= cooldownMinutes * 60000; });
+}
+export function collapseAlertHistory(alerts) { const seen = new Set(); return alerts.filter(a => { const key = `${a.mint}:${a.kind}`; return !seen.has(key) && !!seen.add(key); }); }
+export function prioritizeAlerts(alerts, limit = 8) {
+    const severity = { critical: 3, warning: 2, info: 1 }, rank = (a) => severity[a.severity] * 1e9 + Math.abs(a.value || 0);
+    const strongest = new Map();
+    for (const alert of alerts) {
+        const current = strongest.get(alert.mint);
+        if (!current || rank(alert) > rank(current))
+            strongest.set(alert.mint, alert);
+    }
+    return [...strongest.values()].sort((a, b) => rank(b) - rank(a)).slice(0, limit);
 }
 export const moverCategories = [
     { key: 'hypeVelocity', label: 'Hype Movers', unit: 'H/min' },
@@ -908,8 +936,10 @@ export function summarizeTraffic(rows, scans, at, pool, context, rowLimitReached
         const assessed = holderFresh ? [...buyers].filter(w => buy.filter(s => s.wallet === w).every(s => Date.parse(s.block_at) <= holderTime)) : [];
         windows[minutes] = { minutes, swaps: sample.length, buys: buy.length, sells: sell.length, buyers: buyers.size, sellers: sellers.size, newSampleBuyers: [...buyers].filter(w => !earlier.has(w)).length, repeatSampleBuyers: [...buyers].filter(w => earlier.has(w)).length, quickResellers: quick.size, buyUsd, sellUsd, netUsd: buyUsd != null && sellUsd != null ? buyUsd - sellUsd : null, medianBuyUsd: sizes.length ? (sizes[Math.floor((sizes.length - 1) / 2)] + sizes[Math.floor(sizes.length / 2)]) / 2 : null, largestBuyUsd: sizes.length ? sizes.at(-1) : null, top3BuyerSharePct: buyUsd != null && buyUsd > 0 ? [...spend.values()].sort((a, b) => b - a).slice(0, 3).reduce((n, v) => n + v, 0) / buyUsd * 100 : null, retainedBuyers: assessed.length ? assessed.filter(w => context?.wallets?.has(w)).length : null, retentionChecked: assessed.length, linkedBuyers: context?.linkedWallets ? [...buyers].filter(w => context.linkedWallets.has(w)).length : null, firstSwapAt: sample[0]?.block_at ?? null, lastSwapAt: sample.at(-1)?.block_at ?? null };
     }
-    return { observedAt: at, pool, coverage: 'partial', failures: scans.reduce((acc, s) => { for (const [k, v] of Object.entries(s.failures ?? {}))
-            acc[k] = (acc[k] ?? 0) + Number(v); return acc; }, {}), scans: scans.length, listedSignatures: scans.reduce((n, s) => n + (s.listed ?? 0), 0), parsedTransactions: scans.reduce((n, s) => n + (s.parsed ?? 0), 0), recognizedTransactions: scans.reduce((n, s) => n + (s.recognized ?? 0), 0), unavailableTransactions: scans.reduce((n, s) => n + (s.unavailable ?? 0), 0), unrecognizedTransactions: scans.reduce((n, s) => n + (s.unrecognized ?? 0), 0), limitedScans: scans.filter(s => s.limited).length, rowLimitReached, windows, note: 'Partial sample of one selected pool; direct PumpSwap / Raydium CPMM only. Pool-vault quote movement excludes some fees. USD uses USDC=$1 or SOL price at scan time, not historical execution USD. New buyers means first seen in retained 2h sample; quick resale does not establish profit. No completeness or bot verdict.' };
+    const failures = scans.reduce((acc, s) => { for (const [k, v] of Object.entries(s.failures ?? {}))
+        acc[k] = (acc[k] ?? 0) + Number(v); return acc; }, {}), parsed = scans.reduce((n, s) => n + (s.parsed ?? 0), 0), recognized = scans.reduce((n, s) => n + (s.recognized ?? 0), 0), unavailable = scans.reduce((n, s) => n + (s.unavailable ?? 0), 0);
+    const evidence = unavailable > 0 || Object.values(failures).some(v => v > 0) ? 'degraded' : recognized >= 5 ? 'usable' : parsed >= 5 ? 'sparse' : 'warming';
+    return { observedAt: at, pool, coverage: 'partial', evidence, failures, scans: scans.length, listedSignatures: scans.reduce((n, s) => n + (s.listed ?? 0), 0), parsedTransactions: parsed, recognizedTransactions: recognized, unavailableTransactions: unavailable, unrecognizedTransactions: scans.reduce((n, s) => n + (s.unrecognized ?? 0), 0), limitedScans: scans.filter(s => s.limited).length, rowLimitReached, windows, note: 'Partial sample of one selected pool; direct PumpSwap / Raydium CPMM only. Pool-vault quote movement excludes some fees. USD uses USDC=$1 or SOL price at scan time, not historical execution USD. New buyers means first seen in retained 2h sample; quick resale does not establish profit. No completeness or bot verdict.' };
 }
 export async function observeTraffic(token, solUsd, holder, deadline = Date.now() + 45000) {
     if (!token.pairAddress)
@@ -994,7 +1024,8 @@ export async function ingestMarket() {
     let lastSuccessAt = null;
     try {
         const status = await db.from('api_cache').select('payload').eq('cache_key', 'worker:status').maybeSingle();
-        lastSuccessAt = status.data?.payload?.lastSuccessAt ?? null;
+        const lastStatus = status.data?.payload ?? {};
+        lastSuccessAt = lastStatus.lastSuccessAt ?? null;
         const statusStart = await db.from('api_cache').upsert({ cache_key: 'worker:status', payload: { state: 'running', startedAt: new Date(ingestionStarted).toISOString(), lastSuccessAt }, updated_at: new Date().toISOString() });
         if (statusStart.error)
             throw statusStart.error;
@@ -1020,7 +1051,9 @@ export async function ingestMarket() {
         if (holderError)
             throw holderError;
         const observations = new Map((holders ?? []).map(h => [h.cache_key.split(':').at(-1), h.payload.metrics]));
-        const budget = Math.min(6, Math.max(0, Number(process.env.MARKET_HOLDER_BUDGET ?? 2) || 0));
+        const holderCeiling = Math.min(6, Math.max(0, Number(process.env.MARKET_HOLDER_BUDGET ?? 3) || 0));
+        const stablePrevious = Number(lastStatus.durationMs ?? Infinity) < 20000 && Number(lastStatus.holderFailures ?? 1) === 0 && Number(lastStatus.trafficFailures ?? 1) === 0;
+        const budget = Math.min(holderCeiling, stablePrevious ? 3 : 2);
         const cursor = Number(previous?.holderCursor ?? 0) % Math.max(1, mints.length);
         const failures = [];
         const trackedSet = new Set(trackedMints);
@@ -1046,7 +1079,8 @@ export async function ingestMarket() {
         }
         // Traffic stays on the worker, under a global time and RPC budget.
         const trafficUniverse = base.tokens.filter(t => trackedSet.has(t.mint) && t.pairAddress).slice(0, 20);
-        const trafficWork = selectHolderWork(trafficUniverse, wanted, Number(previous?.trafficCursor ?? 0), 2);
+        const trafficCeiling = Math.min(6, Math.max(0, Number(process.env.MARKET_TRAFFIC_BUDGET ?? 3) || 0)), trafficBudget = Math.min(trafficCeiling, stablePrevious ? 3 : 2);
+        const trafficWork = selectHolderWork(trafficUniverse, wanted, Number(previous?.trafficCursor ?? 0), trafficBudget);
         const trafficCandidates = trafficWork.candidates;
         let trafficCompleted = 0, trafficFailures = 0;
         const trafficByMint = new Map();
@@ -1056,7 +1090,7 @@ export async function ingestMarket() {
         for (const row of trafficCache.data ?? [])
             trafficByMint.set(row.cache_key.split(':').at(-1), row.payload);
         const solMarket = trafficCandidates.length ? await fetchDexScreenerToken(WSOL_MINT).catch(() => null) : null;
-        for (let i = 0; i < Math.min(2, trafficCandidates.length) && Date.now() - ingestionStarted < 90000; i++) {
+        for (let i = 0; i < Math.min(trafficBudget, trafficCandidates.length) && Date.now() - ingestionStarted < 90000; i++) {
             const t = trafficCandidates[i];
             try {
                 trafficByMint.set(t.mint, await observeTraffic(t, solMarket?.priceUsd ?? null, observations.get(t.mint), ingestionStarted + 110000));
@@ -1082,21 +1116,23 @@ export async function ingestMarket() {
                 // Directional volume estimate based on trade counts, not measured capital transfers.
                 netFlowUsd1h: t.volume1h * (t.buys1h - t.sells1h) / Math.max(1, t.trades1h) };
         });
-        const alerts = tokens.flatMap(t => evaluateAlerts(t, prevTokens.get(t.mint), at));
-        const history = await db.from('market_alerts').select('payload').gte('observed_at', new Date(Date.now() - 24 * 60 * 60_000).toISOString()).order('observed_at', { ascending: false }).limit(80);
-        if (history.error)
-            throw history.error;
-        const seen = new Set();
-        const recentAlerts = [...alerts, ...(history.data ?? []).map(r => r.payload)].filter(a => !seen.has(a.id) && !!seen.add(a.id)).slice(0, 80);
+        const [history, cooldownHistory] = await Promise.all([
+            db.from('market_alerts').select('payload').gte('observed_at', new Date(Date.now() - 24 * 60 * 60_000).toISOString()).order('observed_at', { ascending: false }).limit(80),
+            db.from('market_alerts').select('payload').gte('observed_at', new Date(Date.now() - 30 * 60_000).toISOString()).order('observed_at', { ascending: false }).limit(500)
+        ]);
+        if (history.error || cooldownHistory.error)
+            throw history.error ?? cooldownHistory.error;
+        const historicalAlerts = (history.data ?? []).map(r => r.payload), cooldownAlerts = (cooldownHistory.data ?? []).map(r => r.payload), alerts = prioritizeAlerts(suppressRepeatedAlerts(tokens.flatMap(t => evaluateAlerts(t, prevTokens.get(t.mint), at)), cooldownAlerts));
+        const recentAlerts = collapseAlertHistory([...alerts, ...historicalAlerts]).slice(0, 80);
         const payload = { ...base, tokens, fetchedAt: at, holderCursor: (cursor + Math.max(0, completed - priority.length)) % Math.max(1, rotation.length),
             trafficCursor: (Number(previous?.trafficCursor ?? 0) + Math.max(0, trafficCompleted - trafficWork.priority.length)) % Math.max(1, trafficWork.rotating.length), alerts: recentAlerts, recentEvents: base.recentEvents,
-            storage: storage.data, ingestion: { trafficCompleted, trafficFailures, trafficUniverse: trafficUniverse.length, holderCompleted: completed, priorityMints: priority.map(t => t.mint), holderBudget: budget, holderFailures: failures.length, source: 'server-worker', interval: '5m target; scheduler dependent' },
+            storage: storage.data, ingestion: { trafficCompleted, trafficFailures, trafficUniverse: trafficUniverse.length, trafficBudget, holderCompleted: completed, priorityMints: priority.map(t => t.mint), holderBudget: budget, holderFailures: failures.length, source: 'server-worker', interval: '5m target; scheduler dependent' },
             metricNotes: { flow: 'USD estimate from rolling 1h trade counts', freshWallets: 'newly observed token holders; not wallet creation age', whales: 'owners ≥1% supply; pool/program owners included', smartMoney: 'whale balance change at current price; not verified swap flow', volumeAcceleration: 'acceleration of rolling 1h volume, USD/min²', risk: 'heuristic, not a security audit' } };
         const saved = await db.rpc('commit_market_snapshot', { p_lease: lease, p_payload: payload, p_alerts: alerts });
         if (saved.error)
             throw saved.error;
         const finishedAt = new Date().toISOString();
-        const statusDone = await db.from('api_cache').upsert({ cache_key: 'worker:status', payload: { state: 'ok', startedAt: new Date(ingestionStarted).toISOString(), finishedAt, lastSuccessAt: at, durationMs: Date.now() - ingestionStarted, holderFailures: failures.length, trafficFailures, holderCompleted: completed, trafficCompleted, tokens: tokens.length, recentHolders: tokens.filter(t => t.holderObservedAt && Date.now() - Date.parse(t.holderObservedAt) < 3600000).length, trafficDiagnostics: tokens.reduce((acc, t) => { for (const [k, v] of Object.entries(t.trafficSample?.failures ?? {}))
+        const statusDone = await db.from('api_cache').upsert({ cache_key: 'worker:status', payload: { state: 'ok', startedAt: new Date(ingestionStarted).toISOString(), finishedAt, lastSuccessAt: at, durationMs: Date.now() - ingestionStarted, holderFailures: failures.length, trafficFailures, holderCompleted: completed, trafficCompleted, tokens: tokens.length, recentHolders: tokens.filter(t => t.holderObservedAt && Date.now() - Date.parse(t.holderObservedAt) < 3600000).length, recentTraffic: tokens.filter(t => t.trafficObservedAt && Date.now() - Date.parse(t.trafficObservedAt) < 600000).length, usableTraffic: tokens.filter(t => t.trafficEvidence === 'usable' && t.trafficObservedAt && Date.now() - Date.parse(t.trafficObservedAt) < 600000).length, holderBudget: budget, trafficBudget, trafficDiagnostics: tokens.reduce((acc, t) => { for (const [k, v] of Object.entries(t.trafficSample?.failures ?? {}))
                     acc[k] = (acc[k] ?? 0) + Number(v); return acc; }, {}), priorityMints: priority.map(t => t.mint) }, updated_at: finishedAt });
         if (statusDone.error)
             throw statusDone.error;

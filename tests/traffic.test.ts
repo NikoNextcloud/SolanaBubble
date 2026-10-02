@@ -34,6 +34,11 @@ test('sample buyers, repeat, resale, retention and USD use separate evidence',()
  const unknown=summarizeTraffic([{...rows[1],usd_value:null}],[],at,'pool').windows['15'];assert.equal(unknown.netUsd,null);assert.equal(unknown.retainedBuyers,null);assert.equal(unknown.linkedBuyers,null);
 });
 test('future and other pool swaps excluded; older holder samples cannot prove retention',()=>{const s=summarizeTraffic([row('a',-1),{...row('b',1),pool:'other'},row('c',2)],[],at,'pool',{holderAt:new Date(now-10*60000).toISOString(),wallets:new Set(['c'])});assert.equal(s.windows['15'].swaps,1);assert.equal(s.windows['15'].retentionChecked,0);});
+test('traffic evidence distinguishes usable samples from RPC degradation',()=>{
+ const usable=summarizeTraffic(Array.from({length:5},(_,i)=>row(`u${i}`,i)),[{listed:5,parsed:5,recognized:5,unavailable:0,unrecognized:0,failures:{}}],at,'pool');assert.equal(usable.evidence,'usable');
+ const degraded=summarizeTraffic([], [{listed:5,parsed:0,recognized:0,unavailable:1,unrecognized:0,failures:{rate_limited:1}}],at,'pool');assert.equal(degraded.evidence,'degraded');
+ const sparse=summarizeTraffic([], [{listed:5,parsed:5,recognized:0,unavailable:0,unrecognized:5,failures:{}}],at,'pool');assert.equal(sparse.evidence,'sparse');
+});
 test('fresh sufficient swap sample drives map; stale or sparse sample keeps count heuristic',()=>{
  const sample=summarizeTraffic(Array.from({length:8},(_,i)=>row(`w${i}`,i)),[],at,'pool');const t={mint:'mint',marketObservedAt:at,buys1h:50,sells1h:50,hypeVelocity:0,trafficSample:sample};
  assert.equal(bubbleSignal(t,now).state,'up');assert.match(bubbleSignal(t,now).label,/sample/);

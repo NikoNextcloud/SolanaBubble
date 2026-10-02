@@ -31,13 +31,13 @@ export default function TokenSignalCard({ token }: { token: WatchToken }) {
   const windowRows:[string,string][]=[['Hype Δ',number(marketWindow?.hypeDelta,' H')],['Volume Δ (rolling 1h)',number(marketWindow?.volumeChangePct,'%')],['Liquidity Δ',number(marketWindow?.liquidityChangePct,'%')],['Price Δ',number(marketWindow?.priceChangePct,'%')],['Holder growth',`${number(holderWindow?.holderGrowth)} (${number(holderWindow?.holderGrowthPct,'%')})`],['New / exited holders',`${number(holderWindow?.newHolders)} / ${number(holderWindow?.exitedHolders)}`]];
   const rows: [string, string][] = [
     ['Hype',number(token.hypeScore,' / 100')], ['Hype Δ',number(token.hypeDelta,' H')], ['Hype Velocity',number(token.hypeVelocity,' H/min')],
-    ['Hype acceleration',number(token.hypeAcceleration,' H/min²')], ['Net Flow · 1h (estimate)',number(token.netFlowUsd1h,' $')],
+    ['Hype acceleration',number(token.hypeAcceleration,' H/min²')], ['Observed net flow · 15m sample',number(token.observedNetFlowUsd15m,' $')], ['Net Flow · 1h (estimate)',number(token.netFlowUsd1h,' $')],
     ['Holders',number(token.holderCount)], ['Holder Growth',`${number(token.holderGrowth)} (${number(token.holderGrowthPct,'%')})`],
     ['New / exited holders',`${number(token.newHolders)} / ${number(token.exitedHolders)}`],
     ['Whale supply',number(token.whaleConcentrationPct,'%')], ['Largest holder',number(token.largestHolderPct,'%')], ['Linked supply (sample)',number(token.linkedSupplyPct,'%')], ['FDV / liquidity',number(token.fdvLiquidityRatio,'×')],
     ['Fresh holders',number(token.freshWallets)], ['Top 10 supply',number(token.top10SupplyPct,'%')],
     ['Volume acceleration',number(token.volumeAcceleration,' $/min²')], ['Liquidity Δ',number(token.liquidityChangePct,'%')],
-    ['Buy pressure (count)',number(token.buyPressure,'%')], ['Linked wallets',number(token.linkedWallets)],
+    ['Observed buy pressure · 15m',number(token.observedBuyPressure15m,'%')], ['Buy pressure · 1h aggregate',number(token.buyPressure,'%')], ['Linked wallets',number(token.linkedWallets)],
     ['Suspicious wallets',number(token.suspiciousWallets)], ['Whale enter / exit',`${number(token.whaleEnter)} / ${number(token.whaleExit)}`],
     ['Whale balance Δ',number(token.smartMoneyFlowUsd,' $')],
   ];

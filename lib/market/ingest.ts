@@ -7,7 +7,7 @@ import {observeTraffic} from './traffic/observe';
 import {WSOL_MINT} from './traffic/decode';
 import {fetchDexScreenerToken} from '../solana-public';
 import { observeHolders } from './holders';
-import { deriveSignals, evaluateAlerts, type SignalToken, type Intelligence, type SignalAlert } from './signals';
+import { collapseAlertHistory, deriveSignals, evaluateAlerts, prioritizeAlerts, suppressRepeatedAlerts, type SignalToken, type Intelligence, type SignalAlert } from './signals';
 
 export async function ingestMarket() {
   const ingestionStarted=Date.now();
@@ -18,7 +18,7 @@ export async function ingestMarket() {
   let lastSuccessAt:string|null=null;
   try {
     const status=await db.from('api_cache').select('payload').eq('cache_key','worker:status').maybeSingle();
-    lastSuccessAt=status.data?.payload?.lastSuccessAt??null;
+    const lastStatus=status.data?.payload??{};lastSuccessAt=lastStatus.lastSuccessAt??null;
     const statusStart=await db.from('api_cache').upsert({cache_key:'worker:status',payload:{state:'running',startedAt:new Date(ingestionStarted).toISOString(),lastSuccessAt},updated_at:new Date().toISOString()});if(statusStart.error)throw statusStart.error;
     const storage = await db.rpc('enforce_market_storage_limit');
     if(storage.error) throw storage.error;
@@ -36,7 +36,9 @@ export async function ingestMarket() {
     const { data: holders, error: holderError } = await db.from('api_cache').select('cache_key,payload,updated_at').in('cache_key', mints.map(m => `intelligence:holders:${m}`));
     if (holderError) throw holderError;
     const observations = new Map<string, Intelligence>((holders ?? []).map(h => [h.cache_key.split(':').at(-1)!, h.payload.metrics]));
-    const budget = Math.min(6, Math.max(0, Number(process.env.MARKET_HOLDER_BUDGET ?? 2) || 0));
+    const holderCeiling=Math.min(6,Math.max(0,Number(process.env.MARKET_HOLDER_BUDGET??3)||0));
+    const stablePrevious=Number(lastStatus.durationMs??Infinity)<20000&&Number(lastStatus.holderFailures??1)===0&&Number(lastStatus.trafficFailures??1)===0;
+    const budget=Math.min(holderCeiling,stablePrevious?3:2);
     const cursor = Number(previous?.holderCursor ?? 0) % Math.max(1, mints.length);
     const failures: string[] = [];
     const trackedSet=new Set(trackedMints);
@@ -53,7 +55,8 @@ export async function ingestMarket() {
     }
     // Traffic stays on the worker, under a global time and RPC budget.
     const trafficUniverse=base.tokens.filter(t=>trackedSet.has(t.mint)&&t.pairAddress).slice(0,20);
-    const trafficWork=selectHolderWork(trafficUniverse,wanted,Number(previous?.trafficCursor??0),2);
+    const trafficCeiling=Math.min(6,Math.max(0,Number(process.env.MARKET_TRAFFIC_BUDGET??3)||0)),trafficBudget=Math.min(trafficCeiling,stablePrevious?3:2);
+    const trafficWork=selectHolderWork(trafficUniverse,wanted,Number(previous?.trafficCursor??0),trafficBudget);
     const trafficCandidates=trafficWork.candidates;
     let trafficCompleted=0,trafficFailures=0;
     const trafficByMint=new Map<string,any>();
@@ -61,7 +64,7 @@ export async function ingestMarket() {
     if(trafficCache.error)throw trafficCache.error;
     for(const row of trafficCache.data??[])trafficByMint.set(row.cache_key.split(':').at(-1)!,row.payload);
     const solMarket=trafficCandidates.length?await fetchDexScreenerToken(WSOL_MINT).catch(()=>null):null;
-    for(let i=0;i<Math.min(2,trafficCandidates.length)&&Date.now()-ingestionStarted<90000;i++){
+    for(let i=0;i<Math.min(trafficBudget,trafficCandidates.length)&&Date.now()-ingestionStarted<90000;i++){
       const t=trafficCandidates[i];
       try{trafficByMint.set(t.mint,await observeTraffic(t,solMarket?.priceUsd??null,observations.get(t.mint),ingestionStarted+110000));}catch{trafficFailures++;}
       trafficCompleted++;
@@ -80,19 +83,21 @@ export async function ingestMarket() {
         // Directional volume estimate based on trade counts, not measured capital transfers.
         netFlowUsd1h: t.volume1h * (t.buys1h - t.sells1h) / Math.max(1, t.trades1h) };
     });
-    const alerts = tokens.flatMap(t => evaluateAlerts(t, prevTokens.get(t.mint), at));
-    const history = await db.from('market_alerts').select('payload').gte('observed_at',new Date(Date.now()-24*60*60_000).toISOString()).order('observed_at',{ascending:false}).limit(80);
-    if (history.error) throw history.error;
-    const seen = new Set<string>();
-    const recentAlerts = [...alerts, ...(history.data ?? []).map(r => r.payload as SignalAlert)].filter(a => !seen.has(a.id) && !!seen.add(a.id)).slice(0,80);
+    const [history,cooldownHistory]=await Promise.all([
+      db.from('market_alerts').select('payload').gte('observed_at',new Date(Date.now()-24*60*60_000).toISOString()).order('observed_at',{ascending:false}).limit(80),
+      db.from('market_alerts').select('payload').gte('observed_at',new Date(Date.now()-30*60_000).toISOString()).order('observed_at',{ascending:false}).limit(500)
+    ]);
+    if(history.error||cooldownHistory.error)throw history.error??cooldownHistory.error;
+    const historicalAlerts=(history.data??[]).map(r=>r.payload as SignalAlert),cooldownAlerts=(cooldownHistory.data??[]).map(r=>r.payload as SignalAlert),alerts=prioritizeAlerts(suppressRepeatedAlerts(tokens.flatMap(t=>evaluateAlerts(t,prevTokens.get(t.mint),at)),cooldownAlerts));
+    const recentAlerts=collapseAlertHistory([...alerts,...historicalAlerts]).slice(0,80);
     const payload = { ...base, tokens, fetchedAt: at, holderCursor: (cursor+Math.max(0,completed-priority.length))%Math.max(1,rotation.length),
       trafficCursor:(Number(previous?.trafficCursor??0)+Math.max(0,trafficCompleted-trafficWork.priority.length))%Math.max(1,trafficWork.rotating.length), alerts: recentAlerts, recentEvents: base.recentEvents,
-      storage: storage.data, ingestion: { trafficCompleted,trafficFailures,trafficUniverse:trafficUniverse.length,holderCompleted:completed, priorityMints:priority.map(t=>t.mint), holderBudget: budget, holderFailures: failures.length, source: 'server-worker', interval: '5m target; scheduler dependent' },
+      storage: storage.data, ingestion: { trafficCompleted,trafficFailures,trafficUniverse:trafficUniverse.length,trafficBudget,holderCompleted:completed, priorityMints:priority.map(t=>t.mint), holderBudget: budget, holderFailures: failures.length, source: 'server-worker', interval: '5m target; scheduler dependent' },
       metricNotes: { flow: 'USD estimate from rolling 1h trade counts', freshWallets: 'newly observed token holders; not wallet creation age', whales: 'owners ≥1% supply; pool/program owners included', smartMoney: 'whale balance change at current price; not verified swap flow', volumeAcceleration: 'acceleration of rolling 1h volume, USD/min²', risk: 'heuristic, not a security audit' } };
     const saved = await db.rpc('commit_market_snapshot', { p_lease: lease, p_payload: payload, p_alerts: alerts });
     if (saved.error) throw saved.error;
     const finishedAt=new Date().toISOString();
-    const statusDone=await db.from('api_cache').upsert({cache_key:'worker:status',payload:{state:'ok',startedAt:new Date(ingestionStarted).toISOString(),finishedAt,lastSuccessAt:at,durationMs:Date.now()-ingestionStarted,holderFailures:failures.length,trafficFailures,holderCompleted:completed,trafficCompleted,tokens:tokens.length,recentHolders:tokens.filter(t=>t.holderObservedAt&&Date.now()-Date.parse(t.holderObservedAt)<3600000).length,trafficDiagnostics:tokens.reduce((acc:Record<string,number>,t)=>{for(const [k,v] of Object.entries(t.trafficSample?.failures??{}))acc[k]=(acc[k]??0)+Number(v);return acc;},{}),priorityMints:priority.map(t=>t.mint)},updated_at:finishedAt});if(statusDone.error)throw statusDone.error;
+    const statusDone=await db.from('api_cache').upsert({cache_key:'worker:status',payload:{state:'ok',startedAt:new Date(ingestionStarted).toISOString(),finishedAt,lastSuccessAt:at,durationMs:Date.now()-ingestionStarted,holderFailures:failures.length,trafficFailures,holderCompleted:completed,trafficCompleted,tokens:tokens.length,recentHolders:tokens.filter(t=>t.holderObservedAt&&Date.now()-Date.parse(t.holderObservedAt)<3600000).length,recentTraffic:tokens.filter(t=>t.trafficObservedAt&&Date.now()-Date.parse(t.trafficObservedAt)<600000).length,usableTraffic:tokens.filter(t=>t.trafficEvidence==='usable'&&t.trafficObservedAt&&Date.now()-Date.parse(t.trafficObservedAt)<600000).length,holderBudget:budget,trafficBudget,trafficDiagnostics:tokens.reduce((acc:Record<string,number>,t)=>{for(const [k,v] of Object.entries(t.trafficSample?.failures??{}))acc[k]=(acc[k]??0)+Number(v);return acc;},{}),priorityMints:priority.map(t=>t.mint)},updated_at:finishedAt});if(statusDone.error)throw statusDone.error;
     return { ok: true, tokens: tokens.length, alerts: alerts.length, holderFailures: failures.length, fetchedAt: at };
   } catch(error) {
     await db.from('api_cache').upsert({cache_key:'worker:status',payload:{state:'error',startedAt:new Date(ingestionStarted).toISOString(),finishedAt:new Date().toISOString(),lastSuccessAt,error:'Background ingestion failed; previous market cache retained'},updated_at:new Date().toISOString()});throw error;

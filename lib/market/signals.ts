@@ -7,6 +7,10 @@ export type WindowComparison = {
 export type MarketWindows = Partial<Record<WindowMinutes,WindowComparison>>;
 export type Intelligence = {
   trafficSample?: import('./traffic/summary').TrafficSummary | null;
+  trafficEvidence?: import('./traffic/summary').TrafficEvidence | null;
+  trafficObservedAt?: string | null;
+  observedBuyPressure15m?: number | null;
+  observedNetFlowUsd15m?: number | null;
   hypeDelta?: number | null;
   hypeVelocity?: number | null;
   hypeAcceleration?: number | null;
@@ -84,11 +88,16 @@ export function deriveSignals(t: SignalToken, previous: SignalToken | undefined,
   const hypeVelocity = hypeDelta == null ? null : hypeDelta/minutes;
   const hypeAcceleration = hypeVelocity != null && finite(previous?.hypeVelocity) ? (hypeVelocity-previous.hypeVelocity)/minutes : null;
   const acceleration = volumeVelocity != null && finite(previous?.volumeVelocity) ? (volumeVelocity - previous.volumeVelocity) / minutes : null;
+  const sample=t.trafficSample,sampleAge=sample?(Date.parse(at)-Date.parse(sample.observedAt))/60000:null,sample15=sample?.windows?.['15'];
+  const observedSample=sample&&sample15&&sampleAge!=null&&sampleAge>=-1&&sampleAge<10&&sample15.swaps>=5;
   return { hypeDelta, hypeVelocity, hypeAcceleration, fdvLiquidityRatio, riskFactors,
     volumeDelta, volumeVelocity, volumeAcceleration: acceleration, liquidityChange, liquidityChangePct,
     buyPressure: trades ? (t.buys1h ?? 0) / trades * 100 : null,
     liquidityWarning, baselineAt: comparable ? baselineAt : null,
     riskScore: Math.round(Math.min(100, risk)), riskReasons: reasons,
+    trafficEvidence:sample?.evidence??null,trafficObservedAt:sample?.observedAt??null,
+    observedBuyPressure15m:observedSample?sample15.buys/sample15.swaps*100:null,
+    observedNetFlowUsd15m:observedSample?sample15.netUsd:null,
     riskCoverage: finite(t.top10SupplyPct) ? 'market + observed holders (heuristic)' : 'market only; holder risk unknown' };
 }
 export function evaluateAlerts(t: SignalToken, previous: SignalToken | undefined, at: string): SignalAlert[] {
@@ -104,7 +113,9 @@ export function evaluateAlerts(t: SignalToken, previous: SignalToken | undefined
   const holderMinutes = t.holderBaselineAt && t.holderObservedAt ? (Date.parse(t.holderObservedAt)-Date.parse(t.holderBaselineAt))/60000 : null;
   const fastHolders = holderGrowth ?? (holderMinutes != null && holderMinutes <= 8 ? t.holderGrowthPct : null);
   if ((fastHolders ?? 0) >= 5 && t.holderObservedAt !== previous?.holderObservedAt) add('holder-growth',fastHolders!, 'Observed holders grew ≥5% over roughly 5m');
-  if (finite(t.buyPressure) && t.buyPressure >= 70 && (t.buys1h ?? 0) + (t.sells1h ?? 0) >= 20 && (previous?.buyPressure ?? 0) < 70) add('buy-pressure', t.buyPressure, 'Buy count share crossed 70%');
+  const trades=(t.buys1h??0)+(t.sells1h??0),observed=finite(t.observedBuyPressure15m),pressure=observed?t.observedBuyPressure15m:(trades>=20?t.buyPressure:null);
+  const previousPressure=observed?previous?.observedBuyPressure15m:previous?.buyPressure;
+  if (finite(pressure) && pressure >= 70 && (previousPressure ?? 0) < 70) add('buy-pressure', pressure, observed?'Observed swap sample buy share crossed 70%':'Aggregated buy count share crossed 70%');
   if (t.liquidityWarning && !previous?.liquidityWarning) add('liquidity-disappearing', t.liquidityChangePct!, 'Liquidity dropped ≥25%', 'critical');
   else if (finite(t.liquidityChangePct) && t.liquidityChangePct >= 20 && (previous?.liquidityChangePct ?? 0) < 20) add('liquidity', t.liquidityChangePct, 'Liquidity increased ≥20%');
   if (t.holderObservedAt !== previous?.holderObservedAt) {
@@ -117,6 +128,17 @@ export function evaluateAlerts(t: SignalToken, previous: SignalToken | undefined
     alerts.at(-1)!.id = `${t.mint}:top-holder-selling:${sale.wallet}:${sale.signature}`;
   }
   return alerts;
+}
+export function suppressRepeatedAlerts(candidates:SignalAlert[],history:SignalAlert[],cooldownMinutes=30){
+  const ids=new Set(history.map(a=>a.id)),latest=new Map<string,number>();
+  for(const a of history){const key=`${a.mint}:${a.kind}`,time=Date.parse(a.at);if(Number.isFinite(time)&&time>(latest.get(key)??-Infinity))latest.set(key,time);}
+  return candidates.filter(a=>{if(ids.has(a.id))return false;const prior=latest.get(`${a.mint}:${a.kind}`),time=Date.parse(a.at);return prior==null||!Number.isFinite(time)||time-prior>=cooldownMinutes*60000;});
+}
+export function collapseAlertHistory(alerts:SignalAlert[]){const seen=new Set<string>();return alerts.filter(a=>{const key=`${a.mint}:${a.kind}`;return !seen.has(key)&&!!seen.add(key);});}
+export function prioritizeAlerts(alerts:SignalAlert[],limit=8){
+  const severity={critical:3,warning:2,info:1},rank=(a:SignalAlert)=>severity[a.severity]*1e9+Math.abs(a.value||0);
+  const strongest=new Map<string,SignalAlert>();for(const alert of alerts){const current=strongest.get(alert.mint);if(!current||rank(alert)>rank(current))strongest.set(alert.mint,alert);}
+  return [...strongest.values()].sort((a,b)=>rank(b)-rank(a)).slice(0,limit);
 }
 export const moverCategories = [
   { key: 'hypeVelocity', label: 'Hype Movers', unit: 'H/min' },
