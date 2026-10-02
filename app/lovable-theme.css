@@ -1002,3 +1002,12 @@ button.market-section-row:hover{background:#35373b!important}
 
 .market-pan-surface.signals-paused *{animation:none!important;transition:none!important}
 @media(prefers-reduced-motion:reduce){.market-pan-surface *{animation:none!important;transition:none!important}}
+
+/* Holder observation quality and sampled balance changes */
+.holder-observation-status{display:flex;flex-wrap:wrap;gap:6px 14px;padding:10px 16px;background:#24262c;border-bottom:1px solid #383b43;font-size:12px;color:#b6bbc5}
+.holder-observation-status small{flex-basis:100%;color:#959baa}
+.holder-change-row{display:flex;justify-content:space-between;gap:8px;width:100%;padding:7px;background:transparent;border:0;border-bottom:1px solid #383b43;color:#b6bbc5;text-align:left;cursor:pointer}
+.holder-change-panel dl{font-size:12px}.holder-change-panel .note{font-size:11px}
+.route-feedback{margin:24px;padding:24px;border:1px solid #383b43;border-radius:12px;background:#24262c;color:#c6cad3}
+.route-feedback h2{font-size:18px;color:#fff}.route-feedback button,.route-feedback a{display:inline-block;margin:8px;padding:10px;background:#34363f;color:#fff;border:1px solid #515563;border-radius:6px;cursor:pointer}
+.route-skeleton{height:72px;margin:12px 0;border-radius:8px;background:#31343c}

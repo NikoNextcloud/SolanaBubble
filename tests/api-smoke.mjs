@@ -12,7 +12,7 @@ const db=http.createServer((req,res)=>{
   res.setHeader('Content-Type','application/json');
   const path=new URL(req.url,'http://localhost').pathname;
   const key=new URL(req.url,'http://localhost').searchParams.get('cache_key')??'';
-  if(path==='/rest/v1/api_cache'&&key.includes('intelligence:holders:'))res.end(JSON.stringify([{payload:{supply:100,price:1,balances:[{wallet:'buyer',balance:10}],metrics:{holderCount:1}},updated_at:at}]));
+  if(path==='/rest/v1/api_cache'&&key.includes('intelligence:holders:'))res.end(JSON.stringify([{payload:{supply:100,price:1,balances:[{wallet:'buyer',balance:10}],metrics:{holderCount:1,newHolders:2,exitedHolders:1,top10SupplyPct:50}},updated_at:at}]));
   else if(path==='/rest/v1/api_cache') res.end(JSON.stringify(missingMarket?[]:[{payload:{fetchedAt:at,tokens:[token],flows:[],alerts:[]},updated_at:at}]));
   else if(path==='/rest/v1/tokens')res.end(JSON.stringify([{price_usd:1,metadata_updated_at:at}]));
   else if(path==='/rest/v1/market_snapshots') {const requested=new URL(req.url,'http://localhost').searchParams.get('mint')?.replace(/^eq\./,'')??mint;res.end(JSON.stringify([{observed_at:at,payload:{...token,mint:requested}}]));}
@@ -30,6 +30,7 @@ try {
   const get=path=>fetch(`http://127.0.0.1:${appPort}${path}`);
   const home=await (await get('/')).text();
   assert.match(home,/Token map/);assert.match(home,/Как да четеш балоните/);assert.match(home,/Анимации/);assert.match(home,/▦ Map/);assert.match(home,/☷ List/);assert.doesNotMatch(home,/>Galaxy</);
+  const holderHtml=await (await get(`/token/${mint}`)).text();assert.match(holderHtml,/Какво се промени/);assert.match(holderHtml,/Брой показани holders/);assert.match(holderHtml,/Няма достатъчно наблюдавани сделки/);assert.doesNotMatch(holderHtml,/>Positive</);
   for(const section of ['movers','alerts','watchlist']) assert.equal((await get(`/market/${section}`)).status,200);
   const market=await get('/api/market'); assert.equal(market.status,200);
   const cached=await market.json();assert.equal(cached.cached,true);assert.equal(cached.stale,false);assert.equal(cached.tokens[0].holderCount,12);
@@ -45,7 +46,7 @@ try {
   assert.match(market.headers.get('vercel-cdn-cache-control')??'',/s-maxage=120/);
   assert.match(history.headers.get('vercel-cdn-cache-control')??'',/s-maxage=300/);
   const price=await get(`/api/tokens/${mint}/price`);assert.equal(price.status,200);assert.equal((await price.json()).priceUsd,1);
-  const refresh=await get(`/api/tokens/${mint}/refresh`);assert.equal(refresh.status,200);const observation=await refresh.json();assert.equal(observation.balances[0].balance,10);assert.equal(observation.cached,true);
+  const refresh=await get(`/api/tokens/${mint}/refresh`);assert.equal(refresh.status,200);const observation=await refresh.json();assert.equal(observation.balances[0].balance,10);assert.equal(observation.cached,true);assert.equal(observation.metrics.top10SupplyPct,50);
   assert.equal((await fetch(`http://127.0.0.1:${appPort}/api/market/ingest`,{method:'POST',headers:{authorization:'Bearer fixture-secret'}})).status,409);
   missingMarket=true;assert.equal((await get('/api/market')).status,202);
   assert.equal(mutations,0,'Cache endpoints must never mutate DB or start ingestion');

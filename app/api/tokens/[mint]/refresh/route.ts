@@ -11,7 +11,7 @@ export async function GET(_req:Request,{params}:{params:Promise<{mint:string}>})
   const payload=holders.data?.payload,at=holders.data?.updated_at;
   const fresh=at&&Date.now()-Date.parse(at)>=0&&Date.now()-Date.parse(at)<3600000;
   const balances=fresh&&payload?.supply>0&&Array.isArray(payload.balances)?payload.balances.slice().sort((a:any,b:any)=>b.balance-a.balance).slice(0,500):[];
-  return NextResponse.json({ok:true,cached:true,priceUsd:payload?.price??token.data?.price_usd??null,supply:payload?.supply??null,decimals:payload?.decimals??null,balances,holders:payload?.metrics?.holderCount??null,refreshedAt:at??null,pending:!holders.data,stale:!fresh,source:'supabase-background-worker'}, {headers:publicObservationHeaders(300)});
+  return NextResponse.json({ok:true,cached:true,priceUsd:payload?.price??token.data?.price_usd??null,supply:payload?.supply??null,decimals:payload?.decimals??null,balances,metrics:payload?.metrics??null,holders:payload?.metrics?.holderCount??null,refreshedAt:at??null,pending:!holders.data,stale:!fresh,source:'supabase-background-worker'}, {headers:publicObservationHeaders(300)});
  }catch{return NextResponse.json({error:'Holder observation unavailable'},{status:503,headers:{'cache-control':'no-store'}});}
 }
 export const POST=GET;

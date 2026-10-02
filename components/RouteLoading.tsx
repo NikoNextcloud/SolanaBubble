@@ -1,0 +1,1 @@
+export default function RouteLoading(){return <div className="route-feedback" role="status" aria-live="polite"><h2>Зареждам данните…</h2><div className="route-skeleton"/><div className="route-skeleton"/><p>Картата ще се появи след зареждане.</p></div>;}

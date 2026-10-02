@@ -1,5 +1,7 @@
 "use client";
 import { fomoTokenUrl } from "@/lib/token-links";
+import HolderObservationStatus from "./HolderObservationStatus";
+import {balanceChanges,trackedFlow,walletFocus,type BalanceRow} from "@/lib/holder/insights";
 import TrackedTokenSignal from "./TrackedTokenSignal";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY, type Simulation } from "d3-force";
@@ -9,7 +11,7 @@ type H = { wallet: string; balance: number; usd_value: number; pct_supply: numbe
 type N = H & { x: number; y: number; vx?: number; vy?: number; fx?: number | null; fy?: number | null; r: number; flash?: "buy" | "sell"; fk?: number };
 type L = { source: string | N; target: string | N; kind: string; group?: number; signalCount?: number };
 type E = { from_wallet: string; to_wallet: string; kind: "swap" | "transfer"; amount: number; usd_value: number; tx_count: number; last_seen: string };
-type Tx = { signature: string; wallet: string; side: string; amount: number; usd_value: number; block_time: string };
+type Tx = { signature: string; wallet: string; side: string; amount: number; usd_value: number|null; block_time: string };
 type TokenMeta = { mint: string; symbol: string | null; name: string | null; supply: number | null; price_usd: number | null; decimals: number };
 type View = "map" | "holders" | "transactions" | "history";
 
@@ -45,6 +47,15 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const nodes = useRef(new Map<string, N>());
   const graphReady=useRef(false);
   const holderObservationAt=useRef<string|null>(null);
+  const previousObservation=useRef<{at:string;balances:BalanceRow[]}|null>(null);
+  const [observationAt,setObservationAt]=useState<string|null>(null);
+  const [observationError,setObservationError]=useState(false);
+  const [changes,setChanges]=useState<ReturnType<typeof balanceChanges>>([]);
+  const [changeInterval,setChangeInterval]=useState<{from:string;to:string}|null>(null);
+  const [holderMetrics,setHolderMetrics]=useState<{newHolders?:number|null;exitedHolders?:number|null;top10SupplyPct?:number|null;holderBaselineAt?:string|null}|null>(null);
+  const [topLimit,setTopLimit]=useState(500);
+  const [wallNow,setWallNow]=useState<number|null>(null);
+  useEffect(()=>{setWallNow(Date.now());const id=setInterval(()=>setWallNow(Date.now()),60000);return()=>clearInterval(id);},[]);
   const baseLinks = useRef<L[]>([]);
   const edges = useRef<E[]>([]);
   const links = useRef<L[]>([]);
@@ -294,10 +305,15 @@ export default function BubbleMap({ mint }: { mint: string }) {
   }, []);
 
   function applyObservation(j:any){
+    setObservationAt(j.refreshedAt??null);setObservationError(false);setHolderMetrics(j.metrics??null);
     if(j.priceUsd!=null&&Number.isFinite(Number(j.priceUsd)))setMeta(prev=>prev?{...prev,price_usd:Number(j.priceUsd)}:prev);
     if(j.stale||!j.refreshedAt||!Array.isArray(j.balances)||!j.balances.length||!(j.supply>0)||Date.parse(j.refreshedAt)<=Date.parse(holderObservationAt.current??'1970-01-01'))return;
     holderObservationAt.current=j.refreshedAt;
+    const previous=previousObservation.current;
+    if(previous){setChanges(balanceChanges(previous.balances,j.balances));setChangeInterval({from:previous.at,to:j.refreshedAt});}
+    previousObservation.current={at:j.refreshedAt,balances:j.balances};
     const present=new Set<string>(j.balances.map((b:any)=>b.wallet));
+    setSel(prev=>prev&&!present.has(prev)?null:prev);
     for(const wallet of nodes.current.keys())if(!present.has(wallet))nodes.current.delete(wallet);
     for(const b of j.balances){const old=nodes.current.get(b.wallet);put({...old,wallet:b.wallet,balance:b.balance,usd_value:b.balance*(j.priceUsd??0),pct_supply:b.balance/j.supply*100,cluster_id:old?.cluster_id??null,funder:old?.funder??null,first_activity:old?.first_activity??null,last_activity:old?.last_activity??null,bought_usd:old?.bought_usd??0,sold_usd:old?.sold_usd??0},false);}
     if(j.holders!=null)setHolderCount(j.holders);
@@ -311,11 +327,13 @@ export default function BubbleMap({ mint }: { mint: string }) {
     let stopped = false;
 
     const refresh = async () => {
+      if(!graphReady.current)return;
       try {
         const r = await fetch(`/api/tokens/${mint}/refresh`, {
           method: "GET",
         });
-        if (!r.ok || stopped) return;
+        if(stopped)return;
+        if(!r.ok){setObservationError(true);return;}
         const j = await r.json();
         if(graphReady.current)applyObservation(j);
       } catch {}
@@ -555,7 +573,9 @@ export default function BubbleMap({ mint }: { mint: string }) {
 
   useEffect(() => {
     let alive = true;
-    graphReady.current=false;holderObservationAt.current=null;
+    graphReady.current=false;holderObservationAt.current=null;previousObservation.current=null;
+    nodes.current.clear();baseLinks.current=[];edges.current=[];links.current=[];setSel(null);setFeedTxs([]);setWalletTxs([]);setHolderCount(0);setMeta(null);
+    setObservationAt(null);setObservationError(false);setChanges([]);setChangeInterval(null);setHolderMetrics(null);
     const s = forceSimulation<N>().alphaDecay(0.026).velocityDecay(0.34);
     s.on("tick", () => bump((x) => x + 1)); sim.current = s;
 
@@ -602,7 +622,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
         .map((l: any) => ({ source: l.wallet_a, target: l.wallet_b, kind: l.kind, signalCount: Number(l.signal_count ?? 1) }));
       edges.current = (es ?? []) as E[];
       graphReady.current=true;
-      try{const r=await fetch(`/api/tokens/${mint}/refresh`);if(r.ok&&alive)applyObservation(await r.json());}catch{}
+      try{const r=await fetch(`/api/tokens/${mint}/refresh`);if(alive){if(r.ok)applyObservation(await r.json());else setObservationError(true);}}catch{if(alive)setObservationError(true);}
       restart();
     })();
 
@@ -654,14 +674,16 @@ export default function BubbleMap({ mint }: { mint: string }) {
 
   useEffect(() => {
     if (!sel) { setWalletTxs([]); return; }
+    let active=true;
     db.from("transactions")
       .select("signature,wallet,side,amount,usd_value,block_time")
       .eq("token_mint", mint)
       .eq("wallet", sel)
       .order("block_time", { ascending: false })
       .limit(30)
-      .then(({ data }) => setWalletTxs((data ?? []) as Tx[]));
-  }, [sel]);
+      .then(({ data }) => {if(active)setWalletTxs((data ?? []) as Tx[]);});
+    return()=>{active=false;};
+  }, [sel,mint]);
 
   const arr = [...nodes.current.values()];
   const groups = visualGroups();
@@ -672,9 +694,12 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const pl = selected && Number(selected.bought_usd) > 0 ? Number(selected.usd_value) + Number(selected.sold_usd) - Number(selected.bought_usd) : null;
   const groupCount = new Set(groups.values()).size;
   const ignoredHubCount = graphHubs().size;
-  const volume24h = feedTxs.reduce((a, t) => a + Number(t.usd_value || 0), 0) / 2;
-  const buys24h = feedTxs.filter((t) => t.side === "buy").length;
-  const sells24h = feedTxs.filter((t) => t.side === "sell").length;
+  const flowSample=trackedFlow(feedTxs,wallNow??Date.now());
+  const volume24h=flowSample.volume,buys24h=flowSample.buys,sells24h=flowSample.sells;
+  const flowClass=flowSample.net==null||flowSample.net===0?'':flowSample.net>0?'buy':'sell';
+  const flowText=flowSample.net==null?'—':`${flowSample.net>0?'+':''}${usd(flowSample.net)}`;
+  const changeByWallet=new Map(changes.map(c=>[c.wallet,c.delta]));
+  const changeFresh=!!changeInterval&&(wallNow??Date.now())-Date.parse(changeInterval.to)<3600000;
   const related = selected ? edges.current
     .filter((e) => e.from_wallet === selected.wallet || e.to_wallet === selected.wallet)
     .sort((a, b) => Number(b.usd_value) - Number(a.usd_value))
@@ -686,7 +711,9 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const hiddenCount = arr.filter((n) => hiddenSet.has(n.wallet)).length;
   const otherCount = arr.filter((n) => !groups.has(n.wallet) && !hiddenSet.has(n.wallet)).length;
 
+  const topWallets=new Set([...arr].sort((a,b)=>Number(b.balance)-Number(a.balance)).slice(0,topLimit).map(n=>n.wallet));
   const visibleNodes = arr.filter((n) => {
+    if(!topWallets.has(n.wallet))return false;
     const hidden = hiddenSet.has(n.wallet);
     const clustered = groups.has(n.wallet) && !hidden;
     const other = !clustered && !hidden;
@@ -708,8 +735,9 @@ export default function BubbleMap({ mint }: { mint: string }) {
     return true;
   });
 
-  const nowHour = Math.floor(Date.now() / HOUR) * HOUR;
-  const historyStart = nowHour - 23 * HOUR;
+  const focusedWallets=walletFocus(sel,visibleLinks);
+
+  const historyStart = Date.now() - 24 * HOUR;
   const history = Array.from({ length: 24 }, (_, i) => ({
     ts: historyStart + i * HOUR,
     buyUsd: 0,
@@ -736,8 +764,9 @@ export default function BubbleMap({ mint }: { mint: string }) {
     const y = 145 - (h.cumulative / historyMax) * 105;
     return `${x},${y}`;
   }).join(" ");
-  const netFlow24h = history.reduce((a, h) => a + h.buyUsd - h.sellUsd, 0);
+  const netFlow24h = flowSample.net;
 
+  useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.key==='Escape')setSel(null);};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
   const zoomBy = (factor: number) => setTransform((t) => {
     const k = clamp(t.k * factor, 0.45, 4);
     const cx = size.w / 2, cy = size.h / 2;
@@ -813,19 +842,20 @@ export default function BubbleMap({ mint }: { mint: string }) {
               <span title={mint}>{short(mint)}</span>
             </div>
           </div>
-          <div className={`live-pill ${live ? "on" : ""}`}><i />{live ? "Live" : "Connecting"}</div>
+          <div className={`live-pill ${live ? "on" : ""}`}><i />{live ? "Connected" : "Connecting"}</div>
         </header>
 
         <div className="metric-strip">
           <div><span>Price</span><b>{usd(Number(meta?.price_usd ?? 0))}</b></div>
           <div><span>Holders</span><b>{holderCount.toLocaleString()}</b></div>
-          <div><span>24h tracked volume</span><b>{usd(volume24h)}</b></div>
-          <div><span>Buy / Sell</span><b><em className="buy">{buys24h}</em> / <em className="sell">{sells24h}</em></b></div>
+          <div><span>24h sampled volume</span><b>{volume24h==null?'—':usd(volume24h)}</b></div>
+          <div><span>Buy / Sell</span><b><em className="buy">{flowSample.swaps?buys24h:"—"}</em> / <em className="sell">{flowSample.swaps?sells24h:"—"}</em></b></div>
           <div><span>Linked groups</span><b>{groupCount}</b></div>
-          <div><span>Ignored pools/routers</span><b>{ignoredHubCount}</b></div>
-          <div><span>24h net flow</span><b className={netFlow24h >= 0 ? "buy" : "sell"}>{netFlow24h >= 0 ? "+" : ""}{usd(netFlow24h)}</b></div>
+          <div><span>High-link hubs · estimate</span><b>{ignoredHubCount}</b></div>
+          <div><span>24h sampled net</span><b className={flowClass}>{flowText}</b></div>
         </div>
 
+        <HolderObservationStatus at={observationAt} loading={loadingToken} error={observationError} shown={visibleNodes.length} total={holderCount}/>
         <nav className="view-tabs" aria-label="Token views">
           <button className={view === "map" ? "active" : ""} onClick={() => setView("map")}>Bubble map</button>
           <button className={view === "holders" ? "active" : ""} onClick={() => setView("holders")}>Holders</button>
@@ -834,6 +864,8 @@ export default function BubbleMap({ mint }: { mint: string }) {
 
         {view === "map" && <div className="holder-toolbar-row">
           <input value={walletQuery} onChange={(e) => setWalletQuery(e.target.value)} placeholder="Търси портфейл…" aria-label="Търси портфейл" />
+          <label>Top <select aria-label="Брой показани holders" value={topLimit} onChange={e=>setTopLimit(Number(e.target.value))}><option value="10">10</option><option value="50">50</option><option value="100">100</option><option value="500">500</option></select></label>
+          {sel&&<button className="wallet-action" onClick={()=>setSel(null)}>← Цялата карта</button>}
           <label>Min %
             <select value={String(minPct)} onChange={(e) => setMinPct(Number(e.target.value))}>
               <option value="0">Всички</option>
@@ -1012,7 +1044,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
                     x2={p.x2} y2={p.y2}
                     stroke={color}
                     strokeWidth={1 + confidence * 1.15}
-                    strokeOpacity={0.34 + confidence * 0.62}
+                    strokeOpacity={(sel&&!(source.wallet===sel||target.wallet===sel)? .08 : 1)*(0.34 + confidence * 0.62)}
                     strokeDasharray={flow ? "5 5" : l.kind === "timing" ? "3 4" : undefined}
                     markerStart={!directed ? "url(#relationArrow)" : undefined}
                     markerEnd={flow ? "url(#flowArrow)" : "url(#relationArrow)"}
@@ -1033,6 +1065,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
                   return <circle
                     key={`particle:${i}`}
                     className="flow-particle"
+                    opacity={sel&&!(source.wallet===sel||target.wallet===sel)? .08 : 1}
                     cx={x} cy={y} r={1.8}
                     fill={gid ? groupColor(gid) : "#a9b6c8"}
                     pointerEvents="none"
@@ -1045,7 +1078,10 @@ export default function BubbleMap({ mint }: { mint: string }) {
                   const active = sel === n.wallet;
                   const over = hovered === n.wallet;
                   const p = motionPoint(n);
-                  return <g key={n.wallet} className="live-node">
+                  const delta=changeFresh?changeByWallet.get(n.wallet):undefined;
+                  const deltaColor=delta!=null?(delta>0?'#66d39a':'#ee746c'):null;
+                  return <g key={n.wallet} className="live-node" opacity={sel&&!focusedWallets.has(n.wallet)? .16 : 1}>
+                    {deltaColor&&<circle cx={p.x} cy={p.y} r={n.r+3} fill="none" stroke={deltaColor} strokeWidth={2} pointerEvents="none"/>}
                     {gid && <circle
                       className="node-halo"
                       cx={p.x} cy={p.y} r={n.r + 4}
@@ -1081,7 +1117,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
                       }}
                       onKeyDown={(e) => e.key === "Enter" && setSel(n.wallet)}
                     >
-                      <title>{displayWallet(n.wallet)} · {Number(n.pct_supply).toFixed(2)}%{watched.includes(n.wallet) ? " · наблюдаван" : ""}</title>
+                      <title>{displayWallet(n.wallet)} · {Number(n.pct_supply).toFixed(2)}%{delta!=null?` · баланс ${delta>0?"+":""}${delta.toLocaleString()} токена; не доказва покупка/продажба`:""}{watched.includes(n.wallet) ? " · наблюдаван" : ""}</title>
                     </circle>
                     <text
                       x={p.x}
@@ -1097,7 +1133,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
             </svg>
 
             <div className="map-legend">
-              <span><i className="legend-normal" />holder</span>
+              <span><i className="legend-normal" />Размер = % supply</span><span>Зелен / червен контур = баланс ↑ / ↓ между две извадки; не buy/sell</span><span>Клик = wallet фокус · Esc = цялата карта</span>
               <span><i className="legend-linked" />linked wallets</span>
               <span><i className="legend-flow" />token flow</span>
               <span><i className="legend-watch" />watchlist</span>
@@ -1128,7 +1164,8 @@ export default function BubbleMap({ mint }: { mint: string }) {
           </div>}
 
           {view === "transactions" && <div className="data-view">
-            <div className="data-head"><h2>Live transactions</h2><span>last 24h · up to 250 shown</span></div>
+            <div className="data-head"><h2>Recorded transactions</h2><span>last 24h · up to 250 shown</span></div>
+            {!feedTxs.length&&<p className="note">Няма достатъчно наблюдавани сделки. Празният списък не означава нулева търговия.</p>}
             <div className="table-wrap"><table className="data-table">
               <thead><tr><th>Time</th><th>Wallet</th><th>Side</th><th>Amount</th><th>USD</th><th>Tx</th></tr></thead>
               <tbody>{feedTxs.slice(0, 250).map((t) => <tr key={`${t.signature}:${t.wallet}`} onClick={() => setSel(t.wallet)}>
@@ -1136,7 +1173,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
                 <td>{short(t.wallet)}</td>
                 <td><span className={t.side === "buy" || t.side === "transfer_in" ? "side-badge buy" : "side-badge sell"}>{t.side}</span></td>
                 <td>{Number(t.amount).toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
-                <td>{usd(Number(t.usd_value))}</td>
+                <td>{t.usd_value==null?"—":usd(Number(t.usd_value))}</td>
                 <td><a href={`https://solscan.io/tx/${t.signature}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Solscan ↗</a></td>
               </tr>)}</tbody>
             </table></div>
@@ -1145,14 +1182,14 @@ export default function BubbleMap({ mint }: { mint: string }) {
           {view === "history" && <div className="data-view history-view">
             <div className="data-head"><h2>Historical activity</h2><span>tracked 24h window</span></div>
             <div className="history-cards">
-              <div><span>Buy volume</span><b className="buy">{usd(history.reduce((a, h) => a + h.buyUsd, 0))}</b></div>
-              <div><span>Sell volume</span><b className="sell">{usd(history.reduce((a, h) => a + h.sellUsd, 0))}</b></div>
-              <div><span>Net flow</span><b className={netFlow24h >= 0 ? "buy" : "sell"}>{netFlow24h >= 0 ? "+" : ""}{usd(netFlow24h)}</b></div>
+              <div><span>Buy volume</span><b className="buy">{flowSample.buyUsd==null?'—':usd(flowSample.buyUsd)}</b></div>
+              <div><span>Sell volume</span><b className="sell">{flowSample.sellUsd==null?'—':usd(flowSample.sellUsd)}</b></div>
+              <div><span>Net flow</span><b className={flowClass}>{flowText}</b></div>
               <div><span>Tracked swaps</span><b>{buys24h + sells24h}</b></div>
             </div>
             <div className="history-chart">
               <div className="chart-title"><strong>Cumulative buy − sell flow</strong><span>USD · hourly buckets</span></div>
-              <svg viewBox="0 0 1000 300" preserveAspectRatio="none" aria-label="Historical net flow chart">
+              {flowSample.net!=null?<svg viewBox="0 0 1000 300" preserveAspectRatio="none" aria-label="Historical net flow chart">
                 <line x1="32" y1="145" x2="968" y2="145" className="chart-zero" />
                 {[0, 6, 12, 18, 23].map((i) => {
                   const x = 32 + i * (936 / 23);
@@ -1164,12 +1201,12 @@ export default function BubbleMap({ mint }: { mint: string }) {
                   const y = 145 - (h.cumulative / historyMax) * 105;
                   return <circle key={i} cx={x} cy={y} r="3" className="history-point"><title>{new Date(h.ts).toLocaleString("bg-BG")} · {usd(h.cumulative)}</title></circle>;
                 })}
-              </svg>
+              </svg>:<p className="note">Няма достатъчно оценени сделки за графика.</p>}
               <p className="history-note">Historical data starts from the moment this token began being tracked by SolanaBubble; it is not a reconstruction of pre-bootstrap history.</p>
             </div>
             <div className="hourly-grid">{history.map((h) => <div key={h.ts}>
               <span>{new Date(h.ts).toLocaleTimeString("bg-BG", { hour: "2-digit", minute: "2-digit" })}</span>
-              <b className={h.buyUsd - h.sellUsd >= 0 ? "buy" : "sell"}>{h.buyUsd - h.sellUsd >= 0 ? "+" : ""}{usd(h.buyUsd - h.sellUsd)}</b>
+              <b className={flowSample.net==null?"":h.buyUsd-h.sellUsd>0?"buy":h.buyUsd-h.sellUsd<0?"sell":""}>{flowSample.net==null||!h.buys&&!h.sells?"—":usd(h.buyUsd-h.sellUsd)}</b>
               <small>{h.buys} buys · {h.sells} sells</small>
             </div>)}</div>
           </div>}
@@ -1177,6 +1214,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
       </section>
 
       <aside className="side insight-side">
+        <div className="side-section holder-change-panel"><strong>Какво се промени</strong><p className="note">{holderMetrics?.holderBaselineAt&&observationAt?`${new Date(holderMetrics.holderBaselineAt).toLocaleString('bg-BG')} → ${new Date(observationAt).toLocaleString('bg-BG')}`:'Необходими са две holder наблюдения за сравнение.'}</p><dl><dt>Нови / изчезнали holders</dt><dd>{holderMetrics?.newHolders??'—'} / {holderMetrics?.exitedHolders??'—'}</dd><dt>Top 10 supply</dt><dd>{holderMetrics?.top10SupplyPct!=null?`${holderMetrics.top10SupplyPct.toFixed(2)}%`:'—'}</dd></dl><p className="note">Промени в баланса между заредените извадки: {changeInterval?`${new Date(changeInterval.from).toLocaleTimeString('bg-BG')} → ${new Date(changeInterval.to).toLocaleTimeString('bg-BG')}`:'изчаква следващото наблюдение'}. Само адреси в двете top-500 извадки; не доказва покупки/продажби.</p>{changes.slice(0,5).map(c=><button key={c.wallet} className="holder-change-row" onClick={()=>setSel(c.wallet)}><span>{short(c.wallet)}</span><b className={c.delta>0?'buy':'sell'}>{c.delta>0?'+':''}{num(c.delta)} tokens</b></button>)}</div>
         {!selected && <TrackedTokenSignal mint={mint} />}
         {!selected ? <>
           <div className="side-section token-insight-panel">
@@ -1186,17 +1224,17 @@ export default function BubbleMap({ mint }: { mint: string }) {
                 <h2>{meta?.name || meta?.symbol || short(mint)}</h2>
                 <p className="mint-full">{mint}</p>
               </div>
-              <span className={live ? "token-live-badge on" : "token-live-badge"}>● LIVE</span>
+              <span className={live ? "token-live-badge on" : "token-live-badge"}>{live?"● CONNECTED":"OFFLINE"}</span>
             </div>
 
             <div className="token-insight-grid">
               <div><span>Price</span><strong>{usd(Number(meta?.price_usd ?? 0))}</strong></div>
               <div><span>Holders</span><strong>{holderCount.toLocaleString()}</strong></div>
               <div><span>Supply</span><strong>{num(Number(meta?.supply ?? 0))}</strong></div>
-              <div><span>24h volume</span><strong>{usd(volume24h)}</strong></div>
-              <div><span>Buys</span><strong className="buy">+{buys24h}</strong></div>
-              <div><span>Sells</span><strong className="sell">-{sells24h}</strong></div>
-              <div><span>Net flow</span><strong className={netFlow24h >= 0 ? "buy" : "sell"}>{netFlow24h >= 0 ? "+" : ""}{usd(netFlow24h)}</strong></div>
+              <div><span>24h sampled volume</span><strong>{volume24h==null?'—':usd(volume24h)}</strong></div>
+              <div><span>Buys</span><strong className="buy">{flowSample.swaps?buys24h:"—"}</strong></div>
+              <div><span>Sells</span><strong className="sell">{flowSample.swaps?sells24h:"—"}</strong></div>
+              <div><span>Net flow</span><strong className={flowClass}>{flowText}</strong></div>
               <div><span>Linked groups</span><strong>{groupCount}</strong></div>
             </div>
 
@@ -1208,13 +1246,14 @@ export default function BubbleMap({ mint }: { mint: string }) {
 
           <div className="side-section token-activity-panel">
             <div className="side-section-heading">
-              <span className="eyebrow">Live activity</span>
-              <span className={netFlow24h >= 0 ? "buy" : "sell"}>{netFlow24h >= 0 ? "Positive" : "Negative"}</span>
+              <span className="eyebrow">Recorded activity</span>
+              <span className={flowClass}>{netFlow24h==null?"Недостатъчно данни":netFlow24h===0?"Баланс в извадката":netFlow24h>0?"Покупки в извадката":"Продажби в извадката"}</span>
             </div>
+            <p className="note">{!flowSample.swaps?'Няма достатъчно наблюдавани сделки. Това не означава липса на покупки.':'Частична записана извадка за 24h; не пълният пазарен трафик.'}</p>
             <ul className="activity-list">{feedTxs.slice(0, 8).map((t) => <li key={`${t.signature}:${t.wallet}`}>
               <span className={t.side === "buy" || t.side === "transfer_in" ? "activity-dot buy-bg" : "activity-dot sell-bg"} />
               <button onClick={() => setSel(t.wallet)}>{displayWallet(t.wallet)}</button>
-              <span className={t.side === "buy" || t.side === "transfer_in" ? "buy" : "sell"}>{usd(Number(t.usd_value))}</span>
+              <span className={t.side === "buy" || t.side === "transfer_in" ? "buy" : "sell"}>{t.usd_value==null?"—":usd(Number(t.usd_value))}</span>
             </li>)}</ul>
           </div>
 
@@ -1228,7 +1267,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
 
           <div className="side-section token-link-note">
             <span className="eyebrow">On-chain links</span>
-            <p className="note">Linked groups: {groupCount} · Ignored pool/router addresses: {ignoredHubCount}. Цветните групи показват вероятни on-chain връзки.</p>
+            <p className="note">Linked groups: {groupCount} · High-link hubs (heuristic): {ignoredHubCount}. Цветните групи показват вероятни on-chain връзки.</p>
           </div>
         </> : <>
           <div className="side-section">
@@ -1249,6 +1288,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
 
           <div className="side-section">
             <dl>
+              <dt>Observed balance Δ</dt><dd>{changeFresh&&changeByWallet.has(selected.wallet)?`${changeByWallet.get(selected.wallet)!>0?'+':''}${changeByWallet.get(selected.wallet)!.toLocaleString()} tokens`:'—'}</dd>
               <dt>Balance</dt><dd>{Number(selected.balance).toLocaleString(undefined, { maximumFractionDigits: 2 })}</dd>
               <dt>Value</dt><dd>{usd(Number(selected.usd_value))}</dd>
               <dt>% supply</dt><dd>{Number(selected.pct_supply).toFixed(3)}%</dd>
@@ -1276,7 +1316,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
             <span className="eyebrow">Wallet transactions</span>
             <ul className="tx">{walletTxs.slice(0, 12).map((t) => <li key={t.signature}>
               <span className={t.side === "buy" || t.side === "transfer_in" ? "buy" : "sell"}>{t.side}</span>
-              <span>{usd(Number(t.usd_value))}</span>
+              <span>{t.usd_value==null?"—":usd(Number(t.usd_value))}</span>
               <a href={`https://solscan.io/tx/${t.signature}`} target="_blank" rel="noreferrer">{new Date(t.block_time).toLocaleTimeString("bg-BG")}</a>
             </li>)}</ul>
           </div>
