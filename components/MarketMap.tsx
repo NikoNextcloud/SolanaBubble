@@ -14,6 +14,7 @@ import {bubbleSignal} from "@/lib/market/map-signals";
 import SavedMarketFilters from "./SavedMarketFilters";
 import {useWatchlist} from "./useWatchlist";
 import {matchesWatchFilters} from "@/lib/watchlist";
+import { fomoTokenUrl } from "@/lib/token-links";
 
 type MarketToken = Intelligence & {
   marketObservedAt?:string|null;
@@ -222,6 +223,7 @@ export default function MarketMap() {
   const [tabVisible, setTabVisible] = useState(true);
   const [autoPaused, setAutoPaused] = useState(false);
   const [selected, setSelected] = useState<MarketToken | null>(null);
+  const [quickActionMint, setQuickActionMint] = useState<string | null>(null);
   const [loadingMint, setLoadingMint] = useState<string | null>(null);
   const [error, setError] = useState("");
   const lastActivity = useRef(Date.now());
@@ -231,6 +233,7 @@ export default function MarketMap() {
 
   const beginMapPan = (e: React.PointerEvent<SVGSVGElement>) => {
     if (e.button !== 0 || drag.current.active) return;
+    setQuickActionMint(null);
     mapPanDrag.current = {
       active: true,
       pointerId: e.pointerId,
@@ -839,7 +842,7 @@ export default function MarketMap() {
 
       <section className="market-workspace reference-market-workspace">
         <div className="market-map" ref={wrap}>
-          {viewMode === "map" && <div className="lovable-map-hint">✥ Drag to explore · Scroll to zoom</div>}
+          {viewMode === "map" && <div className="lovable-map-hint">Клик: FoMo/GmGn · Двоен клик: Holders · Drag · Scroll zoom</div>}
           {watch.ready && (viewMode === "list" ? !filteredTokens.length : !renderedNodes.length) && tokens.length > 0 && <div className="pause-banner">No tokens match your saved filters. Reset filters or add favorites.</div>}
           {streamLive === false && <div className="pause-banner">
             {autoPaused ? "Автоматична пауза след 2 мин. без активност" : "Live режимът е на пауза"} · данните са от кеша
@@ -966,6 +969,7 @@ export default function MarketMap() {
               const focusDimmed = Boolean(selected?.mint && !focusMints.has(n.mint) && !n.isCore);
               const pulseDuration = n.isCore ? 3.2 : Math.max(.8, Math.min(5, 4 - Math.tanh(Number(signal.fresh?n.hypeAcceleration??0:0) / .3) * 3));
               const brightness = Math.max(.65, Math.min(1.5, 1 + Math.tanh(Math.abs(Number(signal.fresh?n.hypeVelocity??0:0))) * .5));
+              const quickActionsBelow = mapView.y + (n.y + n.r + 88) * mapView.k < size.h;
               return <g
                 key={n.mint}
                 transform={`translate(${n.x} ${n.y})`}
@@ -1013,7 +1017,7 @@ export default function MarketMap() {
                   tabIndex={n.isCore?-1:0}
                   role="button"
                   aria-label={`${n.symbol||n.name||n.mint}: ${signal.label}${signal.liquidityDrop?', Liquidity ↓':''}${signal.whaleLabel?', '+signal.whaleLabel:''}`}
-                  onKeyDown={e=>{if(!n.isCore&&(e.key==='Enter'||e.key===' ')){e.preventDefault();setSelected(n);expandToken(n);}}}
+                  onKeyDown={e=>{if(!n.isCore&&(e.key==='Enter'||e.key===' ')){e.preventDefault();setSelected(n);setQuickActionMint(n.mint);expandToken(n);}}}
                   onPointerDown={(e) => beginMarketDrag(e, n.mint)}
                   onPointerMove={moveMarketDrag}
                   onPointerUp={endMarketDrag}
@@ -1021,6 +1025,7 @@ export default function MarketMap() {
                   onClick={() => {
                     if (!drag.current.moved && !n.isCore) {
                       setSelected(n);
+                      setQuickActionMint(n.mint);
                       expandToken(n);
                     }
                     drag.current.moved = false;
@@ -1062,6 +1067,25 @@ export default function MarketMap() {
                     className="market-token-icon"
                   />
                 </> : n.r >= 17 && <text textAnchor="middle" dy="4" className="market-symbol">{n.symbol || "?"}</text>}
+                {!n.isCore && quickActionMint === n.mint && (
+                  <foreignObject
+                    x={-74}
+                    y={quickActionsBelow ? n.r + 27 + (signal.liquidityDrop || signal.whaleLabel ? 18 : 0) : -n.r - 76}
+                    width="148"
+                    height="42"
+                    className="token-quick-actions-object"
+                  >
+                    <div
+                      className="token-quick-actions"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => event.stopPropagation()}
+                      onDoubleClick={(event) => event.stopPropagation()}
+                    >
+                      <a href={fomoTokenUrl(n.mint)} target="_blank" rel="noreferrer">FoMo ↗</a>
+                      <a href={`https://gmgn.ai/sol/token/${n.mint}`} target="_blank" rel="noreferrer">GmGn ↗</a>
+                    </div>
+                  </foreignObject>
+                )}
                 {activityPulse.includes(n.mint) && !n.isCore && <>
                   <circle r={n.r + 8} className="market-shockwave shockwave-a" pointerEvents="none" />
                   <circle r={n.r + 8} className="market-shockwave shockwave-b" pointerEvents="none" />
@@ -1091,7 +1115,7 @@ export default function MarketMap() {
               <span>{snapshotStale ? "STALE" : "CACHED"}</span>
             </div>
             <small className="signal-note">Snapshot: {updated ? new Date(updated).toLocaleString() : "warming"}</small>
-            <p className="side-intro">Кликни върху токен за подробности. Double click отваря holder картата.</p>
+            <p className="side-intro">Клик: FoMo/GmGn и подробности. Двоен клик: Holder Map.</p>
             {expansionLoading && <div className="market-expanding">Разгръщам wallet връзките…</div>}
             <div className="market-hot-list reference-side-card">
               <div className="market-hot-title">
