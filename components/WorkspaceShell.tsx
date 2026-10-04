@@ -29,6 +29,7 @@ export default function WorkspaceShell({
   const [results, setResults] = useState<SearchToken[]>([]);
   const [searching, setSearching] = useState(false);
   const [open, setOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [openingMint, setOpeningMint] = useState<string | null>(null);
   const [wishlist, setWishlist] = useState<SearchToken[]>([]);
   const searchBox = useRef<HTMLDivElement>(null);
@@ -79,7 +80,11 @@ export default function WorkspaceShell({
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
-      if (!searchBox.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Element;
+      if (!searchBox.current?.contains(target) && !target.closest?.(".mobile-search-toggle")) {
+        setOpen(false);
+        setMobileSearchOpen(false);
+      }
     };
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
@@ -126,6 +131,7 @@ export default function WorkspaceShell({
       });
     } catch {}
     setOpen(false);
+    setMobileSearchOpen(false);
     setQuery("");
     router.push(`/token/${token.mint}`);
   }
@@ -200,7 +206,7 @@ export default function WorkspaceShell({
           <div className="lovable-breadcrumb">
             <span>Workspace</span><b>›</b><strong>{section}</strong>
           </div>
-          <div className="alpha-token-search lovable-header-search" ref={searchBox}>
+          <div className={`alpha-token-search lovable-header-search ${mobileSearchOpen ? "is-mobile-open" : ""}`} ref={searchBox}>
             <div className="alpha-search-input-wrap">
               <span>⌕</span>
               <input
@@ -209,7 +215,10 @@ export default function WorkspaceShell({
                 onFocus={() => query.trim().length >= 2 && setOpen(true)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") submitDirect();
-                  if (e.key === "Escape") setOpen(false);
+                  if (e.key === "Escape") {
+                    setOpen(false);
+                    setMobileSearchOpen(false);
+                  }
                 }}
                 placeholder="Search tokens or wallets..."
                 aria-label="Търси Solana токен"
@@ -241,6 +250,16 @@ export default function WorkspaceShell({
             </div>}
           </div>
           <div className="lovable-top-actions">
+            <button
+              type="button"
+              className="mobile-search-toggle"
+              aria-label={mobileSearchOpen ? "Затвори търсенето" : "Търси токен"}
+              aria-expanded={mobileSearchOpen}
+              onClick={(event) => {
+                event.stopPropagation();
+                setMobileSearchOpen((value) => !value);
+              }}
+            >{mobileSearchOpen ? "×" : "⌕"}</button>
             <button type="button" title="Notifications">♧</button>
             <span className="lovable-top-avatar">SB</span>
           </div>

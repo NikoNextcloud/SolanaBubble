@@ -217,6 +217,7 @@ export default function MarketMap() {
   const animateSignals=streamLive&&pulsesEnabled&&!reducedMotion;
   function togglePulses(){setPulsesEnabled(v=>{try{localStorage.setItem('solanabubble:map-pulses',v?'off':'on');}catch{}return !v;});}
   const [viewMode, setViewMode] = useState<MarketViewMode>("map");
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const [xAxis, setXAxis] = useState<MarketAxis>("marketCap");
   const [showTrafficOverlay, setShowTrafficOverlay] = useState(true);
   const [autoGraph, setAutoGraph] = useState(true);
@@ -829,8 +830,16 @@ export default function MarketMap() {
           <button type="button" onClick={resetMarketPositions}>↺ Нулирай позиции</button>
         </div>
       </div>
-      <SavedMarketFilters/>
-      <DataQuality marketAt={updated}/>
+      <button
+        type="button"
+        className="mobile-tools-toggle"
+        aria-expanded={mobileToolsOpen}
+        onClick={() => setMobileToolsOpen((value) => !value)}
+      >{mobileToolsOpen ? "Скрий филтрите" : "Филтри и качество"} {mobileToolsOpen ? "↑" : "↓"}</button>
+      <div className={`market-tools-drawer ${mobileToolsOpen ? "is-open" : ""}`}>
+        <SavedMarketFilters/>
+        <DataQuality marketAt={updated}/>
+      </div>
       <section className="market-stats reference-market-stats">
         <div>
           <span>MARKET SENTIMENT</span>
@@ -1119,7 +1128,10 @@ export default function MarketMap() {
           </details>
         </div>
 
-        <aside className="market-side reference-market-side">
+        <aside
+          className={`market-side reference-market-side ${selected ? "is-token-selected" : ""}`}
+          aria-label={selected ? `Детайли за ${selected.symbol || selected.name || "токен"}` : "Market intelligence"}
+        >
           <WorkerStatus/>
           {!selected ? <>
             <div className="side-section-title">
