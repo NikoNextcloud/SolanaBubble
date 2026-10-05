@@ -1371,10 +1371,17 @@ button.market-section-row:hover{background:#35373b!important}
   border-left:1px solid var(--lov-line)!important;
 }
 .reference-market-workspace .market-map .market-zoom-controls{
+  display:flex!important;
+  visibility:visible!important;
+  opacity:1!important;
+  position:absolute!important;
+  z-index:35!important;
   left:auto!important;
   right:12px!important;
   top:12px!important;
   bottom:auto!important;
+  width:auto!important;
+  background:rgba(48,50,54,.96)!important;
 }
 .reference-market-workspace .market-map:fullscreen{
   width:100vw!important;
