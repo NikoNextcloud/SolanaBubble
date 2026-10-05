@@ -7,6 +7,9 @@ const market = readFileSync(new URL("../components/MarketMap.tsx", import.meta.u
 const theme = readFileSync(new URL("../app/lovable-theme.css", import.meta.url), "utf8");
 const holder = readFileSync(new URL("../components/BubbleMap.tsx", import.meta.url), "utf8");
 const worker = readFileSync(new URL("../workers/holder-physics.worker.ts", import.meta.url), "utf8");
+const comet = readFileSync(new URL("../components/MarketCometLayer.tsx", import.meta.url), "utf8");
+const liveWs = readFileSync(new URL("../components/useSolanaLiveSwaps.ts", import.meta.url), "utf8");
+const liveRealtime = readFileSync(new URL("../components/useLiveMarketEvents.ts", import.meta.url), "utf8");
 
 test("mobile workspace keeps token search reachable", () => {
   assert.match(workspace, /mobile-search-toggle/);
@@ -34,4 +37,13 @@ test("large holder maps use worker physics and hybrid canvas rendering", () => {
   assert.match(holder, /HolderCanvasLayer/);
   assert.match(holder, /visibleNodes\.length>=280/);
   assert.match(worker, /forceSimulation/);
+});
+
+test("market comets continuously replay and support dual realtime transports", () => {
+  assert.match(comet, /setInterval\(\(\)=>setCycle/);
+  assert.match(comet, /direction: "in" \| "out"/);
+  assert.match(comet, /data-comet-quality/);
+  assert.match(liveWs, /logsSubscribe/);
+  assert.match(liveWs, /getTransaction/);
+  assert.match(liveRealtime, /postgres_changes/);
 });
