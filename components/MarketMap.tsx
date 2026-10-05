@@ -251,8 +251,6 @@ export default function MarketMap() {
       : liveLatencySeconds<30
         ? {label:`Delayed · ${Math.round(liveLatencySeconds)}s`,cls:"delayed"}
         : {label:`Snapshot · ${Math.round(liveLatencySeconds/60)}m`,cls:"snapshot"};
-  const mapLod=mapView.k<.78?"far":mapView.k>1.55?"near":"mid";
-
   useEffect(()=>{
     const first=liveMarketEvents[0];if(!first)return;
     const key=`${first.mint}:${first.signature}`;
@@ -276,6 +274,7 @@ export default function MarketMap() {
   const [error, setError] = useState("");
   const lastActivity = useRef(Date.now());
   const [mapView, setMapView] = useState({ x: 0, y: 0, k: 1 });
+  const mapLod=mapView.k<.78?"far":mapView.k>1.55?"near":"mid";
   const mapPanDrag = useRef({ active: false, pointerId: -1, startX: 0, startY: 0, baseX: 0, baseY: 0 });
   const [isMapFullscreen, setIsMapFullscreen] = useState(false);
 
