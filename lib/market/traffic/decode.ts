@@ -14,7 +14,7 @@ export function decodeDirectSwap(tx:any,mint:string,pool:string,solUsd:number|nu
  const instructions=tx.transaction.message?.instructions??[];
  const candidates=instructions.filter((i:any)=>swapPrograms.some(p=>p.program===(i.programId??addresses[i.programIdIndex])));
  if(candidates.length!==1)return null;
- const ix=candidates[0],program=ix.programId??addresses[ix.programIdIndex],adapter=swapPrograms.find(p=>p.program===program)!;
+ const ix=candidates[0],program=ix.programId??addresses[ix.programIdIndex];
  // Reject extra program calls, including routing/multiple DEX legs.
  if(instructions.some((i:any)=>{const id=i.programId??addresses[i.programIdIndex];return id!==program&&!safePrograms.has(id);}))return null;
  // Top-level token transfers could contaminate net account deltas.
@@ -22,7 +22,8 @@ export function decodeDirectSwap(tx:any,mint:string,pool:string,solUsd:number|nu
  if(typeof ix.data!=='string')return null;
  const bytes=decodeInstructionBytes(ix.data);
  if(bytes.length<24)return null;
- if(!adapter.discriminators.some(d=>d.every((b,i)=>bytes[i]===b)))return null;
+ const adapter=swapPrograms.find(p=>p.program===program&&p.discriminators.some(d=>d.every((b,i)=>bytes[i]===b)));
+ if(!adapter)return null;
  const accounts=(ix.accounts??[]).map((a:any)=>typeof a==='number'?addresses[a]:a);
  if(accounts[adapter.poolIndex]!==pool)return null;
  const wallet=accounts[adapter.userIndex],walletKey=keys.find((k:any)=>k.pubkey===wallet);
