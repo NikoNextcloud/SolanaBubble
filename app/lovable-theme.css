@@ -1509,3 +1509,44 @@ button.market-section-row:hover{background:#35373b!important}
 @media(prefers-reduced-motion:reduce){
   .targeted-comet-layer{display:none!important}
 }
+
+
+/* Continuous realtime capital-flow comet system. */
+.targeted-comet-body{cursor:pointer;outline:none}
+.targeted-comet-hit{fill:transparent;stroke:transparent;pointer-events:all}
+.targeted-comet-label{cursor:pointer}
+.targeted-comet-in .targeted-comet-head{fill:#f4fff7;filter:drop-shadow(0 0 4px #70f2a8) drop-shadow(0 0 9px rgba(64,225,137,.62))}
+.targeted-comet-in .targeted-comet-tail{stroke:#62e89d}
+.targeted-comet-out .targeted-comet-head{fill:#fff1f2;filter:drop-shadow(0 0 4px #ff7c86) drop-shadow(0 0 9px rgba(255,91,108,.58))}
+.targeted-comet-out .targeted-comet-tail{stroke:#ff6978}
+.targeted-comet-out .targeted-comet-impact{stroke:#ff6575}
+.targeted-comet-routed .targeted-comet-head{stroke:#7ec8ff;stroke-width:1.5;filter:drop-shadow(0 0 5px #55b8ff) drop-shadow(0 0 10px rgba(81,176,255,.5))}
+.targeted-comet-routed .targeted-comet-tail{stroke:#6fbdf2;stroke-dasharray:4 3}
+.targeted-comet-whale .targeted-comet-head{stroke:#ffe28a;stroke-width:2.2;filter:drop-shadow(0 0 5px #ffe28a) drop-shadow(0 0 12px rgba(255,215,102,.72))}
+.targeted-comet-live .targeted-comet-head{animation:liveCometSpark .8s ease-in-out infinite alternate}
+@keyframes liveCometSpark{from{stroke-width:.5}to{stroke-width:2.2}}
+
+.capital-flow-halo{fill:none;stroke-width:1.5;vector-effect:non-scaling-stroke;transform-box:fill-box;transform-origin:center;animation:capitalHaloPulse 1.9s ease-in-out infinite}
+.capital-flow-halo-in{stroke:#5fe39b;filter:drop-shadow(0 0 7px rgba(70,222,143,.55))}
+.capital-flow-halo-out{stroke:#ff6676;stroke-dasharray:7 4;filter:drop-shadow(0 0 7px rgba(255,88,105,.5))}
+@keyframes capitalHaloPulse{0%,100%{transform:scale(.94)}50%{transform:scale(1.06)}}
+
+.targeted-comet-detail{pointer-events:all}
+.targeted-comet-detail>rect{fill:rgba(20,25,30,.96);stroke:#48535f;stroke-width:1;filter:drop-shadow(0 7px 18px rgba(0,0,0,.42))}
+.targeted-comet-detail text{fill:#cbd3dc;font-size:9px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.targeted-comet-detail .detail-title{fill:#f0f3f5;font-size:11px;font-weight:700}
+.targeted-comet-detail .detail-close{font-size:16px;fill:#aeb6bf;cursor:pointer}
+.targeted-comet-layer[data-comet-quality="reduced"] .targeted-comet-label{display:none}
+.targeted-comet-layer[data-comet-quality="reduced"] .capital-flow-halo{filter:none}
+
+.live-stream-ok,.live-stream-partial,.live-stream-wait{font-size:8px!important;letter-spacing:.08em}
+.live-stream-ok{color:#64dc9b!important}
+.live-stream-partial{color:#79bfff!important}
+.live-stream-wait{color:#9aa3ad!important}
+
+@media(max-width:700px){
+  .targeted-comet-detail{display:none}
+}
+@media(prefers-reduced-motion:reduce){
+  .capital-flow-halo,.targeted-comet-live .targeted-comet-head{animation:none!important}
+}
