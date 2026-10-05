@@ -87,3 +87,23 @@ grant execute on function public.finish_token_bootstrap(text,text) to service_ro
 -- This helper is service-only; production drift previously left it callable from exposed roles.
 revoke all on function public.database_size_bytes() from public,anon,authenticated;
 grant execute on function public.database_size_bytes() to service_role;
+
+-- Preserve evidence quality when broadening traffic coverage.
+alter table public.traffic_swaps add column if not exists evidence text not null default 'direct';
+alter table public.traffic_swaps drop constraint if exists traffic_swaps_evidence_check;
+alter table public.traffic_swaps add constraint traffic_swaps_evidence_check check(evidence in ('direct','routed'));
+
+create or replace function public.save_traffic_sample(p_mint text,p_at timestamptz,p_swaps jsonb,p_scan jsonb)
+returns void language plpgsql security invoker set search_path=public as $$
+begin
+ insert into public.traffic_swaps
+  (mint,pool,signature,wallet,side,token_amount,quote_mint,quote_amount,usd_value,block_at,observed_at,program,evidence)
+ select p_mint,s.pool,s.signature,s.wallet,s.side,s.token_amount,s.quote_mint,s.quote_amount,s.usd_value,s.block_at,p_at,s.program,coalesce(s.evidence,'direct')
+ from jsonb_to_recordset(p_swaps) as s(pool text,signature text,wallet text,side text,token_amount double precision,quote_mint text,quote_amount double precision,usd_value double precision,block_at timestamptz,program text,evidence text)
+ on conflict do nothing;
+ insert into public.traffic_scans values(p_mint,p_at,p_scan) on conflict do nothing;
+ delete from public.traffic_swaps where block_at<now()-interval '2 hours';
+ delete from public.traffic_scans where scanned_at<now()-interval '2 hours';
+end $$;
+revoke all on function public.save_traffic_sample(text,timestamptz,jsonb,jsonb) from public,anon,authenticated;
+grant execute on function public.save_traffic_sample(text,timestamptz,jsonb,jsonb) to service_role;
