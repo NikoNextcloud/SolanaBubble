@@ -60,8 +60,8 @@ export async function PUT(req: Request) {
       expires_at: expires.toISOString(),
     });
     if (error) throw error;
-    // Bounded opportunistic cleanup keeps abandoned anonymous sync rows from accumulating forever.
-    await db.from("watchlist_sync").delete().lt("expires_at", now.toISOString()).limit(100).catch?.(() => {});
+    // Opportunistic cleanup keeps abandoned anonymous sync rows from accumulating forever.
+    await db.from("watchlist_sync").delete().lt("expires_at", now.toISOString());
     return NextResponse.json({ ok: true, updatedAt: now.toISOString() }, { headers });
   } catch {
     return NextResponse.json({ error: "watchlist_sync_unavailable" }, { status: 503, headers });
