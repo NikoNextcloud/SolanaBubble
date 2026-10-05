@@ -204,6 +204,31 @@ try {
   assert.ok(Math.abs(mobileInitial.navBottom - 844) <= 2, "bottom navigation must stay inside the viewport");
   assert.ok(mobileInitial.navTop >= 760, "bottom navigation must remain thumb reachable");
 
+  const coordinateUi = await page.evaluate(`(() => ({
+    axisTitle: [...document.querySelectorAll(".lovable-coordinate-grid .axis-title")].map((el) => el.textContent).join(" · "),
+    fullscreenButton: Boolean(document.querySelector(".market-fullscreen-button")),
+    cometCount: document.querySelectorAll(".market-comet-runner").length,
+  }))()`);
+  assert.match(coordinateUi.axisTitle, /PRICE CHANGE · 1H/);
+  assert.match(coordinateUi.axisTitle, /MARKET CAP/);
+  assert.equal(coordinateUi.fullscreenButton, true, "map must expose a fullscreen control");
+  assert.ok(coordinateUi.cometCount >= 1, "active tokens must render Lovable-style moving comets");
+
+  const fixedBefore = await page.evaluate(`(() => {
+    const el = document.querySelector(".market-token-bubble");
+    const rect = el?.getBoundingClientRect();
+    return rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
+  })()`);
+  await sleep(700);
+  const fixedAfter = await page.evaluate(`(() => {
+    const el = document.querySelector(".market-token-bubble");
+    const rect = el?.getBoundingClientRect();
+    return rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
+  })()`);
+  assert.ok(fixedBefore && fixedAfter);
+  assert.ok(Math.abs(fixedAfter.x - fixedBefore.x) < 0.5, "planet x position must stay fixed on its data coordinate");
+  assert.ok(Math.abs(fixedAfter.y - fixedBefore.y) < 0.5, "planet y position must stay fixed on its data coordinate");
+
   const mobileMapBounds = await page.evaluate(`(() => {
     const map = document.querySelector(".market-map")?.getBoundingClientRect();
     const bubbles = [...document.querySelectorAll(".market-token-bubble")].map((el) => el.getBoundingClientRect());
@@ -370,7 +395,7 @@ try {
   assert.equal(desktopQuickInside, true, "desktop quick actions must stay within the map");
 
   await page.screenshot("/tmp/solanabubble-desktop.png");
-  console.log("Browser smoke passed: responsive layout, search/filter controls, bubble click, details, drag and pan.");
+  console.log("Browser smoke passed: Lovable coordinates, fixed pulsing planets, comets, fullscreen control, responsive interactions and pan/zoom.");
 } finally {
   page.ws.close();
 }
