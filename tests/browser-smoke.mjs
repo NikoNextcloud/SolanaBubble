@@ -338,10 +338,10 @@ try {
   await page.evaluate("document.querySelector('.capital-flow-toggle')?.click()");
   assert.equal(await page.evaluate("document.querySelector('.market-pan-surface')?.getAttribute('data-capital-flow-only')"), "true");
   await page.evaluate("document.querySelector('.capital-flow-toggle')?.click()");
-  await page.evaluate("document.querySelector('.market-zoom-controls button[aria-label="Zoom out"]')?.click()");
+  await page.evaluate("document.querySelector('.market-zoom-controls button[aria-label=\"Zoom out\"]')?.click()");
   await page.evaluate("document.querySelector('.market-zoom-controls button[aria-label="Zoom out"]')?.click()");
   assert.equal(await page.evaluate("document.querySelector('.market-pan-surface')?.getAttribute('data-lod')"), "far");
-  await page.evaluate("document.querySelector('.market-zoom-controls button[aria-label="Reset zoom"]')?.click()");
+  await page.evaluate("document.querySelector('.market-zoom-controls button[aria-label=\"Reset zoom\"]')?.click()");
   assert.ok(coordinateUi.hypeParticleCount >= 12, "high-hype planets must render a visible green particle halo");
   assert.ok(coordinateUi.anchorLinkCount >= 1, "decluttered coordinate clusters must keep a subtle anchor guide");
 
