@@ -202,6 +202,7 @@ export default function MarketMap() {
   const lastSimRender = useRef(0);
   const [tick, setTick] = useState(0);
   const [size, setSize] = useState({ w: 1000, h: 700 });
+  const sizeRef = useRef(size);
   const [tokens, setTokens] = useState<MarketToken[]>([]);
   const [flows, setFlows] = useState<Flow[]>([]);
   const [expansionFlows, setExpansionFlows] = useState<Flow[]>([]);
@@ -415,6 +416,10 @@ export default function MarketMap() {
   }, [tokens, xAxis]);
 
   useEffect(() => {
+    sizeRef.current = size;
+  }, [size]);
+
+  useEffect(() => {
     const el = wrap.current;
     if (!el) return;
     const ro = new ResizeObserver(([e]) => setSize({ w: e.contentRect.width, h: e.contentRect.height }));
@@ -432,7 +437,7 @@ export default function MarketMap() {
         if (now - lastSimRender.current < 34) return;
         const visibleNodes = [...nodeMap.current.values()];
         separateMapNodes(visibleNodes,95);
-        for (const node of visibleNodes) keepMarketNodeVisible(node, size.w, size.h);
+        for (const node of visibleNodes) keepMarketNodeVisible(node, sizeRef.current.w, sizeRef.current.h);
         lastSimRender.current = now;
         setTick((x) => x + 1);
       });
