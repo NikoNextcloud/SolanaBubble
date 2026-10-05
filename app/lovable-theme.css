@@ -1001,6 +1001,13 @@ button.market-section-row:hover{background:#35373b!important}
 .data-quality{font-size:11px;color:#a9afb7;margin:8px 0}.data-quality summary{font-weight:600;color:#dde0e6;cursor:pointer}.data-quality dl>div{margin:6px 0}.data-quality dd{margin:2px 0;overflow-wrap:anywhere}.data-quality p{line-height:1.6}.quality-recent{color:#66d39a}.quality-stale{color:#f5bd62}.quality-unknown{color:#a9afb7}
 .favorite-action{margin:10px 0}.favorite-action button,.watchlist-panel button,.saved-market-filters button{border:1px solid #39404a;background:#272d35;color:#e3e6eb;border-radius:6px;padding:7px 10px;cursor:pointer}.favorite-action button[aria-pressed=true]{color:#c5b8f4}.favorite-action small{display:block;color:#ee746c}
 .watchlist-open{display:flex;flex-direction:column;text-align:left;gap:5px;width:100%}.watchlist-open small{overflow-wrap:anywhere;font-size:10px}.watchlist-rules{font-size:12px}.watchlist-rules label{display:flex;align-items:center;gap:8px;margin:10px 0}.watchlist-rules input[type=number]{width:68px;margin-left:auto}.watchlist-rules small{line-height:1.5;color:#a9afb7}.personal-alert{display:block;text-align:left;width:100%;margin:8px 0}.personal-alert small{display:block;margin-top:5px;color:#a9afb7}.watchlist-panel .market-section-card{display:block}.data-quality small{line-height:1.5}
+.watchlist-sync{margin:10px 0 14px;border:1px solid #343b44;border-radius:7px;background:#24292f;padding:9px 11px;color:#cdd1d6;font-size:12px}
+.watchlist-sync summary{cursor:pointer;font-weight:700;color:#e1e4e8}
+.watchlist-sync-grid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px 10px;align-items:end;padding-top:11px}
+.watchlist-sync-grid label{display:grid;gap:5px;color:#a9afb7}
+.watchlist-sync-grid input{min-width:0;width:100%;background:#20252b;color:#e4e6e9;border:1px solid #39404a;border-radius:6px;padding:8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px}
+.watchlist-sync-actions{display:flex;gap:7px}
+@media(max-width:700px){.watchlist-sync-grid{grid-template-columns:1fr}.watchlist-sync-actions{width:100%}.watchlist-sync-actions button{flex:1}}
 
 /* Readable bubble direction, evidence and event badges. */
 .map-signal-status{font-size:10px;font-weight:600;paint-order:stroke;stroke:#171b20;stroke-width:3px;stroke-linejoin:round}.map-direction{font-size:15px;font-weight:700}
