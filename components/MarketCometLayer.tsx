@@ -41,6 +41,7 @@ type Comet = {
   delay: number;
   duration: number;
   path: string;
+  labelOffsetY: number;
 };
 
 const WSOL="So11111111111111111111111111111111111111112";
@@ -155,6 +156,7 @@ export default function MarketCometLayer({
         delay:(index%Math.max(1,maxComets))*.14,
         duration:1.85+(hash(stable)%85)/100,
         path:createPath(node,stable,index,direction),
+        labelOffsetY:((index%5)-2)*12,
       });
     };
 
@@ -182,6 +184,7 @@ export default function MarketCometLayer({
           amountLabel:`${direction==="in"?"+":"−"}${Math.abs(event.deltaTrades)} tx`,strength:.22,headRadius:4.2,
           delay:(index%Math.max(1,maxComets))*.16,duration:2.25+(hash(stable)%65)/100,
           path:createPath(node,stable,index,direction),
+          labelOffsetY:((index%5)-2)*12,
         });
       }
     }
@@ -236,8 +239,8 @@ export default function MarketCometLayer({
         </g>
 
         {quality==="full"&&<g className="targeted-comet-label" opacity="0" pointerEvents="all" onClick={e=>{e.stopPropagation();setSelected(comet);}}>
-          <rect x="9" y="-22" rx="4" width={Math.min(170,Math.max(84,comet.label.length*6.2))} height="18"/>
-          <text x="14" y="-9">{comet.label}</text>
+          <rect x="9" y={-22+comet.labelOffsetY} rx="4" width={Math.min(170,Math.max(84,comet.label.length*6.2))} height="18"/>
+          <text x="14" y={-9+comet.labelOffsetY}>{comet.label}</text>
           <animateMotion path={comet.path} dur={`${comet.duration}s`} begin={`${comet.delay}s`} rotate="0" fill="freeze"/>
           <animate attributeName="opacity" values="0;.88;.82;0" keyTimes="0;.16;.72;1" dur={`${comet.duration}s`} begin={`${comet.delay}s`} fill="freeze"/>
         </g>}
