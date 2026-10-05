@@ -22,7 +22,7 @@ const retryable=new Set<RpcFailure>(['rate_limited','forbidden','timeout','netwo
 export class PublicSolanaRpcProvider implements SolanaRpcProvider {
  private transactionQueue:Promise<unknown>=Promise.resolve();
  private readonly health=new Map<string,EndpointHealth>();
- constructor(private readonly endpoints:(method:string)=>string[]=rpcEndpoints){}
+ constructor(private readonly endpoints:(method:string)=>string|string[]=rpcEndpoints){}
  request<T>(method:string,params:unknown[]):Promise<T>{
   if(method!=='getTransaction')return this.sendWithFailover<T>(method,params);
   // All transaction consumers share one lane so fallback does not become an RPC flood.
@@ -30,7 +30,8 @@ export class PublicSolanaRpcProvider implements SolanaRpcProvider {
   this.transactionQueue=work;return work;
  }
  private async sendWithFailover<T>(method:string,params:unknown[]):Promise<T>{
-  const endpoints=this.endpoints(method);
+  const configured=this.endpoints(method);
+  const endpoints=Array.isArray(configured)?configured:[configured];
   let last:SolanaRpcError|undefined;
   for(const endpoint of endpoints){
    const state=this.health.get(endpoint);
