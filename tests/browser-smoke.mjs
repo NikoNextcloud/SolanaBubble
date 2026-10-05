@@ -124,10 +124,15 @@ const snapshot = {
   network: { swaps1h: 42 },
   alerts: [],
   hotPath: [],
-  recentEvents: [
-    { mint: TEST_MINT, symbol: "BTEST", kind: "buy-pressure", deltaTrades: 9, deltaVolume: 12000, hypeDelta: 5, at: new Date().toISOString() },
-    { mint: "5OverlapHype111111111111111111111111111111111", symbol: "HYPE", kind: "surge", deltaTrades: 14, deltaVolume: 22000, hypeDelta: 9, at: new Date().toISOString() },
-  ],
+  recentEvents: Array.from({ length: 18 }, (_, i) => ({
+    mint: i % 2 === 0 ? TEST_MINT : "5OverlapHype111111111111111111111111111111111",
+    symbol: i % 2 === 0 ? "BTEST" : "HYPE",
+    kind: i % 3 === 0 ? "surge" : "buy-pressure",
+    deltaTrades: 9 + i,
+    deltaVolume: 12000 + i * 1300,
+    hypeDelta: 5 + (i % 5),
+    at: new Date(Date.now() - i * 1000).toISOString(),
+  })),
   flows: [],
   tokens: [
     {
@@ -157,6 +162,41 @@ const snapshot = {
       opportunityScore: 81,
       opportunityCoverage: "7/8 signal families observed",
       opportunityFactors: [{ label: "Hype", points: 14, evidence: "Hype 72/100" }],
+      trafficSample: {
+        observedAt: new Date().toISOString(),
+        pool: "BrowserPair111",
+        pools: ["BrowserPair111"],
+        coverage: "partial",
+        evidence: "usable",
+        failures: {},
+        scans: 2,
+        listedSignatures: 18,
+        parsedTransactions: 18,
+        recognizedTransactions: 18,
+        directRecognizedTransactions: 18,
+        routedRecognizedTransactions: 0,
+        unavailableTransactions: 0,
+        unrecognizedTransactions: 0,
+        limitedScans: 0,
+        rowLimitReached: false,
+        windows: {
+          "15": { swaps: 18, buys: 18, sells: 0, buyers: 18, sellers: 0, netUsd: 18900, quickResellers: 0, newBuyers: 18, top3BuyerSharePct: 31 },
+          "30": { swaps: 18, buys: 18, sells: 0, buyers: 18, sellers: 0, netUsd: 18900, quickResellers: 0, newBuyers: 18, top3BuyerSharePct: 31 },
+          "60": { swaps: 18, buys: 18, sells: 0, buyers: 18, sellers: 0, netUsd: 18900, quickResellers: 0, newBuyers: 18, top3BuyerSharePct: 31 },
+        },
+        recentBuys: Array.from({ length: 18 }, (_, i) => ({
+          signature: `browser-buy-${i}`,
+          wallet: `7xGBrowserWallet${String(i).padStart(2, "0")}4b`,
+          usdValue: 700 + i * 125,
+          quoteMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          quoteAmount: 700 + i * 125,
+          blockAt: new Date(Date.now() - i * 1000).toISOString(),
+          pool: "BrowserPair111",
+          evidence: "direct",
+          program: "Browser DEX",
+        })),
+        note: "browser fixture",
+      },
     },
     {
       mint: "9AbCdEfGh12YttLkHDoV7WJpV8R1F5r4PpWn2YxQ3Zs6",
@@ -259,7 +299,7 @@ try {
   assert.equal(coordinateUi.fullscreenButton, true, "map must expose a fullscreen control");
   assert.equal(coordinateUi.fullscreenVisible, true, "fullscreen control must be visibly reachable");
   assert.equal(coordinateUi.fullscreenInsideMap, true, "fullscreen control must stay inside the map");
-  assert.ok(coordinateUi.cometCount >= 2 && coordinateUi.cometCount <= 4, "map must keep 2-4 targeted capital comets active");
+  assert.equal(coordinateUi.cometCount, 10, "mobile map must cap targeted capital comets at 10");
   assert.ok(coordinateUi.hypeParticleCount >= 12, "high-hype planets must render a visible green particle halo");
   assert.ok(coordinateUi.anchorLinkCount >= 1, "decluttered coordinate clusters must keep a subtle anchor guide");
 
@@ -449,6 +489,8 @@ try {
   assert.equal(desktop.sideVisible, true, "desktop market intelligence rail must remain visible");
   assert.equal(desktop.mobileSearchHidden, true, "mobile search toggle must stay hidden on desktop");
   assert.ok(desktop.docWidth <= desktop.width + 1, "desktop layout must not overflow horizontally");
+  const desktopCometCount = await page.evaluate("document.querySelectorAll('.targeted-comet').length");
+  assert.equal(desktopCometCount, 15, "desktop map must cap targeted capital comets at 15");
 
   const desktopBubble = await page.evaluate(`(() => {
     const el = document.querySelector('.market-token-bubble[aria-label^="BTEST:"]');
@@ -466,7 +508,7 @@ try {
   assert.equal(desktopQuickInside, true, "desktop quick actions must stay within the map");
 
   await page.screenshot("/tmp/solanabubble-desktop.png");
-  console.log("Browser smoke passed: targeted comets, Opportunity Score, real single-click FoMo/GmGn, double-click Holder Map, spacing and fullscreen.");
+  console.log("Browser smoke passed: 10 mobile / 15 desktop targeted comets, Opportunity Score, real single-click FoMo/GmGn, double-click Holder Map, spacing and fullscreen.");
 } finally {
   page.ws.close();
 }

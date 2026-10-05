@@ -880,6 +880,7 @@ export default function MarketMap() {
               nodes={renderedNodes.filter((n) => !n.isCore)}
               events={recentEvents}
               active={animateSignals}
+              maxComets={size.w <= 700 ? 10 : 15}
             />}
             {renderedNodes.map((n, i) => {
               const signal=bubbleSignal(n,signalNow??NaN);
