@@ -326,7 +326,7 @@ try {
   })()`);
   assert.ok(bubble, "test bubble must have a browser position");
 
-  await page.evaluate("document.querySelector('.market-token-bubble')?.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }))");
+  await page.evaluate("document.querySelector('.market-token-bubble[aria-label^=\"BTEST:\"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }))");
   await page.waitFor("Boolean(document.querySelector('.token-quick-actions-overlay'))");
   const quick = await page.evaluate(`(() => {
     const panel = document.querySelector(".token-quick-actions-overlay");
@@ -409,7 +409,7 @@ try {
       }
       return originalFetch(input, init);
     };
-    const el = document.querySelector(".market-token-bubble");
+    const el = document.querySelector(".market-token-bubble[aria-label^=\"BTEST:\"]");
     el?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, detail: 2 }));
   })()`);
   await page.waitFor(`location.pathname === "/token/${TEST_MINT}"`);
@@ -444,7 +444,7 @@ try {
     return rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
   })()`);
   assert.ok(desktopBubble);
-  await page.evaluate("document.querySelector('.market-token-bubble')?.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }))");
+  await page.evaluate("document.querySelector('.market-token-bubble[aria-label^=\"BTEST:\"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }))");
   await page.waitFor("Boolean(document.querySelector('.token-quick-actions-overlay'))");
   const desktopQuickInside = await page.evaluate(`(() => {
     const rect = document.querySelector(".token-quick-actions-overlay")?.getBoundingClientRect();
