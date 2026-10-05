@@ -7,7 +7,11 @@ export type TrafficConfidenceLevel='reliable'|'partial'|'insufficient';
 export function trafficConfidence(sample:TrafficSummary|null|undefined,now=Date.now()) {
   const fresh=sample&&observationQuality(sample.observedAt,now).status==='recent';
   if(!sample||!fresh)return {level:'insufficient' as const,label:'Недостатъчни данни'};
-  if(sample.evidence==='usable'&&sample.recognizedTransactions>=5)return {level:'reliable' as const,label:'Надеждна извадка'};
+  if(sample.evidence==='usable'&&sample.recognizedTransactions>=5){
+    const direct=sample.directRecognizedTransactions??sample.recognizedTransactions;
+    if(direct>=3)return {level:'reliable' as const,label:'Надеждна извадка'};
+    return {level:'partial' as const,label:'Маршрутна извадка'};
+  }
   if(sample.evidence==='degraded')return {level:'partial' as const,label:'Частична извадка'};
   return {level:'insufficient' as const,label:'Недостатъчни данни'};
 }
