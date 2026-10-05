@@ -232,6 +232,8 @@ export default function MarketMap() {
 
   const beginMapPan = (e: React.PointerEvent<SVGSVGElement>) => {
     if (e.button !== 0) return;
+    const target = e.target as Element;
+    if (target.closest?.(".market-node-group")) return;
     setQuickActionMint(null);
     setMobileDetailOpen(false);
     mapPanDrag.current = {
@@ -981,6 +983,7 @@ export default function MarketMap() {
                   tabIndex={n.isCore?-1:0}
                   role="button"
                   aria-label={`${n.symbol||n.name||n.mint}: ${signal.label}; Traffic confidence: ${confidence.label}${signal.liquidityDrop?', Liquidity ↓':''}${signal.whaleLabel?', '+signal.whaleLabel:''}`}
+                  onPointerDown={(e) => e.stopPropagation()}
                   onKeyDown={e=>{if(!n.isCore&&(e.key==='Enter'||e.key===' ')){e.preventDefault();setSelected(n);setQuickActionMint(n.mint);expandToken(n);}}}
                   onClick={() => {
                     if (!n.isCore) {

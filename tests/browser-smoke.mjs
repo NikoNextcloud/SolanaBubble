@@ -96,6 +96,12 @@ async function openCdpPage() {
     await send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount });
   }
 
+  async function doubleClickAt(x, y) {
+    await clickAt(x, y, 1);
+    await sleep(90);
+    await clickAt(x, y, 2);
+  }
+
   async function drag(x1, y1, x2, y2) {
     await send("Input.dispatchMouseEvent", { type: "mousePressed", x: x1, y: y1, button: "left", clickCount: 1 });
     await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: x1 + (x2 - x1) * 0.45, y: y1 + (y2 - y1) * 0.45, button: "left", buttons: 1 });
@@ -108,7 +114,7 @@ async function openCdpPage() {
     fs.writeFileSync(path, Buffer.from(result.data, "base64"));
   }
 
-  return { ws, send, evaluate, setViewport, waitFor, navigate, clickAt, drag, screenshot };
+  return { ws, send, evaluate, setViewport, waitFor, navigate, clickAt, doubleClickAt, drag, screenshot };
 }
 
 const snapshot = {
@@ -314,19 +320,13 @@ try {
   await page.evaluate("document.querySelector('.mobile-tools-toggle')?.click()");
 
   const bubble = await page.evaluate(`(() => {
-    const els = [...document.querySelectorAll(".market-token-bubble")];
-    const picked = els.find((el) => {
-      const rect = el.getBoundingClientRect();
-      const x = rect.left + rect.width / 2;
-      const y = rect.top + rect.height / 2;
-      return x >= 8 && x <= innerWidth - 8 && y >= 90 && y <= innerHeight - 90;
-    }) || els[0];
-    const rect = picked?.getBoundingClientRect();
+    const el = document.querySelector('.market-token-bubble[aria-label^="BTEST:"]');
+    const rect = el?.getBoundingClientRect();
     return rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
   })()`);
-  assert.ok(bubble, "test bubble must have a browser position");
+  assert.ok(bubble, "BTEST bubble must have a browser position");
 
-  await page.evaluate("document.querySelector('.market-token-bubble[aria-label^=\"BTEST:\"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }))");
+  await page.clickAt(bubble.x, bubble.y);
   await page.waitFor("Boolean(document.querySelector('.token-quick-actions-overlay'))");
   const quick = await page.evaluate(`(() => {
     const panel = document.querySelector(".token-quick-actions-overlay");
@@ -409,9 +409,14 @@ try {
       }
       return originalFetch(input, init);
     };
-    const el = document.querySelector('.market-token-bubble[aria-label^="BTEST:"]');
-    el?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, detail: 2 }));
   })()`);
+  const doubleBubble = await page.evaluate(`(() => {
+    const el = document.querySelector('.market-token-bubble[aria-label^="BTEST:"]');
+    const rect = el?.getBoundingClientRect();
+    return rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
+  })()`);
+  assert.ok(doubleBubble, "BTEST bubble must remain clickable after pan");
+  await page.doubleClickAt(doubleBubble.x, doubleBubble.y);
   await page.waitFor(`location.pathname === "/token/${TEST_MINT}"`);
   assert.equal(await page.evaluate("location.pathname"), `/token/${TEST_MINT}`, "double click must open the Holder Map route");
 
@@ -439,12 +444,12 @@ try {
   assert.ok(desktop.docWidth <= desktop.width + 1, "desktop layout must not overflow horizontally");
 
   const desktopBubble = await page.evaluate(`(() => {
-    const el = document.querySelector(".market-token-bubble");
+    const el = document.querySelector('.market-token-bubble[aria-label^="BTEST:"]');
     const rect = el?.getBoundingClientRect();
     return rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
   })()`);
   assert.ok(desktopBubble);
-  await page.evaluate("document.querySelector('.market-token-bubble[aria-label^=\"BTEST:\"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }))");
+  await page.clickAt(desktopBubble.x, desktopBubble.y);
   await page.waitFor("Boolean(document.querySelector('.token-quick-actions-overlay'))");
   const desktopQuickInside = await page.evaluate(`(() => {
     const rect = document.querySelector(".token-quick-actions-overlay")?.getBoundingClientRect();
@@ -454,7 +459,7 @@ try {
   assert.equal(desktopQuickInside, true, "desktop quick actions must stay within the map");
 
   await page.screenshot("/tmp/solanabubble-desktop.png");
-  console.log("Browser smoke passed: Lovable coordinates, decluttered planets, green high-hype particles, comets, fullscreen and responsive interactions.");
+  console.log("Browser smoke passed: real single-click FoMo/GmGn actions, real double-click Holder Map, pan/zoom, spacing, hype particles and fullscreen.");
 } finally {
   page.ws.close();
 }
