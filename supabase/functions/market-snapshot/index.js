@@ -515,7 +515,7 @@ export const percentChange = (value, previous) => previous > 0 ? (value - previo
 export function computeOpportunityScore(t) {
     const factors = [];
     const add = (label, points, evidence) => factors.push({ label, points: Math.round(points), evidence });
-    const hype = Math.max(0, Math.min(100, Number(t.hypeScore ?? 0)));
+    const hype = finite(t.hypeScore) ? Math.max(0, Math.min(100, t.hypeScore)) : 0;
     add('Hype', hype * .20, `Hype ${Math.round(hype)}/100`);
     if (finite(t.hypeVelocity))
         add('Hype velocity', Math.max(-8, Math.min(10, t.hypeVelocity * 2.4)), `${t.hypeVelocity.toFixed(2)} H/min`);
