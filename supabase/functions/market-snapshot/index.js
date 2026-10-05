@@ -44,7 +44,8 @@ export class PublicSolanaRpcProvider {
         return work;
     }
     async sendWithFailover(method, params) {
-        const endpoints = this.endpoints(method);
+        const configured = this.endpoints(method);
+        const endpoints = Array.isArray(configured) ? configured : [configured];
         let last;
         for (const endpoint of endpoints) {
             const state = this.health.get(endpoint);
