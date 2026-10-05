@@ -243,6 +243,15 @@ export default function MarketMap() {
     }
     return [...merged.values()].sort((a,b)=>Date.parse(b.block_at)-Date.parse(a.block_at)).slice(0,80);
   },[solanaLive.events,realtime.events]);
+  const liveLatencySeconds=liveMarketEvents[0]?Math.max(0,(Date.now()-Date.parse(liveMarketEvents[0].block_at))/1000):null;
+  const liveLatency=liveLatencySeconds==null
+    ? {label:"Snapshot",cls:"snapshot"}
+    : liveLatencySeconds<5
+      ? {label:`Live · ${liveLatencySeconds.toFixed(1)}s`,cls:"live"}
+      : liveLatencySeconds<30
+        ? {label:`Delayed · ${Math.round(liveLatencySeconds)}s`,cls:"delayed"}
+        : {label:`Snapshot · ${Math.round(liveLatencySeconds/60)}m`,cls:"snapshot"};
+  const mapLod=mapView.k<.78?"far":mapView.k>1.55?"near":"mid";
 
   useEffect(()=>{
     const first=liveMarketEvents[0];if(!first)return;
@@ -257,6 +266,7 @@ export default function MarketMap() {
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [showTrafficOverlay, setShowTrafficOverlay] = useState(true);
+  const [capitalFlowOnly,setCapitalFlowOnly]=useState(false);
   const [autoGraph, setAutoGraph] = useState(true);
   const lastAutoExpand = useRef(0);
   const [autoPaused, setAutoPaused] = useState(false);
@@ -738,6 +748,14 @@ export default function MarketMap() {
           <div className="market-toolbar-actions">
 
             {viewMode === "map" && <span className="market-coordinate-mode">Market cap × Price 1h</span>}
+            {viewMode === "map" && <span className={`market-live-latency latency-${liveLatency.cls}`}>{liveLatency.label}</span>}
+            {viewMode === "map" && <button
+              type="button"
+              className={capitalFlowOnly?"capital-flow-toggle active":"capital-flow-toggle"}
+              aria-pressed={capitalFlowOnly}
+              onClick={()=>setCapitalFlowOnly(v=>!v)}
+              title="Показва само основните capital-flow сигнали, BUY/SELL комети и traffic confidence."
+            >{capitalFlowOnly?"◎ Capital Flow":"○ Capital Flow"}</button>}
             <button
               className={`go-live-control ${streamLive === true ? "is-live" : ""}`}
               onClick={() => changeLive(streamLive !== true)}
@@ -815,7 +833,9 @@ export default function MarketMap() {
               </button>;
             })}
           </div> : <svg
-            className={`market-pan-surface ${animateSignals?"signals-animated":"signals-paused"} ${mapPanDrag.current.active ? "is-panning" : ""}`}
+            className={`market-pan-surface ${animateSignals?"signals-animated":"signals-paused"} ${mapPanDrag.current.active ? "is-panning" : ""} ${capitalFlowOnly?"capital-flow-only":""} lod-${mapLod}`}
+            data-lod={mapLod}
+            data-capital-flow-only={capitalFlowOnly?"true":"false"}
             onWheel={handleMapWheel}
             onPointerDown={beginMapPan}
             onPointerMove={moveMapPan}
@@ -1020,7 +1040,7 @@ export default function MarketMap() {
                   pointerEvents="none"
                 />}
                 
-                {viewMode === "map" && !n.isCore && <g className="reference-node-label" pointerEvents="none">
+                {viewMode === "map" && !n.isCore && <g className="reference-node-label" data-lod={mapLod} pointerEvents="none">
                   <text x="0" y={-n.r - 32} textAnchor="middle" className="reference-token-name">{(n.symbol||n.name||n.mint.slice(0,5)).slice(0,12)} <tspan className={`map-direction direction-${signal.state}`}>{signal.arrow}</tspan></text>
                   <text x="0" y={-n.r - 18} textAnchor="middle" className={`map-signal-status direction-${signal.state}`}>{signal.label}</text>
                   <rect x="-42" y={n.r + 8} width="84" height="15" rx="3" className="reference-pool-chip"/>
@@ -1073,7 +1093,7 @@ export default function MarketMap() {
           </div>}
           <details className="market-legend map-signal-legend" open>
             <summary>Как да четеш балоните · оценка</summary>
-            <div><span><i className="market-buy-dot"/>Зелено: покупки по брой</span><span><i className="market-sell-dot"/>Червено: продажби по брой</span><span>↑ Засилва се · → Баланс · ↓ Отслабва · ? Unknown</span><span>Размер = Hype · Яркост = Velocity · Пулс = Acceleration</span><span>Контур = Holder growth · Жълт пръстен = Risk</span><span className="traffic-confidence-legend"><i className="reliable"/>Traffic: надежден <i className="partial"/>частичен <i className="insufficient"/>недостатъчен</span><span>⚠ Liquidity ↓: рязък спад · Whale +/−: праг 1% supply</span><small>Rolling 1h counts + Hype; “sample” = разпознати swaps от един pool (непълна извадка), цветът следва net USD в нея. Не общ пазарен капитал. Посочи балон за причините; Risk остава отделен. Whale значките изчезват след 5m.</small></div>
+            <div><span><i className="market-buy-dot"/>Зелено: покупки по брой</span><span><i className="market-sell-dot"/>Червено: продажби по брой</span><span>↑ Засилва се · → Баланс · ↓ Отслабва · ? Unknown</span><span>Размер = Hype · Яркост = Velocity · Пулс = Acceleration</span><span>Контур = Holder growth · Жълт пръстен = Risk</span><span className="traffic-confidence-legend"><i className="reliable"/>Traffic: надежден <i className="partial"/>частичен <i className="insufficient"/>недостатъчен</span><span className="comet-trust-legend"><i className="direct"/>Плътна комета = verified direct <i className="routed"/>Cyan контур = routed <i className="aggregate"/>Бледа = aggregate</span><span>⚠ Liquidity ↓: рязък спад · Whale +/−: праг 1% supply</span><small>LOD: далечен zoom показва основните сигнали; приближаването добавя статус, Hype и събития. Traffic е partial multi-pool sample, не целият пазар. Risk остава отделен.</small></div>
           </details>
         </div>
 
