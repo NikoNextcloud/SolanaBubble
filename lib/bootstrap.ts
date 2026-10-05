@@ -62,7 +62,7 @@ export async function bootstrapToken(mint: string): Promise<BootstrapResult> {
     await db.rpc("finish_token_bootstrap", { p_mint: mint, p_error: null });
     return { holders: rows.length };
   } catch (error) {
-    await db.rpc("finish_token_bootstrap", { p_mint: mint, p_error: "bootstrap_failed" }).catch(() => {});
+    try { await db.rpc("finish_token_bootstrap", { p_mint: mint, p_error: "bootstrap_failed" }); } catch {}
     throw error;
   }
 }
