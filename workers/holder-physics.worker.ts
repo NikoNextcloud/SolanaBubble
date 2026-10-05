@@ -24,8 +24,8 @@ function configure(){
  simulation.nodes([...nodes.values()]);
  simulation.force("center",forceCenter(width/2,height/2).strength(.025));
  simulation.force("charge",forceManyBody<WorkerNode>().strength(d=>d.group!=null?-10:-34));
- simulation.force("x",forceX<WorkerNode>(d=>d.group!=null?(centers.get(d.group)?.x??width/2):width/2).strength(d=>d.group!=null?.2:.014));
- simulation.force("y",forceY<WorkerNode>(d=>d.group!=null?(centers.get(d.group)?.y??height/2):height/2).strength(d=>d.group!=null?.2:.014));
+ simulation.force("x",forceX<WorkerNode>(d=>d.group!=null?(centers.get(d.group)?.x??width/2):width/2).strength(d=>d.group != null ? .2 : .014));
+ simulation.force("y",forceY<WorkerNode>(d=>d.group!=null?(centers.get(d.group)?.y??height/2):height/2).strength(d=>d.group != null ? .2 : .014));
  simulation.force("collide",forceCollide<WorkerNode>(d=>d.r+(d.group!=null?7:11)).strength(.97));
  simulation.force("link",forceLink<WorkerNode,any>(links).id(d=>d.wallet)
    .distance((l:any)=>l.kind==="funder"?46:l.kind==="direct-transfer"?50:l.kind==="timing"?58:String(l.kind).startsWith("flow-")?68:60)
