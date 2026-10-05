@@ -45,3 +45,12 @@ test('out-of-order cached observations cannot rearm a newer alert',()=>{
   const older=evaluatePersonalAlerts(first,[{...token,hypeScore:60,marketObservedAt:'2026-10-02T06:59:00Z'}],now);
   assert.equal(older,first);assert.equal(older.active[`${mint}:hypeScore`],true);
 });
+
+test('Opportunity Score can trigger and rearm a personal threshold',()=>{
+  const s={...emptyWatchState(),entries:[{mint,rules:{opportunityScore:75}}]};
+  const high={...token,opportunityScore:82};
+  const first=evaluatePersonalAlerts(s,[high],now);assert.equal(first.alerts[0]?.key,'opportunityScore');
+  const low=evaluatePersonalAlerts(first,[{...high,opportunityScore:60,marketObservedAt:'2026-10-02T07:01:00Z'}],now+60000);
+  const again=evaluatePersonalAlerts(low,[{...high,marketObservedAt:'2026-10-02T07:02:00Z'}],now+120000);
+  assert.equal(again.alerts.filter(a=>a.key==='opportunityScore').length,2);
+});
