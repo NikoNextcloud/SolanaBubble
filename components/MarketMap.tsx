@@ -17,6 +17,9 @@ import { positionQuickActions } from "@/lib/market/quick-actions";
 import { MARKET_X_TICKS, MARKET_Y_TICKS, applyMarketViewport, marketCoordinateBase } from "@/lib/market/coordinates";
 import { declutterMarketNodes } from "@/lib/market/declutter";
 import MarketCometLayer from "./MarketCometLayer";
+import {useLiveMarketEvents} from "./useLiveMarketEvents";
+import {useSolanaLiveSwaps,type LivePoolTarget} from "./useSolanaLiveSwaps";
+import type {LiveMarketEvent} from "@/lib/market/live-events";
 
 type MarketToken = Intelligence & {
   marketObservedAt?:string|null;
@@ -25,6 +28,7 @@ type MarketToken = Intelligence & {
   symbol: string | null;
   dex: string | null;
   pairAddress: string | null;
+  trafficPools?: { pairAddress: string; dex?: string | null; liquidityUsd?: number; quoteMint?: string | null; quoteSymbol?: string | null }[];
   priceUsd: number;
   marketCap: number;
   liquidityUsd: number;
@@ -197,6 +201,7 @@ export default function MarketMap() {
   const [snapshotStale, setSnapshotStale] = useState(false);
   const [recentEvents, setRecentEvents] = useState<MarketEvent[]>([]);
   const [activityPulse, setActivityPulse] = useState<string[]>([]);
+  const lastLivePulse = useRef("");
   const previousActivity = useRef(new Map<string, number>());
   const [updated, setUpdated] = useState<string | null>(null);
   useEffect(()=>{if(tokens.length)watch.evaluate(tokens.map(t=>({...t,marketObservedAt:updated})));},[tokens,updated,watch.evaluate]);
@@ -214,6 +219,39 @@ export default function MarketMap() {
   },[]);
   const animateSignals=streamLive&&pulsesEnabled&&!reducedMotion;
   function togglePulses(){setPulsesEnabled(v=>{try{localStorage.setItem('solanabubble:map-pulses',v?'off':'on');}catch{}return !v;});}
+
+  const liveTargets=useMemo<LivePoolTarget[]>(()=>{
+    const ranked=[...tokens].sort((a,b)=>(Number(b.hypeScore??0)+Math.log10(Math.max(1,b.volume1h))*8)-(Number(a.hypeScore??0)+Math.log10(Math.max(1,a.volume1h))*8));
+    const picked:LivePoolTarget[]=[];const seen=new Set<string>();
+    for(const token of ranked){
+      const pools=(token.trafficPools?.length?token.trafficPools.map(p=>p.pairAddress):token.pairAddress?[token.pairAddress]:[]).filter(Boolean);
+      for(const pool of pools.slice(0,2)){
+        if(seen.has(pool))continue;seen.add(pool);picked.push({mint:token.mint,pool});
+        if(picked.length>=4)return picked;
+      }
+    }
+    return picked;
+  },[tokens]);
+  const realtime=useLiveMarketEvents(streamLive&&tabVisible);
+  const solanaLive=useSolanaLiveSwaps(liveTargets,streamLive&&tabVisible);
+  const liveMarketEvents=useMemo<LiveMarketEvent[]>(()=>{
+    const merged=new Map<string,LiveMarketEvent>();
+    for(const event of [...solanaLive.events,...realtime.events]){
+      const key=`${event.mint}:${event.signature}:${event.wallet}`;
+      if(!merged.has(key)||event.whale)merged.set(key,event);
+    }
+    return [...merged.values()].sort((a,b)=>Date.parse(b.block_at)-Date.parse(a.block_at)).slice(0,80);
+  },[solanaLive.events,realtime.events]);
+
+  useEffect(()=>{
+    const first=liveMarketEvents[0];if(!first)return;
+    const key=`${first.mint}:${first.signature}`;
+    if(key===lastLivePulse.current)return;
+    lastLivePulse.current=key;
+    setActivityPulse(current=>[...new Set([first.mint,...current])].slice(0,24));
+    const timer=window.setTimeout(()=>setActivityPulse(current=>current.filter(m=>m!==first.mint)),1500);
+    return()=>window.clearTimeout(timer);
+  },[liveMarketEvents]);
   const [viewMode, setViewMode] = useState<MarketViewMode>("map");
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
@@ -879,6 +917,7 @@ export default function MarketMap() {
             {viewMode === "map" && <MarketCometLayer
               nodes={renderedNodes.filter((n) => !n.isCore)}
               events={recentEvents}
+              liveEvents={liveMarketEvents}
               active={animateSignals}
               maxComets={size.w <= 700 ? 10 : 15}
             />}
@@ -1066,21 +1105,32 @@ export default function MarketMap() {
                 </button>;
               })}
             </div>
-            {recentEvents.length > 0 && <div className="market-activity-feed reference-side-card">
+            {(liveMarketEvents.length > 0 || recentEvents.length > 0) && <div className="market-activity-feed reference-side-card">
               <div className="market-hot-title">
                 <strong>Live activity</strong>
-                <span>Δ от последния snapshot</span>
+                <span className={solanaLive.status==="live"?"live-stream-ok":realtime.status==="live"?"live-stream-partial":"live-stream-wait"}>
+                  {solanaLive.status==="live"?"SOLANA WS":realtime.status==="live"?"REALTIME":"SNAPSHOT"}
+                </span>
               </div>
-              {recentEvents.slice(0, 6).map((event, i) => {
-                const node = nodeMap.current.get(event.mint);
-                const positive = event.kind === "surge" || event.kind === "buy-pressure";
-                return <button key={`${event.mint}:${event.kind}:${i}`} onClick={() => {
-                  if (node) { setSelected(node); expandToken(node); }
-                }}>
-                  <span className={positive ? "event-dot in" : "event-dot out"} />
-                  <strong>{node?.symbol || event.symbol || event.mint.slice(0, 6)}</strong>
-                  <small>{event.deltaTrades >= 0 ? "+" : ""}{event.deltaTrades} tx</small>
-                  <b className={event.hypeDelta >= 0 ? "in" : "out"}>{event.hypeDelta >= 0 ? "+" : ""}{event.hypeDelta} H</b>
+              {liveMarketEvents.slice(0,6).map((event) => {
+                const node=nodeMap.current.get(event.mint);
+                const positive=event.side==="buy";
+                const amount=event.usd_value!=null?fmtUsd(event.usd_value):event.quote_mint==="So11111111111111111111111111111111111111112"?`${event.quote_amount.toFixed(2)} SOL`:event.quote_amount.toFixed(2);
+                return <button key={`${event.mint}:${event.signature}:${event.wallet}`} onClick={()=>{if(node){setSelected(node);expandToken(node);}}}>
+                  <span className={positive?"event-dot in":"event-dot out"} />
+                  <strong>{node?.symbol||event.mint.slice(0,6)}</strong>
+                  <small>{positive?"BUY":"SELL"} · {event.whale?"Whale · ":""}{event.wallet.slice(0,4)}…{event.wallet.slice(-4)}</small>
+                  <b className={positive?"in":"out"}>{positive?"+":"−"}{amount}</b>
+                </button>;
+              })}
+              {liveMarketEvents.length===0&&recentEvents.slice(0,6).map((event,i)=>{
+                const node=nodeMap.current.get(event.mint);
+                const positive=event.kind==="surge"||event.kind==="buy-pressure";
+                return <button key={`${event.mint}:${event.kind}:${i}`} onClick={()=>{if(node){setSelected(node);expandToken(node);}}}>
+                  <span className={positive?"event-dot in":"event-dot out"} />
+                  <strong>{node?.symbol||event.symbol||event.mint.slice(0,6)}</strong>
+                  <small>{event.deltaTrades>=0?"+":""}{event.deltaTrades} tx</small>
+                  <b className={event.hypeDelta>=0?"in":"out"}>{event.hypeDelta>=0?"+":""}{event.hypeDelta} H</b>
                 </button>;
               })}
             </div>}
