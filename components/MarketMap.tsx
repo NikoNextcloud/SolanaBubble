@@ -92,6 +92,19 @@ type Flow = {
   sharedWallets?: number;
 };
 
+function keepMarketNodeVisible(node: Node, width: number, height: number) {
+  if (node.isCore || width <= 0 || height <= 0) return;
+  const side = Math.min(width / 2, Math.max(72, node.r + 30));
+  const top = Math.min(height / 2, Math.max(72, node.r + 48));
+  const bottom = Math.min(height / 2, Math.max(72, node.r + 48));
+  const x = Math.max(side, Math.min(width - side, node.x));
+  const y = Math.max(top, Math.min(height - bottom, node.y));
+  node.x = x;
+  node.y = y;
+  if (node.fx != null) node.fx = x;
+  if (node.fy != null) node.fy = y;
+}
+
 const fmtUsd = (n: number) => {
   if (!Number.isFinite(n)) return "—";
   if (Math.abs(n) >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
@@ -332,6 +345,7 @@ export default function MarketMap() {
     n.fy = (n.fy ?? n.y) + dy;
     n.x = n.fx;
     n.y = n.fy;
+    keepMarketNodeVisible(n, size.w, size.h);
     sim.current?.alpha(0.72).restart();
     setTick((x) => x + 1);
   };
@@ -416,7 +430,9 @@ export default function MarketMap() {
       .on("tick", () => {
         const now = performance.now();
         if (now - lastSimRender.current < 34) return;
-        separateMapNodes([...nodeMap.current.values()],95);
+        const visibleNodes = [...nodeMap.current.values()];
+        separateMapNodes(visibleNodes,95);
+        for (const node of visibleNodes) keepMarketNodeVisible(node, size.w, size.h);
         lastSimRender.current = now;
         setTick((x) => x + 1);
       });
