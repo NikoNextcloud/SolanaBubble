@@ -207,6 +207,7 @@ export default function MarketMap() {
   useEffect(()=>{if(tokens.length)watch.evaluate(tokens.map(t=>({...t,marketObservedAt:updated})));},[tokens,updated,watch.evaluate]);
   const [networkSwaps1h, setNetworkSwaps1h] = useState(0);
   const [streamLive, setStreamLive] = useState(true);
+  const [tabVisible, setTabVisible] = useState(true);
   const [pulsesEnabled,setPulsesEnabled]=useState(true);
   const [reducedMotion,setReducedMotion]=useState(false);
   const [signalNow,setSignalNow]=useState<number|null>(null);
@@ -258,7 +259,6 @@ export default function MarketMap() {
   const [showTrafficOverlay, setShowTrafficOverlay] = useState(true);
   const [autoGraph, setAutoGraph] = useState(true);
   const lastAutoExpand = useRef(0);
-  const [tabVisible, setTabVisible] = useState(true);
   const [autoPaused, setAutoPaused] = useState(false);
   const [selected, setSelected] = useState<MarketToken | null>(null);
   const [quickActionMint, setQuickActionMint] = useState<string | null>(null);
