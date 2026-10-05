@@ -1033,7 +1033,7 @@ export default function MarketMap() {
             <span>{Math.round(mapView.k * 100)}%</span>
             <button onClick={() => zoomMapBy(1.18)} aria-label="Zoom in">＋</button>
             <button onClick={resetMarketView} aria-label="Reset zoom">⛶</button>
-            <button className="market-fullscreen-button" onClick={toggleMapFullscreen} aria-label={isMapFullscreen ? "Exit fullscreen map" : "Fullscreen map"} title={isMapFullscreen ? "Изход от цял екран" : "Карта на цял екран"}>{isMapFullscreen ? "↙" : "⛶"}</button>
+            <button className="market-fullscreen-button" onClick={toggleMapFullscreen} aria-label={isMapFullscreen ? "Exit fullscreen map" : "Fullscreen map"} title={isMapFullscreen ? "Изход от цял екран" : "Карта на цял екран"}>{isMapFullscreen ? "⤡" : "⤢"}</button>
           </div>}
           <details className="market-legend map-signal-legend" open>
             <summary>Как да четеш балоните · оценка</summary>
