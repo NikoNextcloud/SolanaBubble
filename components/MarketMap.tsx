@@ -16,6 +16,7 @@ import { fomoTokenUrl, gmgnTokenUrl } from "@/lib/token-links";
 import { positionQuickActions } from "@/lib/market/quick-actions";
 import { MARKET_X_TICKS, MARKET_Y_TICKS, applyMarketViewport, marketCoordinateBase } from "@/lib/market/coordinates";
 import { declutterMarketNodes } from "@/lib/market/declutter";
+import MarketCometLayer from "./MarketCometLayer";
 
 type MarketToken = Intelligence & {
   marketObservedAt?:string|null;
@@ -875,38 +876,11 @@ export default function MarketMap() {
                 }}
               />)}
             </g>
-            {viewMode === "map" && animateSignals && [...renderedNodes]
-              .filter((n) => !n.isCore && n.trades1h > 0)
-              .sort((a, b) => b.trades1h - a.trades1h)
-              .slice(0, 5)
-              .map((n, i) => {
-                const seed = n.mint.charCodeAt(0) + i * 37;
-                const angle = visualNoise(seed) * Math.PI * 2;
-                const distance = 180 + visualNoise(seed + 4) * 170;
-                const dx = Math.cos(angle) * distance;
-                const dy = Math.sin(angle) * distance;
-                const tailAngle = Math.atan2(dy, dx) * 180 / Math.PI;
-                return <g
-                  key={`comet-${n.mint}`}
-                  transform={`translate(${n.x} ${n.y})`}
-                  className="market-comet-anchor"
-                  pointerEvents="none"
-                >
-                  <g
-                    className="market-comet-runner"
-                    style={{
-                      ["--comet-dx" as any]: `${dx}px`,
-                      ["--comet-dy" as any]: `${dy}px`,
-                      ["--comet-angle" as any]: `${tailAngle}deg`,
-                      ["--comet-delay" as any]: `${i * .72}s`,
-                      ["--comet-duration" as any]: `${2.6 + visualNoise(seed + 9) * 1.2}s`,
-                    }}
-                  >
-                    <line x1="0" y1="0" x2="52" y2="0" className="market-comet-tail" />
-                    <circle cx="0" cy="0" r="3.5" className="market-comet-head" />
-                  </g>
-                </g>;
-              })}
+            {viewMode === "map" && <MarketCometLayer
+              nodes={renderedNodes.filter((n) => !n.isCore)}
+              events={recentEvents}
+              active={animateSignals}
+            />}
             {renderedNodes.map((n, i) => {
               const signal=bubbleSignal(n,signalNow??NaN);
               const confidence=trafficConfidence(n.trafficSample,signalNow??NaN);
