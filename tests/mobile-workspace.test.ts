@@ -21,4 +21,8 @@ test("mobile market exposes filters and selected token details", () => {
   assert.match(market, /quick-detail-action/);
   assert.match(theme, /is-token-selected\.is-mobile-open/);
   assert.match(theme, /safe-area-inset-bottom/);
+  assert.match(market, /MARKET_X_TICKS/);
+  assert.match(market, /PRICE CHANGE · 1H/);
+  assert.match(market, /market-comet-runner/);
+  assert.match(market, /market-fullscreen-button/);
 });
