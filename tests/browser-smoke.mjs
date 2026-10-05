@@ -270,6 +270,7 @@ try {
   assert.equal(detailsOpen, true, "mobile token details must open only from the explicit Details action");
   await page.evaluate("document.querySelector('.market-back')?.click()");
   await page.waitFor("!document.querySelector('.reference-market-side.is-mobile-open')");
+  await page.screenshot("/tmp/solanabubble-mobile.png");
 
   const dragBubble = await page.evaluate(`(() => {
     const els = [...document.querySelectorAll(".market-token-bubble")];
@@ -312,8 +313,6 @@ try {
   const panAfter = await page.evaluate("document.querySelector('.market-pan-layer')?.getAttribute('transform') || ''");
   assert.notEqual(panAfter, panBefore, "dragging the map background must pan the map");
   assert.equal(await page.evaluate("location.pathname"), "/", "panning must not open a token route");
-
-  await page.screenshot("/tmp/solanabubble-mobile.png");
 
   await page.evaluate(`(() => {
     const originalFetch = window.fetch.bind(window);
