@@ -271,8 +271,25 @@ try {
   const afterDragPath = await page.evaluate("location.pathname");
   assert.equal(afterDragPath, beforeDragPath, "dragging a bubble must not open a token route");
 
+  const panPoint = await page.evaluate(`(() => {
+    const svg = document.querySelector(".market-pan-surface");
+    const rect = svg?.getBoundingClientRect();
+    if (!rect) return null;
+    const candidates = [];
+    for (let y = rect.top + 110; y < rect.bottom - 90; y += 42) {
+      for (let x = rect.left + 24; x < rect.right - 24; x += 42) {
+        const hit = document.elementFromPoint(x, y);
+        if (!hit) continue;
+        if (!svg.contains(hit) && hit !== svg) continue;
+        if (hit.closest?.(".market-node-group, .token-quick-actions-overlay, .market-zoom-controls, .market-legend")) continue;
+        candidates.push({ x, y });
+      }
+    }
+    return candidates[0] || null;
+  })()`);
+  assert.ok(panPoint, "a free map background point must be available for panning");
   const panBefore = await page.evaluate("document.querySelector('.market-pan-layer')?.getAttribute('transform') || ''");
-  await page.drag(340, 520, 285, 465);
+  await page.drag(panPoint.x, panPoint.y, panPoint.x - 48, panPoint.y - 42);
   await sleep(180);
   const panAfter = await page.evaluate("document.querySelector('.market-pan-layer')?.getAttribute('transform') || ''");
   assert.notEqual(panAfter, panBefore, "dragging the map background must pan the map");
