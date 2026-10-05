@@ -138,6 +138,7 @@ export function evaluateAlerts(t: SignalToken, previous: SignalToken | undefined
   const add = (kind: string, value: number, message: string, severity: SignalAlert['severity'] = 'info') => alerts.push({
     id: `${t.mint}:${kind}:${at}`, mint: t.mint, symbol: t.symbol ?? null, kind, severity, value, message, at,
     deltaTrades: 0, deltaVolume: t.volumeDelta ?? 0, hypeDelta: t.hypeDelta ?? 0 });
+  if ((t.opportunityScore ?? 0) >= 75 && (previous?.opportunityScore ?? 0) < 75) add('opportunity',t.opportunityScore!, 'Opportunity Score crossed 75/100');
   if ((t.hypeScore ?? 0) >= 70 && (previous?.hypeScore ?? 0) < 70) add('hype-threshold',t.hypeScore!, 'Hype crossed 70/100');
   if ((t.hypeVelocity ?? 0) >= 3 && (previous?.hypeVelocity ?? 0) < 3) add('hype-velocity',t.hypeVelocity!, 'Hype rises ≥3 points/min');
   if ((t.hypeAcceleration ?? 0) >= .3 && (previous?.hypeAcceleration ?? 0) < .3) add('hype-acceleration',t.hypeAcceleration!, 'Hype velocity accelerates ≥0.3 points/min²');
