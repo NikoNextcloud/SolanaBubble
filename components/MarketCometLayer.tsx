@@ -127,7 +127,6 @@ export default function MarketCometLayer({
 
   return <g className="targeted-comet-layer" pointerEvents="none" aria-hidden="true">
     {comets.map((comet) => {
-      const impactAt = Math.max(0, comet.delay + comet.duration * .86);
       return <g key={comet.key} className={`targeted-comet targeted-comet-${comet.source}`}>
         <circle
           cx={comet.target.x}
@@ -156,6 +155,5 @@ export default function MarketCometLayer({
         <title>{`Capital flow → ${comet.target.symbol || comet.target.name || comet.target.mint}`}</title>
       </g>;
     })}
-    {comets.length > 0 && <text x="0" y="0" opacity="0">{impactAt}</text>}
   </g>;
 }
