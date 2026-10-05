@@ -66,10 +66,12 @@ export default function MarketCometLayer({
   nodes,
   events,
   active,
+  maxComets = 15,
 }: {
   nodes: TargetNode[];
   events: ActivityEvent[];
   active: boolean;
+  maxComets?: number;
 }) {
   if (!active) return null;
   const byMint = new Map(nodes.map((n) => [n.mint, n]));
@@ -77,7 +79,7 @@ export default function MarketCometLayer({
 
   for (const node of nodes) {
     const buys = node.trafficSample?.recentBuys ?? [];
-    for (const buy of buys.slice(0, 2)) {
+    for (const buy of buys.slice(0, 4)) {
       const age = Date.now() - Date.parse(buy.blockAt);
       if (!Number.isFinite(age) || age < -60_000 || age > 20 * 60_000) continue;
       const quoteLabel = buy.usdValue != null
@@ -93,7 +95,7 @@ export default function MarketCometLayer({
         label: `${shortWallet(buy.wallet)} · ${quoteLabel}`,
         source: "swap",
         strength: Math.max(1, Math.min(3, Math.log10(Math.max(10, buy.usdValue ?? buy.quoteAmount * 100)))),
-        delay: index * .32,
+        delay: (index % Math.max(1, maxComets)) * .16,
         duration: 2.1 + (hash(key) % 70) / 100,
         path: createPath(node, key, index),
       });
@@ -113,17 +115,17 @@ export default function MarketCometLayer({
         label: `${target.symbol || event.symbol || target.mint.slice(0, 5)} · +${event.deltaTrades} tx`,
         source: "activity",
         strength: 1,
-        delay: index * .38,
+        delay: (index % Math.max(1, maxComets)) * .18,
         duration: 2.5 + (hash(key) % 50) / 100,
         path: createPath(target, key, index),
       });
-      if (observed.length >= 4) break;
+      if (observed.length >= maxComets) break;
     }
   }
 
   const comets = observed
     .sort((a, b) => b.strength - a.strength)
-    .slice(0, 4);
+    .slice(0, Math.max(1, maxComets));
 
   return <g className="targeted-comet-layer" pointerEvents="none" aria-hidden="true">
     {comets.map((comet) => {
