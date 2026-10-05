@@ -600,10 +600,11 @@ export default function MarketMap() {
   const mapNodes = nodes.filter((n) => !n.isCore);
   const declutteredMapNodes = viewMode === "map"
     ? declutterMarketNodes(mapNodes, {
-        gap: size.w <= 700 ? 42 : 72,
-        maxDisplacement: size.w <= 700 ? 132 : 250,
-        iterations: size.w <= 700 ? 20 : 28,
-        anchorStrength: size.w <= 700 ? .055 : .032,
+        // Keep dense coordinate clusters readable: >2x the previous edge-to-edge gap.
+        gap: size.w <= 700 ? 88 : 152,
+        maxDisplacement: size.w <= 700 ? 260 : 520,
+        iterations: size.w <= 700 ? 34 : 48,
+        anchorStrength: size.w <= 700 ? .028 : .015,
       })
     : mapNodes.map((n) => ({ ...n, anchorX: n.x, anchorY: n.y, displacement: 0 }));
   const renderedNodes = viewMode === "map" ? declutteredMapNodes : nodes;
