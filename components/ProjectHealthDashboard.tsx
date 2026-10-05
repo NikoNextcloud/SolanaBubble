@@ -39,6 +39,14 @@ export default function ProjectHealthDashboard({usage}:{usage:any}){
        <small>retained server snapshots</small>
      </article>
      <article className="health-card">
+       <span>Live stream · 20m</span><strong>{value(h?.liveEvents20m,"0")} events</strong>
+       <small>{value(h?.liveBuys20m,"0")} BUY · {value(h?.liveSells20m,"0")} SELL · {value(h?.liveDirect20m,"0")} direct</small>
+     </article>
+     <article className="health-card">
+       <span>Live latency</span><strong>{h?.liveLatestAt?`${Math.max(0,(Date.now()-Date.parse(h.liveLatestAt))/1000).toFixed(0)}s`:"—"}</strong>
+       <small>{h?.heliusWebhookConfigured?"Helius webhook ready":"Supabase/public Solana live path"}</small>
+     </article>
+     <article className="health-card">
        <span>Runtime</span><strong>{h?.runtime?.environment??"local"} · Node {String(h?.runtime?.node??"").replace(/^v/,"")||"—"}</strong>
        <small>{h?.runtime?.gitSha?String(h.runtime.gitSha).slice(0,10):"no Vercel SHA"}{h?.runtime?.region?` · ${h.runtime.region}`:""}</small>
      </article>

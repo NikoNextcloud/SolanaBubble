@@ -17,7 +17,7 @@ export async function GET(req: Request) {
   const db = admin();
 
   const since2h = new Date(Date.now() - 2 * 60 * 60_000).toISOString();
-  const [rpcHealth, tokens, dbSize, workerStatus, bootstraps, directTraffic, routedTraffic, syncRows, snapshots] = await Promise.all([
+  const [rpcHealth, tokens, dbSize, workerStatus, bootstraps, directTraffic, routedTraffic, syncRows, snapshots, liveEvents] = await Promise.all([
     getRpcHealth(),
     db.from("tokens").select("mint", { count: "exact", head: true }),
     db.rpc("database_size_bytes"),
@@ -27,6 +27,7 @@ export async function GET(req: Request) {
     db.from("traffic_swaps").select("signature", { count: "exact", head: true }).eq("evidence", "routed").gte("block_at", since2h),
     db.from("watchlist_sync").select("sync_hash", { count: "exact", head: true }).gt("expires_at", new Date().toISOString()),
     db.from("market_snapshots").select("id", { count: "exact", head: true }),
+    db.from("live_market_events").select("block_at,side,evidence").gte("block_at", new Date(Date.now()-20*60_000).toISOString()).order("block_at",{ascending:false}).limit(500),
   ]);
 
   const databaseBytes = Number(dbSize.data ?? 0);
@@ -58,6 +59,12 @@ export async function GET(req: Request) {
       routedTraffic2h: routedTraffic.count ?? 0,
       syncedWatchlists: syncRows.count ?? 0,
       marketSnapshots: snapshots.count ?? 0,
+      liveEvents20m: liveEvents.data?.length ?? 0,
+      liveBuys20m: (liveEvents.data??[]).filter((row:any)=>row.side==="buy").length,
+      liveSells20m: (liveEvents.data??[]).filter((row:any)=>row.side==="sell").length,
+      liveDirect20m: (liveEvents.data??[]).filter((row:any)=>row.evidence==="direct").length,
+      liveLatestAt: liveEvents.data?.[0]?.block_at ?? null,
+      heliusWebhookConfigured: Boolean(process.env.HELIUS_WEBHOOK_SECRET),
       runtime: {
         environment: process.env.VERCEL_ENV ?? "local",
         gitSha: process.env.VERCEL_GIT_COMMIT_SHA ?? null,

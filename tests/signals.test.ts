@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { collapseAlertHistory, computeOpportunityScore, deriveSignals, evaluateAlerts, prioritizeAlerts, rankMovers, suppressRepeatedAlerts, type SignalAlert, type SignalToken } from '../lib/market/signals';
+import { collapseAlertHistory, computeOpportunityScore, computeSignalDimensions, deriveSignals, evaluateAlerts, prioritizeAlerts, rankMovers, suppressRepeatedAlerts, type SignalAlert, type SignalToken } from '../lib/market/signals';
 const at = '2026-10-01T12:05:00Z', before = '2026-10-01T12:00:00Z';
 const token: SignalToken = {mint:'mint',pairAddress:'pair',hypeScore:55,volume1h:2000,liquidityUsd:6000,buys1h:80,sells1h:20};
 const prev: SignalToken = {...token,hypeScore:45,volume1h:1000,liquidityUsd:10000,volumeVelocity:100};
@@ -52,4 +52,13 @@ test('Opportunity Score is bounded and explains positive and negative factors',(
  const weak=computeOpportunityScore({...token,hypeScore:20,hypeVelocity:-3,buyPressure:25,holderGrowthPct:-4,liquidityChangePct:-35,riskScore:80,liquidityWarning:true});
  assert.ok(strong.score>=0&&strong.score<=100);assert.ok(weak.score>=0&&weak.score<=100);assert.ok(strong.score>weak.score);
  assert.ok(strong.factors.some(f=>f.points>0));assert.ok(weak.factors.some(f=>f.points<0));assert.match(strong.coverage,/signal families observed/);
+});
+
+test('Signal Engine v2 dimensions are bounded and react to better flow/liquidity quality',()=>{
+ const strong=computeSignalDimensions({...token,hypeScore:85,hypeVelocity:4,hypeAcceleration:.5,observedBuyPressure15m:80,observedNetFlowUsd15m:18000,holderGrowthPct:6,top10SupplyPct:28,linkedSupplyPct:4,liquidityUsd:180000,liquidityChangePct:15,riskScore:18,trafficEvidence:'usable'});
+ const weak=computeSignalDimensions({...token,hypeScore:25,hypeVelocity:-3,hypeAcceleration:-.4,observedBuyPressure15m:25,observedNetFlowUsd15m:-18000,holderGrowthPct:-5,top10SupplyPct:75,linkedSupplyPct:35,liquidityUsd:3000,liquidityChangePct:-35,riskScore:82,trafficEvidence:'degraded'});
+ for(const value of [strong.momentumScore,strong.capitalFlowScore,strong.holderQualityScore,strong.liquidityHealthScore,strong.manipulationRiskScore,weak.momentumScore,weak.capitalFlowScore,weak.holderQualityScore,weak.liquidityHealthScore,weak.manipulationRiskScore])assert.ok(value>=0&&value<=100);
+ assert.ok(strong.capitalFlowScore>weak.capitalFlowScore);
+ assert.ok(strong.liquidityHealthScore>weak.liquidityHealthScore);
+ assert.ok(strong.manipulationRiskScore<weak.manipulationRiskScore);
 });

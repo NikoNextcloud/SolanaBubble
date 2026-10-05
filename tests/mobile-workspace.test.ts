@@ -47,3 +47,15 @@ test("market comets continuously replay and support dual realtime transports", (
   assert.match(liveWs, /getTransaction/);
   assert.match(liveRealtime, /postgres_changes/);
 });
+
+test("Visual Core v3 exposes LOD, capital-flow mode, trails and server live ingestion",()=>{
+  const market=readFileSync(new URL("../components/MarketMap.tsx",import.meta.url),"utf8");
+  const comet=readFileSync(new URL("../components/MarketCometLayer.tsx",import.meta.url),"utf8");
+  const helius=readFileSync(new URL("../app/api/webhooks/helius/route.ts",import.meta.url),"utf8");
+  assert.match(market,/data-lod/);
+  assert.match(market,/capital-flow-toggle/);
+  assert.match(market,/market-live-latency/);
+  assert.match(comet,/targeted-comet-trail/);
+  assert.match(helius,/HELIUS_WEBHOOK_SECRET/);
+  assert.match(helius,/live_market_events/);
+});

@@ -3,7 +3,7 @@ import ts from 'typescript';
 
 // The Edge Function shares the same implementation, with no duplicated formulas.
 const version = JSON.parse(fs.readFileSync('package-lock.json','utf8')).packages['node_modules/@supabase/supabase-js'].version;
-const sources = ['lib/db.ts','lib/rpc-provider.ts','lib/solana-public.ts','lib/market/collect.ts','lib/market/signals.ts','lib/market/windows.ts','lib/market/sales.ts','lib/market/relationships.ts','lib/market/holders.ts','lib/market/traffic/programs.ts','lib/market/traffic/decode.ts','lib/market/traffic/summary.ts','lib/market/traffic/observe.ts','lib/market/scheduling.ts','lib/watchlist.ts','lib/watchlist-server.ts','lib/market/ingest.ts'];
+const sources = ['lib/db.ts','lib/rpc-provider.ts','lib/solana-public.ts','lib/market/collect.ts','lib/market/signals.ts','lib/market/windows.ts','lib/market/sales.ts','lib/market/relationships.ts','lib/market/holders.ts','lib/market/traffic/programs.ts','lib/market/traffic/decode.ts','lib/market/traffic/summary.ts','lib/market/traffic/observe.ts','lib/market/scheduling.ts','lib/market/adaptive-traffic.ts','lib/watchlist.ts','lib/watchlist-server.ts','lib/market/ingest.ts'];
 let source = `import process from 'node:process';\nimport { Buffer } from 'node:buffer';\nimport { timingSafeEqual } from 'node:crypto';\n`;
 for (const file of sources) source += fs.readFileSync(file,'utf8').replace(/^import .* from ['"](?:\.|@\/)[^'"]*['"];?\s*$/gm,'').replace('"@supabase/supabase-js"',`"npm:@supabase/supabase-js@${version}"`)+'\n';
 source += `

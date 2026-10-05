@@ -2,6 +2,7 @@
 
 import FavoriteButton from "./FavoriteButton";
 import TrafficCard from "./TrafficCard";
+import TokenSparkline from "./TokenSparkline";
 import type { WatchToken } from "@/lib/watchlist";
 
 const number = (value: number | null | undefined, suffix = "") =>
@@ -41,6 +42,21 @@ export default function TokenSignalCard({ token }: { token: WatchToken }) {
         <b className={riskClass}>Risk {number(risk)} / 100 · {riskLabel}</b>
       </div>
       <FavoriteButton token={token} />
+      <div className="signal-dimensions" aria-label="Signal Engine dimensions">
+        {[
+          ["Momentum",token.momentumScore],
+          ["Capital Flow",token.capitalFlowScore],
+          ["Holder Quality",token.holderQualityScore],
+          ["Liquidity Health",token.liquidityHealthScore],
+          ["Manipulation Risk",token.manipulationRiskScore],
+        ].map(([label,value])=><div key={String(label)}>
+          <span>{label}</span>
+          <b>{number(value as number|null|undefined)}</b>
+          <i><em style={{width:`${Math.max(0,Math.min(100,Number(value??0)))}%`}}/></i>
+        </div>)}
+        <small>{token.signalDimensionsCoverage||"Waiting for complete signal coverage"}</small>
+      </div>
+      <TokenSparkline token={token}/>
       <div className="opportunity-score" aria-label="Opportunity Score">
         <div><span>Opportunity</span><strong>{number(token.opportunityScore, " / 100")}</strong></div>
         <small>{token.opportunityCoverage || "Waiting for enough signal families"}</small>

@@ -512,6 +512,34 @@ export async function collectMarket(previousPayload, trackedMints = []) {
 }
 const finite = (n) => typeof n === 'number' && Number.isFinite(n);
 export const percentChange = (value, previous) => previous > 0 ? (value - previous) / previous * 100 : null;
+export function computeSignalDimensions(t) {
+    const clamp = (n) => Math.max(0, Math.min(100, Math.round(n)));
+    const hype = finite(t.hypeScore) ? t.hypeScore : 50;
+    const velocity = finite(t.hypeVelocity) ? t.hypeVelocity : 0;
+    const acceleration = finite(t.hypeAcceleration) ? t.hypeAcceleration : 0;
+    const momentum = clamp(48 + hype * .34 + velocity * 5 + acceleration * 18);
+    const pressure = finite(t.observedBuyPressure15m) ? t.observedBuyPressure15m : finite(t.buyPressure) ? t.buyPressure : 50;
+    const flow = finite(t.observedNetFlowUsd15m) ? t.observedNetFlowUsd15m : finite(t.netFlowUsd1h) ? t.netFlowUsd1h : 0;
+    const flowBoost = Math.tanh(flow / 12000) * 24;
+    const evidenceBoost = t.trafficEvidence === 'usable' ? 12 : t.trafficEvidence === 'sparse' ? 4 : t.trafficEvidence === 'degraded' ? -4 : 0;
+    const capitalFlow = clamp(50 + (pressure - 50) * .55 + flowBoost + evidenceBoost);
+    const holderGrowth = finite(t.holderGrowthPct) ? t.holderGrowthPct : 0;
+    const concentration = finite(t.top10SupplyPct) ? t.top10SupplyPct : 50;
+    const linked = finite(t.linkedSupplyPct) ? t.linkedSupplyPct : 0;
+    const holderQuality = clamp(58 + holderGrowth * 2.2 - Math.max(0, concentration - 35) * .65 - linked * .55);
+    const liquidity = finite(t.liquidityUsd) ? t.liquidityUsd : 0;
+    const liqChange = finite(t.liquidityChangePct) ? t.liquidityChangePct : 0;
+    const fdvRatio = finite(t.fdvLiquidityRatio) ? t.fdvLiquidityRatio : null;
+    const liquidityHealth = clamp(40 + Math.log10(Math.max(1, liquidity)) * 8 + Math.max(-20, Math.min(20, liqChange * .35)) - (fdvRatio != null && fdvRatio > 100 ? Math.min(28, Math.log10(fdvRatio / 100 + 1) * 24) : 0));
+    const risk = finite(t.riskScore) ? t.riskScore : 50;
+    const manipulationRisk = clamp(risk + (finite(t.suspiciousWallets) ? Math.min(18, t.suspiciousWallets * 2) : 0) + (finite(t.whaleConcentrationPct) && t.whaleConcentrationPct > 35 ? 12 : 0));
+    const observed = [
+        finite(t.hypeScore), finite(t.hypeVelocity), finite(t.observedBuyPressure15m) || finite(t.buyPressure),
+        finite(t.observedNetFlowUsd15m) || finite(t.netFlowUsd1h), finite(t.holderGrowthPct), finite(t.top10SupplyPct),
+        finite(t.liquidityUsd), finite(t.riskScore)
+    ].filter(Boolean).length;
+    return { momentumScore: momentum, capitalFlowScore: capitalFlow, holderQualityScore: holderQuality, liquidityHealthScore: liquidityHealth, manipulationRiskScore: manipulationRisk, signalDimensionsCoverage: `${observed}/8 signal families observed` };
+}
 export function computeOpportunityScore(t) {
     const factors = [];
     const add = (label, points, evidence) => factors.push({ label, points: Math.round(points), evidence });
@@ -580,7 +608,9 @@ export function deriveSignals(t, previous, at, baselineAt) {
     const acceleration = volumeVelocity != null && finite(previous?.volumeVelocity) ? (volumeVelocity - previous.volumeVelocity) / minutes : null;
     const sample = t.trafficSample, sampleAge = sample ? (Date.parse(at) - Date.parse(sample.observedAt)) / 60000 : null, sample15 = sample?.windows?.['15'];
     const observedSample = sample && sample15 && sampleAge != null && sampleAge >= -1 && sampleAge < 10 && sample15.swaps >= 5;
-    const opportunity = computeOpportunityScore({ ...t, hypeDelta, hypeVelocity, hypeAcceleration, volumeDelta, volumeVelocity, volumeAcceleration: acceleration, liquidityChange, liquidityChangePct, buyPressure: trades ? (t.buys1h ?? 0) / trades * 100 : null, liquidityWarning, riskScore: Math.round(Math.min(100, risk)), riskFactors, trafficEvidence: sample?.evidence ?? null, trafficObservedAt: sample?.observedAt ?? null, observedBuyPressure15m: observedSample ? sample15.buys / sample15.swaps * 100 : null, observedNetFlowUsd15m: observedSample ? sample15.netUsd : null });
+    const derivedInput = { ...t, hypeDelta, hypeVelocity, hypeAcceleration, volumeDelta, volumeVelocity, volumeAcceleration: acceleration, liquidityChange, liquidityChangePct, buyPressure: trades ? (t.buys1h ?? 0) / trades * 100 : null, liquidityWarning, riskScore: Math.round(Math.min(100, risk)), riskFactors, trafficEvidence: sample?.evidence ?? null, trafficObservedAt: sample?.observedAt ?? null, observedBuyPressure15m: observedSample ? sample15.buys / sample15.swaps * 100 : null, observedNetFlowUsd15m: observedSample ? sample15.netUsd : null };
+    const opportunity = computeOpportunityScore(derivedInput);
+    const dimensions = computeSignalDimensions(derivedInput);
     return { hypeDelta, hypeVelocity, hypeAcceleration, fdvLiquidityRatio, riskFactors,
         volumeDelta, volumeVelocity, volumeAcceleration: acceleration, liquidityChange, liquidityChangePct,
         buyPressure: trades ? (t.buys1h ?? 0) / trades * 100 : null,
@@ -590,6 +620,7 @@ export function deriveSignals(t, previous, at, baselineAt) {
         observedBuyPressure15m: observedSample ? sample15.buys / sample15.swaps * 100 : null,
         observedNetFlowUsd15m: observedSample ? sample15.netUsd : null,
         opportunityScore: opportunity.score, opportunityFactors: opportunity.factors, opportunityCoverage: opportunity.coverage,
+        ...dimensions,
         riskCoverage: finite(t.top10SupplyPct) ? 'market + observed holders (heuristic)' : 'market only; holder risk unknown' };
 }
 export function evaluateAlerts(t, previous, at) {
@@ -1182,6 +1213,52 @@ export function selectHolderWork(tokens, priorityMints, cursor, budget) {
         candidates.push(rotating[(start + i) % rotating.length]);
     return { priority, rotating, candidates: candidates.slice(0, budget) };
 }
+export function adaptiveTrafficBudget(ceiling, previous = {}) {
+    const max = Math.max(0, Math.floor(ceiling));
+    if (max === 0)
+        return 0;
+    const duration = Number(previous.durationMs ?? Infinity);
+    const failures = Number(previous.trafficFailures ?? 0) + Number(previous.holderFailures ?? 0);
+    if (failures > 0 || duration > 35_000)
+        return Math.max(1, Math.min(max, 2));
+    if (duration < 10_000)
+        return Math.min(max, 5);
+    if (duration < 16_000)
+        return Math.min(max, 4);
+    if (duration < 24_000)
+        return Math.min(max, 3);
+    return Math.min(max, 2);
+}
+export function selectAdaptiveTrafficWork(tokens, priorityMints, cursor, budget, now = Date.now()) {
+    const prioritySet = new Set(priorityMints);
+    const score = (t) => {
+        const age = t.trafficObservedAt ? Math.max(0, (now - Date.parse(t.trafficObservedAt)) / 60_000) : 120;
+        const freshness = Math.min(80, age * 3);
+        const activity = Math.log10(Math.max(1, Number(t.volume1h ?? 0))) * 7 + Math.log10(Math.max(1, Number(t.trades1h ?? 0) + 1)) * 11;
+        const hype = Math.max(0, Math.min(100, Number(t.hypeScore ?? 0))) * .22;
+        const evidence = t.trafficEvidence === 'usable' ? -6 : t.trafficEvidence === 'sparse' ? 8 : t.trafficEvidence === 'degraded' ? 14 : 18;
+        return (prioritySet.has(t.mint) ? 1000 : 0) + freshness + activity + hype + evidence;
+    };
+    const ranked = [...tokens].sort((a, b) => score(b) - score(a));
+    if (!ranked.length || budget <= 0)
+        return { candidates: [], ranked, rotation: [] };
+    // Reserve one slot for fair rotation so low-activity tokens still receive periodic coverage.
+    const hotSlots = Math.max(0, budget - 1);
+    const selected = ranked.slice(0, hotSlots);
+    const selectedSet = new Set(selected.map(t => t.mint));
+    const rotation = tokens.filter(t => !selectedSet.has(t.mint));
+    if (rotation.length && selected.length < budget) {
+        const start = Math.max(0, Math.floor(cursor || 0)) % rotation.length;
+        selected.push(rotation[start]);
+    }
+    while (selected.length < budget) {
+        const next = ranked.find(t => !selected.some(s => s.mint === t.mint));
+        if (!next)
+            break;
+        selected.push(next);
+    }
+    return { candidates: selected.slice(0, budget), ranked, rotation };
+}
 export const ruleDefinitions = [{ key: 'opportunityScore', label: 'Opportunity ≥', default: 75, min: 0, max: 100 }, { key: 'hypeScore', label: 'Hype ≥', default: 70, min: 0, max: 100 }, { key: 'hypeVelocity', label: 'Hype velocity ≥ H/min', default: 3, min: 0, max: 100 }, { key: 'holderGrowthPct', label: 'Holder growth · 5m ≥ %', default: 5, min: 0, max: 1000 }, { key: 'buyPressure', label: 'Buy count pressure ≥ %', default: 70, min: 0, max: 100 }, { key: 'liquidityChangePct', label: 'Liquidity drop ≥ %', default: 25, min: 0, max: 100 }];
 export const emptyWatchState = () => ({ version: 1, entries: [], filters: { query: '', minHype: 0, maxRisk: 100, onlyFavorites: false }, alerts: [], seen: {}, active: {} });
 export const validMint = (m) => typeof m === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(m);
@@ -1337,9 +1414,14 @@ export async function ingestMarket() {
             completed++;
         }
         // Traffic stays on the worker, under a global time and RPC budget.
-        const trafficUniverse = base.tokens.filter(t => trackedSet.has(t.mint) && t.pairAddress).slice(0, 20);
-        const trafficCeiling = Math.min(6, Math.max(0, Number(process.env.MARKET_TRAFFIC_BUDGET ?? 3) || 0)), trafficBudget = Math.min(trafficCeiling, stablePrevious ? 3 : 2);
-        const trafficWork = selectHolderWork(trafficUniverse, wanted, Number(previous?.trafficCursor ?? 0), trafficBudget);
+        const trafficUniverse = base.tokens.filter(t => trackedSet.has(t.mint) && t.pairAddress).slice(0, 20).map(t => ({
+            ...t,
+            trafficObservedAt: prevTokens.get(t.mint)?.trafficObservedAt ?? null,
+            trafficEvidence: prevTokens.get(t.mint)?.trafficEvidence ?? null,
+        }));
+        const trafficCeiling = Math.min(6, Math.max(0, Number(process.env.MARKET_TRAFFIC_BUDGET ?? 5) || 0));
+        const trafficBudget = adaptiveTrafficBudget(trafficCeiling, lastStatus);
+        const trafficWork = selectAdaptiveTrafficWork(trafficUniverse, wanted, Number(previous?.trafficCursor ?? 0), trafficBudget);
         const trafficCandidates = trafficWork.candidates;
         let trafficCompleted = 0, trafficFailures = 0;
         const trafficByMint = new Map();
@@ -1384,9 +1466,9 @@ export async function ingestMarket() {
         const historicalAlerts = (history.data ?? []).map(r => r.payload), cooldownAlerts = (cooldownHistory.data ?? []).map(r => r.payload), alerts = prioritizeAlerts(suppressRepeatedAlerts(tokens.flatMap(t => evaluateAlerts(t, prevTokens.get(t.mint), at)), cooldownAlerts));
         const recentAlerts = collapseAlertHistory([...alerts, ...historicalAlerts]).slice(0, 80);
         const payload = { ...base, tokens, fetchedAt: at, holderCursor: (cursor + Math.max(0, completed - priority.length)) % Math.max(1, rotation.length),
-            trafficCursor: (Number(previous?.trafficCursor ?? 0) + Math.max(0, trafficCompleted - trafficWork.priority.length)) % Math.max(1, trafficWork.rotating.length), alerts: recentAlerts, recentEvents: base.recentEvents,
+            trafficCursor: (Number(previous?.trafficCursor ?? 0) + 1) % Math.max(1, trafficWork.rotation.length), alerts: recentAlerts, recentEvents: base.recentEvents,
             storage: storage.data, ingestion: { trafficCompleted, trafficFailures, trafficUniverse: trafficUniverse.length, trafficBudget, holderCompleted: completed, priorityMints: priority.map(t => t.mint), holderBudget: budget, holderFailures: failures.length, source: 'server-worker', interval: '5m target; scheduler dependent' },
-            metricNotes: { flow: 'USD estimate from rolling 1h trade counts', freshWallets: 'newly observed token holders; not wallet creation age', whales: 'owners ≥1% supply; pool/program owners included', smartMoney: 'whale balance change at current price; not verified swap flow', volumeAcceleration: 'acceleration of rolling 1h volume, USD/min²', risk: 'heuristic, not a security audit' } };
+            metricNotes: { trafficScheduler: 'adaptive activity + staleness ranking with one fair-rotation slot', flow: 'USD estimate from rolling 1h trade counts', freshWallets: 'newly observed token holders; not wallet creation age', whales: 'owners ≥1% supply; pool/program owners included', smartMoney: 'whale balance change at current price; not verified swap flow', volumeAcceleration: 'acceleration of rolling 1h volume, USD/min²', risk: 'heuristic, not a security audit' } };
         const saved = await db.rpc('commit_market_snapshot', { p_lease: lease, p_payload: payload, p_alerts: alerts });
         if (saved.error)
             throw saved.error;
@@ -1410,7 +1492,7 @@ export async function ingestMarket() {
             // Personal sync/push must never make market ingestion fail.
         }
         const finishedAt = new Date().toISOString();
-        const statusDone = await db.from('api_cache').upsert({ cache_key: 'worker:status', payload: { state: 'ok', startedAt: new Date(ingestionStarted).toISOString(), finishedAt, lastSuccessAt: at, durationMs: Date.now() - ingestionStarted, holderFailures: failures.length, trafficFailures, holderCompleted: completed, trafficCompleted, tokens: tokens.length, recentHolders: tokens.filter(t => t.holderObservedAt && Date.now() - Date.parse(t.holderObservedAt) < 3600000).length, recentTraffic: tokens.filter(t => t.trafficObservedAt && Date.now() - Date.parse(t.trafficObservedAt) < 600000).length, usableTraffic: tokens.filter(t => t.trafficEvidence === 'usable' && t.trafficObservedAt && Date.now() - Date.parse(t.trafficObservedAt) < 600000).length, holderBudget: budget, trafficBudget, trafficDiagnostics: tokens.reduce((acc, t) => { for (const [k, v] of Object.entries(t.trafficSample?.failures ?? {}))
+        const statusDone = await db.from('api_cache').upsert({ cache_key: 'worker:status', payload: { state: 'ok', startedAt: new Date(ingestionStarted).toISOString(), finishedAt, lastSuccessAt: at, durationMs: Date.now() - ingestionStarted, holderFailures: failures.length, trafficFailures, holderCompleted: completed, trafficCompleted, tokens: tokens.length, recentHolders: tokens.filter(t => t.holderObservedAt && Date.now() - Date.parse(t.holderObservedAt) < 3600000).length, recentTraffic: tokens.filter(t => t.trafficObservedAt && Date.now() - Date.parse(t.trafficObservedAt) < 600000).length, usableTraffic: tokens.filter(t => t.trafficEvidence === 'usable' && t.trafficObservedAt && Date.now() - Date.parse(t.trafficObservedAt) < 600000).length, holderBudget: budget, trafficBudget, trafficCeiling, trafficScheduler: 'adaptive-v1', trafficDiagnostics: tokens.reduce((acc, t) => { for (const [k, v] of Object.entries(t.trafficSample?.failures ?? {}))
                     acc[k] = (acc[k] ?? 0) + Number(v); return acc; }, {}), priorityMints: priority.map(t => t.mint), syncedWatchlists }, updated_at: finishedAt });
         if (statusDone.error)
             throw statusDone.error;

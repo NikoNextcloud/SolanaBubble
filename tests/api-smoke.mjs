@@ -40,6 +40,7 @@ try {
   assert.equal((await get('/api/market/watchlist?mints=bad')).status,400);
   assert.equal((await get('/api/push/subscription')).status,401);
   assert.equal((await fetch(`http://127.0.0.1:${appPort}/api/push/dispatch`,{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).status,401);
+  assert.equal((await fetch(`http://127.0.0.1:${appPort}/api/webhooks/helius`,{method:'POST',headers:{'content-type':'application/json'},body:'[]'})).status,401);
   assert.equal((await (await get('/api/market/watchlist')).json()).tokens.length,0);
   const favorites=await (await get(`/api/market/watchlist?mints=${mint}`)).json();assert.equal(favorites.tokens[0].marketObservedAt,at);
   const other='EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
