@@ -617,6 +617,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
     setObservationAt(null);setObservationError(false);setChanges([]);setChangeInterval(null);setHolderMetrics(null);
     const s = forceSimulation<N>().alphaDecay(0.026).velocityDecay(0.34);
     s.on("tick", scheduleGraphPaint); sim.current = s;
+    if (!renderGate.current.visible || !renderGate.current.inViewport) s.stop();
 
     (async () => {
       setLoadingToken(true);
