@@ -99,9 +99,21 @@ export async function ingestMarket() {
     if (saved.error) throw saved.error;
     let syncedWatchlists=0;
     try {
-      syncedWatchlists=await evaluateSyncedWatchlists(tokens.map(t=>({...t,marketObservedAt:at})),at);
+      const syncResult=await evaluateSyncedWatchlists(tokens.map(t=>({...t,marketObservedAt:at})),at);
+      syncedWatchlists=syncResult.updated;
+      if(syncResult.jobs.length){
+        const config=await db.from('push_dispatch_config').select('endpoint,secret').eq('id',1).maybeSingle();
+        if(config.data?.endpoint&&config.data?.secret){
+          await fetch(config.data.endpoint,{
+            method:'POST',
+            headers:{'content-type':'application/json','x-push-dispatch-secret':config.data.secret},
+            body:JSON.stringify({jobs:syncResult.jobs}),
+            signal:AbortSignal.timeout(8000),
+          }).catch(()=>{});
+        }
+      }
     } catch {
-      // Personal sync must never make market ingestion fail.
+      // Personal sync/push must never make market ingestion fail.
     }
     const finishedAt=new Date().toISOString();
     const statusDone=await db.from('api_cache').upsert({cache_key:'worker:status',payload:{state:'ok',startedAt:new Date(ingestionStarted).toISOString(),finishedAt,lastSuccessAt:at,durationMs:Date.now()-ingestionStarted,holderFailures:failures.length,trafficFailures,holderCompleted:completed,trafficCompleted,tokens:tokens.length,recentHolders:tokens.filter(t=>t.holderObservedAt&&Date.now()-Date.parse(t.holderObservedAt)<3600000).length,recentTraffic:tokens.filter(t=>t.trafficObservedAt&&Date.now()-Date.parse(t.trafficObservedAt)<600000).length,usableTraffic:tokens.filter(t=>t.trafficEvidence==='usable'&&t.trafficObservedAt&&Date.now()-Date.parse(t.trafficObservedAt)<600000).length,holderBudget:budget,trafficBudget,trafficDiagnostics:tokens.reduce((acc:Record<string,number>,t)=>{for(const [k,v] of Object.entries(t.trafficSample?.failures??{}))acc[k]=(acc[k]??0)+Number(v);return acc;},{}),priorityMints:priority.map(t=>t.mint),syncedWatchlists},updated_at:finishedAt});if(statusDone.error)throw statusDone.error;
