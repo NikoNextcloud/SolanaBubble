@@ -598,6 +598,8 @@ export function evaluateAlerts(t, previous, at) {
         id: `${t.mint}:${kind}:${at}`, mint: t.mint, symbol: t.symbol ?? null, kind, severity, value, message, at,
         deltaTrades: 0, deltaVolume: t.volumeDelta ?? 0, hypeDelta: t.hypeDelta ?? 0
     });
+    if ((t.opportunityScore ?? 0) >= 75 && (previous?.opportunityScore ?? 0) < 75)
+        add('opportunity', t.opportunityScore, 'Opportunity Score crossed 75/100');
     if ((t.hypeScore ?? 0) >= 70 && (previous?.hypeScore ?? 0) < 70)
         add('hype-threshold', t.hypeScore, 'Hype crossed 70/100');
     if ((t.hypeVelocity ?? 0) >= 3 && (previous?.hypeVelocity ?? 0) < 3)
@@ -1159,7 +1161,7 @@ export function selectHolderWork(tokens, priorityMints, cursor, budget) {
         candidates.push(rotating[(start + i) % rotating.length]);
     return { priority, rotating, candidates: candidates.slice(0, budget) };
 }
-export const ruleDefinitions = [{ key: 'hypeScore', label: 'Hype ≥', default: 70, min: 0, max: 100 }, { key: 'hypeVelocity', label: 'Hype velocity ≥ H/min', default: 3, min: 0, max: 100 }, { key: 'holderGrowthPct', label: 'Holder growth · 5m ≥ %', default: 5, min: 0, max: 1000 }, { key: 'buyPressure', label: 'Buy count pressure ≥ %', default: 70, min: 0, max: 100 }, { key: 'liquidityChangePct', label: 'Liquidity drop ≥ %', default: 25, min: 0, max: 100 }];
+export const ruleDefinitions = [{ key: 'opportunityScore', label: 'Opportunity ≥', default: 75, min: 0, max: 100 }, { key: 'hypeScore', label: 'Hype ≥', default: 70, min: 0, max: 100 }, { key: 'hypeVelocity', label: 'Hype velocity ≥ H/min', default: 3, min: 0, max: 100 }, { key: 'holderGrowthPct', label: 'Holder growth · 5m ≥ %', default: 5, min: 0, max: 1000 }, { key: 'buyPressure', label: 'Buy count pressure ≥ %', default: 70, min: 0, max: 100 }, { key: 'liquidityChangePct', label: 'Liquidity drop ≥ %', default: 25, min: 0, max: 100 }];
 export const emptyWatchState = () => ({ version: 1, entries: [], filters: { query: '', minHype: 0, maxRisk: 100, onlyFavorites: false }, alerts: [], seen: {}, active: {} });
 export const validMint = (m) => typeof m === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(m);
 export function normalizeWatchState(raw) {
