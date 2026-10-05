@@ -1,0 +1,24 @@
+name: Temporary worker bundle sync
+on:
+  push:
+    branches:
+      - chatgpt/visual-core-v3-20261005
+permissions:
+  contents: write
+jobs:
+  sync-worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/visual-core-v3-20261005
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run worker:bundle
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: Regenerate market snapshot worker
+          file_pattern: supabase/functions/market-snapshot/index.js supabase/functions/market-snapshot/deno.json
