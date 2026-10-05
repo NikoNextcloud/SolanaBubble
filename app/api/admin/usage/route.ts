@@ -16,10 +16,17 @@ export async function GET(req: Request) {
 
   const db = admin();
 
-  const [rpcHealth, tokens, dbSize] = await Promise.all([
+  const since2h = new Date(Date.now() - 2 * 60 * 60_000).toISOString();
+  const [rpcHealth, tokens, dbSize, workerStatus, bootstraps, directTraffic, routedTraffic, syncRows, snapshots] = await Promise.all([
     getRpcHealth(),
     db.from("tokens").select("mint", { count: "exact", head: true }),
     db.rpc("database_size_bytes"),
+    db.from("api_cache").select("payload,updated_at").eq("cache_key", "worker:status").maybeSingle(),
+    db.from("token_bootstrap_leases").select("mint,lease_until", { count: "exact" }).gt("lease_until", new Date().toISOString()),
+    db.from("traffic_swaps").select("signature", { count: "exact", head: true }).eq("evidence", "direct").gte("block_at", since2h),
+    db.from("traffic_swaps").select("signature", { count: "exact", head: true }).eq("evidence", "routed").gte("block_at", since2h),
+    db.from("watchlist_sync").select("sync_hash", { count: "exact", head: true }).gt("expires_at", new Date().toISOString()),
+    db.from("market_snapshots").select("id", { count: "exact", head: true }),
   ]);
 
   const databaseBytes = Number(dbSize.data ?? 0);
@@ -41,7 +48,22 @@ export async function GET(req: Request) {
       healthy: rpcHealth.ok,
       status: rpcHealth.result,
       trackedTokens: tokens.count ?? 0,
-      note: "Solana Public RPC е rate-limited. DexScreener се използва за market данни.",
+      note: "Solana RPC failover + DexScreener market data.",
+    },
+    health: {
+      worker: workerStatus.data?.payload ?? null,
+      workerUpdatedAt: workerStatus.data?.updated_at ?? null,
+      activeBootstraps: bootstraps.count ?? 0,
+      directTraffic2h: directTraffic.count ?? 0,
+      routedTraffic2h: routedTraffic.count ?? 0,
+      syncedWatchlists: syncRows.count ?? 0,
+      marketSnapshots: snapshots.count ?? 0,
+      runtime: {
+        environment: process.env.VERCEL_ENV ?? "local",
+        gitSha: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
+        region: process.env.VERCEL_REGION ?? null,
+        node: process.version,
+      },
     },
   }, { headers: { "cache-control": "no-store, max-age=0" } });
 }
