@@ -79,7 +79,7 @@ export default function MarketCometLayer({
 
   for (const node of nodes) {
     const buys = node.trafficSample?.recentBuys ?? [];
-    for (const buy of buys.slice(0, 4)) {
+    for (const buy of buys.slice(0, Math.max(1, maxComets))) {
       const age = Date.now() - Date.parse(buy.blockAt);
       if (!Number.isFinite(age) || age < -60_000 || age > 20 * 60_000) continue;
       const quoteLabel = buy.usdValue != null
