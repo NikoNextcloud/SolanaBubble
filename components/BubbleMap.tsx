@@ -61,6 +61,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const edges = useRef<E[]>([]);
   const links = useRef<L[]>([]);
   const sim = useRef<Simulation<N, undefined>>(undefined);
+  const renderGate = useRef({ visible: true, inViewport: true, lastPaint: 0, raf: 0 });
   const pan = useRef({ active: false, x: 0, y: 0, tx: 0, ty: 0 });
   const drag = useRef({
     active: false,
@@ -187,6 +188,19 @@ export default function BubbleMap({ mint }: { mint: string }) {
     links.current = [...baseLinks.current, ...directTransfers, ...fanIn];
   };
 
+  const scheduleGraphPaint = () => {
+    const gate = renderGate.current;
+    if (!gate.visible || !gate.inViewport) return;
+    const now = performance.now();
+    // 30fps is enough for the spring animation and halves React work on large graphs.
+    if (now - gate.lastPaint < 32 || gate.raf) return;
+    gate.lastPaint = now;
+    gate.raf = requestAnimationFrame(() => {
+      gate.raf = 0;
+      bump((x) => x + 1);
+    });
+  };
+
   const configureLayout = (s: Simulation<N, undefined>) => {
     const groups = visualGroups();
     const ids = [...new Set(groups.values())].sort((a, b) => a - b);
@@ -236,8 +250,8 @@ export default function BubbleMap({ mint }: { mint: string }) {
         l.kind === "timing" ? 0.28 :
         l.kind.startsWith("flow-") ? 0.22 : 0.16
       ));
-    s.alpha(0.62).restart();
-    bump((x) => x + 1);
+    if (renderGate.current.visible && renderGate.current.inViewport) s.alpha(0.62).restart();
+    scheduleGraphPaint();
   };
 
   const put = (h: H, animate: boolean) => {
@@ -573,12 +587,36 @@ export default function BubbleMap({ mint }: { mint: string }) {
   }, [view]);
 
   useEffect(() => {
+    const el = wrap.current;
+    if (!el) return;
+    const sync = () => {
+      const active = !document.hidden && renderGate.current.inViewport;
+      renderGate.current.visible = !document.hidden;
+      if (active) sim.current?.alpha(Math.max(sim.current.alpha(), 0.16)).restart();
+      else sim.current?.stop();
+    };
+    const io = new IntersectionObserver(([entry]) => {
+      renderGate.current.inViewport = entry?.isIntersecting !== false;
+      sync();
+    }, { rootMargin: "120px" });
+    io.observe(el);
+    document.addEventListener("visibilitychange", sync);
+    sync();
+    return () => {
+      io.disconnect();
+      document.removeEventListener("visibilitychange", sync);
+      if (renderGate.current.raf) cancelAnimationFrame(renderGate.current.raf);
+      renderGate.current.raf = 0;
+    };
+  }, []);
+
+  useEffect(() => {
     let alive = true;
     graphReady.current=false;holderObservationAt.current=null;previousObservation.current=null;
     nodes.current.clear();baseLinks.current=[];edges.current=[];links.current=[];setSel(null);setFeedTxs([]);setWalletTxs([]);setHolderCount(0);setMeta(null);
     setObservationAt(null);setObservationError(false);setChanges([]);setChangeInterval(null);setHolderMetrics(null);
     const s = forceSimulation<N>().alphaDecay(0.026).velocityDecay(0.34);
-    s.on("tick", () => bump((x) => x + 1)); sim.current = s;
+    s.on("tick", scheduleGraphPaint); sim.current = s;
 
     (async () => {
       setLoadingToken(true);
