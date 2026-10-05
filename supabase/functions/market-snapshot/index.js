@@ -1058,8 +1058,9 @@ export function summarizeTraffic(rows, scans, at, pool, context, rowLimitReached
         acc[k] = (acc[k] ?? 0) + Number(v); return acc; }, {}), parsed = scans.reduce((n, s) => n + (s.parsed ?? 0), 0), recognized = scans.reduce((n, s) => n + (s.recognized ?? 0), 0), unavailable = scans.reduce((n, s) => n + (s.unavailable ?? 0), 0);
     const directRecognized = scans.reduce((n, s) => n + (s.directRecognized ?? s.recognized ?? 0), 0), routedRecognized = scans.reduce((n, s) => n + (s.routedRecognized ?? 0), 0);
     const evidence = unavailable > 0 || Object.values(failures).some(v => v > 0) ? 'degraded' : recognized >= 5 ? 'usable' : parsed >= 5 ? 'sparse' : 'warming';
-    const recentBuys = sorted.filter(s => s.side === 'buy').slice(-8).reverse().map(s => ({ signature: s.signature, wallet: s.wallet, usdValue: s.usd_value, quoteMint: s.quote_mint, quoteAmount: s.quote_amount, blockAt: s.block_at, pool: s.pool, evidence: s.evidence ?? 'direct', program: s.program }));
-    return { observedAt: at, pool: primaryPool, pools, coverage: 'partial', evidence, failures, scans: scans.length, listedSignatures: scans.reduce((n, s) => n + (s.listed ?? 0), 0), parsedTransactions: parsed, recognizedTransactions: recognized, directRecognizedTransactions: directRecognized, routedRecognizedTransactions: routedRecognized, unavailableTransactions: unavailable, unrecognizedTransactions: scans.reduce((n, s) => n + (s.unrecognized ?? 0), 0), limitedScans: scans.filter(s => s.limited).length, rowLimitReached, windows, recentBuys, note: `Partial sample across ${pools.length} selected liquid pool${pools.length === 1 ? '' : 's'}. Verified-direct adapters: PumpSwap, Raydium CPMM/CLMM, Meteora DLMM and Orca Whirlpool. Jupiter routes are conservative signer-balance inference and are labelled routed, not verified-direct. USD uses USDC=$1 or SOL price at scan time, not historical execution USD. New buyers means first seen in retained 2h sample; quick resale does not establish profit. No completeness or bot verdict.` };
+    const recent = (side) => sorted.filter(s => s.side === side).slice(-16).reverse().map(s => { const pct = context?.walletPctSupply?.get(s.wallet) ?? null; return { signature: s.signature, wallet: s.wallet, usdValue: s.usd_value, quoteMint: s.quote_mint, quoteAmount: s.quote_amount, blockAt: s.block_at, pool: s.pool, evidence: s.evidence ?? 'direct', program: s.program, whale: pct != null && pct >= 1, walletPctSupply: pct }; });
+    const recentBuys = recent('buy'), recentSells = recent('sell');
+    return { observedAt: at, pool: primaryPool, pools, coverage: 'partial', evidence, failures, scans: scans.length, listedSignatures: scans.reduce((n, s) => n + (s.listed ?? 0), 0), parsedTransactions: parsed, recognizedTransactions: recognized, directRecognizedTransactions: directRecognized, routedRecognizedTransactions: routedRecognized, unavailableTransactions: unavailable, unrecognizedTransactions: scans.reduce((n, s) => n + (s.unrecognized ?? 0), 0), limitedScans: scans.filter(s => s.limited).length, rowLimitReached, windows, recentBuys, recentSells, note: `Partial sample across ${pools.length} selected liquid pool${pools.length === 1 ? '' : 's'}. Verified-direct adapters: PumpSwap, Raydium CPMM/CLMM, Meteora DLMM and Orca Whirlpool. Jupiter routes are conservative signer-balance inference and are labelled routed, not verified-direct. USD uses USDC=$1 or SOL price at scan time, not historical execution USD. Whale labels require a fresh observed wallet balance ≥1% supply. New buyers means first seen in retained 2h sample; quick resale does not establish profit. No completeness or bot verdict.` };
 }
 export async function observeTraffic(token, solUsd, holder, deadline = Date.now() + 45000) {
     const configured = [
@@ -1138,6 +1139,10 @@ export async function observeTraffic(token, solUsd, holder, deadline = Date.now(
     for (const row of [...(prior.data ?? []), ...allNew])
         merged.set(`${row.signature}:${row.wallet}`, row);
     const cache = await db.from('api_cache').select('payload,updated_at').eq('cache_key', `intelligence:holders:${token.mint}`).maybeSingle();
+    const holderPayload = cache.data?.payload;
+    const holderSupply = Number(holderPayload?.supply ?? 0);
+    const holderBalances = Array.isArray(holderPayload?.balances) ? holderPayload.balances : [];
+    const walletPctSupply = holderSupply > 0 ? new Map(holderBalances.map((h) => [String(h.wallet), Number(h.balance ?? 0) / holderSupply * 100])) : undefined;
     const linked = holder?.linkedWallets != null && holder?.walletEvidence ? new Set(holder.walletEvidence.flatMap(e => e.wallets)) : undefined;
     const activePools = pools.slice(0, Math.max(1, cycleScans.length)).map(p => p.pairAddress);
     const relevantHistorical = previousScans.filter(s => activePools.includes(s.pool));
@@ -1145,7 +1150,23 @@ export async function observeTraffic(token, solUsd, holder, deadline = Date.now(
         holderAt: cache.data?.updated_at,
         wallets: cache.data?.payload?.balances ? new Set(cache.data.payload.balances.map((h) => h.wallet)) : undefined,
         linkedWallets: linked,
+        walletPctSupply,
     }, (prior.data?.length ?? 0) >= 1800);
+    if (allNew.length) {
+        const liveRows = allNew.map(s => {
+            const pct = walletPctSupply?.get(s.wallet) ?? null;
+            return {
+                mint: token.mint, pool: s.pool, signature: s.signature, wallet: s.wallet, side: s.side,
+                usd_value: s.usd_value, quote_mint: s.quote_mint, quote_amount: s.quote_amount,
+                evidence: s.evidence ?? 'direct', program: s.program, block_at: s.block_at,
+                whale: pct != null && pct >= 1, wallet_pct_supply: pct, observed_at: at,
+            };
+        });
+        const liveWrite = await db.from('live_market_events').upsert(liveRows, { onConflict: 'mint,signature,wallet' });
+        if (liveWrite.error)
+            throw liveWrite.error;
+        await db.from('live_market_events').delete().lt('block_at', new Date(Date.now() - 20 * 60_000).toISOString());
+    }
     const write = await db.from('api_cache').upsert({ cache_key: `intelligence:traffic:${token.mint}`, payload: summary, updated_at: at });
     if (write.error)
         throw write.error;
