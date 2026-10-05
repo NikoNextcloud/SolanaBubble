@@ -579,28 +579,19 @@ export default function MarketMap() {
     void expandToken(candidate);
   }, [recentEvents, autoGraph, streamLive, expandedMints]);
 
-  async function openToken(t: MarketToken) {
+  function openToken(t: MarketToken) {
     setLoadingMint(t.mint);
     setError("");
-    try {
-      const r = await fetch("/api/tokens/track", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mint: t.mint }),
-      });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || "track");
-      router.push(`/token/${t.mint}`);
-    } catch {
-      setError("Неуспешно зареждане на holder картата за този токен.");
-      setLoadingMint(null);
-    }
+    router.push(`/token/${t.mint}`);
   }
 
   const filteredTokens=tokens.filter(t=>matchesWatchFilters(t,watch.state.filters,watch.state.entries));
   const nodes = [...nodeMap.current.values()].filter(n=>n.isCore||matchesWatchFilters(n,watch.state.filters,watch.state.entries));
   const mapNodes = nodes.filter((n) => !n.isCore);
-  const declutteredMapNodes = viewMode === "map"
+  const mapLayoutKey = mapNodes
+    .map((n) => `${n.mint}:${n.x.toFixed(1)}:${n.y.toFixed(1)}:${n.r.toFixed(1)}`)
+    .join("|");
+  const declutteredMapNodes = useMemo(() => viewMode === "map"
     ? declutterMarketNodes(mapNodes, {
         // Keep dense coordinate clusters readable: >2x the previous edge-to-edge gap.
         gap: size.w <= 700 ? 88 : 152,
@@ -608,9 +599,11 @@ export default function MarketMap() {
         iterations: size.w <= 700 ? 34 : 48,
         anchorStrength: size.w <= 700 ? .028 : .015,
       })
-    : mapNodes.map((n) => ({ ...n, anchorX: n.x, anchorY: n.y, displacement: 0 }));
+    : mapNodes.map((n) => ({ ...n, anchorX: n.x, anchorY: n.y, displacement: 0 })),
+    [mapLayoutKey, size.w, viewMode],
+  );
   const renderedNodes = viewMode === "map" ? declutteredMapNodes : nodes;
-  const renderNodeByMint = new Map(renderedNodes.map((n) => [n.mint, n]));
+  const renderNodeByMint = useMemo(() => new Map(renderedNodes.map((n) => [n.mint, n])), [renderedNodes]);
   const quickActionNode = quickActionMint ? (renderNodeByMint.get(quickActionMint) ?? nodeMap.current.get(quickActionMint)) : null;
   const quickActionLayout = quickActionNode ? positionQuickActions({
     nodeX: quickActionNode.x,
