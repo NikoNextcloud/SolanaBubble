@@ -1,0 +1,24 @@
+name: Generate worker artifact
+on:
+  push:
+    branches:
+      - chatgpt/live-comets-full-upgrade-20261005
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/live-comets-full-upgrade-20261005
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run worker:bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: market-worker-bundle
+          path: |
+            supabase/functions/market-snapshot/index.js
+            supabase/functions/market-snapshot/deno.json
