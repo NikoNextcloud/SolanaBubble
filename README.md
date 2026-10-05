@@ -21,7 +21,7 @@ There is no Helius dependency in the active application.
 - Holder pages refresh through Solana Public RPC while Live is enabled.
 - Holder refresh is cached and throttled to reduce public RPC load.
 - After inactivity the UI can pause animations/refresh and continue from cached data.
-- Bubble positions remain interactive and the force layout keeps clusters visually separated.
+- Market planets use the Lovable Market Cap × Price Change 1H coordinate system. Dense clusters are visually decluttered around their real coordinate anchors; planets pulse in place instead of drifting.
 
 ## Main pages
 
@@ -81,7 +81,7 @@ Apply migrations through `20261002083402_swap_traffic.sql`. Snapshot and alert w
 
 The Lovable layout retains only Map/List, mouse panning, draggable tokens, pinned positions and scroll zoom. Bubble size represents Hype; brightness follows Hype Velocity, green/red glow follows estimated flow, pulse duration follows acceleration, outlines widen with positive holder growth, and risk ≥50 or disappearing liquidity adds a warning ring. Token Signal Card is available from the market selection and holder overview. Top Movers provides Hype, Holder, Volume, Liquidity and Smart Money categories.
 
-`vercel.json` keeps Git-triggered deployment disabled. GitHub CI typechecks, tests, builds and runs API smoke checks. Pushing to `main` does not authorize Vercel production deployment; that requires an explicit “deploy”.
+`vercel.json` keeps Git-triggered deployment disabled. GitHub CI typechecks, tests, verifies the generated Supabase worker, enforces source-size budgets, builds, runs API smoke checks and executes real Chromium mobile/desktop interactions. Pushing to `main` does not authorize Vercel production deployment; that requires an explicit “deploy”.
 
 ### Verification
 
@@ -102,7 +102,7 @@ FoMo links use its direct `/coin?address=<mint>&chainId=1399811149` route. FoMo 
 
 Use ☆ Add to Watchlist in the Token Signal Card, or add a mint on `/market/watchlist`. Favorites (up to 50), search/minimum Hype/maximum Risk/favorites-only filters and per-token alert thresholds are stored in versioned browser localStorage. Existing `solanabubble:wishlist` entries migrate on the first edit. Storage failures are displayed, never silently presented as saved. Browser settings do not sync between devices and are removed if browser storage is cleared.
 
-Watchlist reads fresh market cache or the latest persisted snapshot for mints outside the current discovery universe; missing observations remain unknown. GET `/api/market/watchlist?mints=...` validates and bounds requests and never triggers collection. Open a token's holder page to track a token with no observation yet. Filters apply to Map and List and are shared with Watchlist. Drag/pan/zoom and the Map/List modes remain intact.
+Watchlist reads fresh market cache or the latest persisted snapshot for mints outside the current discovery universe; missing observations remain unknown. A browser-generated 256-bit sync key can synchronize favorites, filters, thresholds and alert history across devices. Only its SHA-256 hash is stored server-side; the raw sync key remains a user secret. Synced threshold rules are also evaluated by the background market worker when their tokens are present in the current market snapshot. GET `/api/market/watchlist?mints=...` validates and bounds requests and never triggers collection. Open a token's holder page to track a token with no observation yet. Filters apply to Map and List and are shared with Watchlist. Drag/pan/zoom and the Map/List modes remain intact.
 
 Personal alerts evaluate cached observations while Map or Watchlist is open. Rules cover Hype, Hype Velocity, roughly-five-minute holder growth, buy count pressure (at least 20 trades) and liquidity drop. Unknown/stale observations cannot fire. Crossings persist once and rearm after the condition clears; edits reset that rule's condition. These are in-app alerts, not server-side subscriptions, push, email or unattended background delivery.
 
@@ -119,7 +119,7 @@ The Map legend is visible again, collapsible, and explains size, brightness, pul
 
 ## Swap traffic and free-tier CPU controls
 
-Recognized direct single swaps from PumpSwap and Raydium CPMM are sampled on the Supabase worker. A scan reads at most 12 signatures for one selected pool; up to two of the 20 active tracked token pools rotate per five-minute worker cycle. The rotation can leave long gaps (about 50m for 20 pools), and public RPC failures further reduce coverage. Unknown programs, routers, multi-leg trades, failed transactions and ambiguous movements are excluded. This is not complete token-wide traffic. Compact swaps/scans are retained for two hours with idempotent writes and service-only RLS. All RPC requests still use the replaceable provider boundary; no Helius or Solscan.
+Recognized direct single swaps from PumpSwap, Raydium CPMM/CLMM, Meteora DLMM and Orca Whirlpool are sampled on the Supabase worker. When a scanned selected-pool transaction is routed through Jupiter v6, a stricter signer-balance heuristic may retain it as `routed` evidence; it never upgrades routed-only traffic to the same confidence as verified-direct evidence. A scan reads at most 12 signatures for one selected pool; up to two of the 20 active tracked token pools rotate per five-minute worker cycle. The rotation can leave long gaps (about 50m for 20 pools), and public RPC failures further reduce coverage. Unknown programs, routers, multi-leg trades, failed transactions and ambiguous movements are excluded. This is not complete token-wide traffic. Compact swaps/scans are retained for two hours with idempotent writes and service-only RLS. All RPC requests still use the replaceable provider boundary; no Helius or Solscan.
 
 The Traffic card has 5m/15m/1h windows ending at the actual scan timestamp, unique buyer/seller signers, first-seen/returning sampled buyers, buy sizes, top-three buyer concentration, quick resales and sampled links. Retention requires a later, recent holder observation; it is not profitability. USD is pool quote-vault movement valued at USDC=$1 or SOL’s scan-time price, not historical execution value or whole-market inflow. Missing USD/retention/relationship evidence stays unknown. Map sample direction requires a scan younger than 10m and at least five swaps; otherwise its existing count/Hype estimate remains. Liquidity and risk warnings remain separate.
 
@@ -144,7 +144,7 @@ worker:status records start, finish, duration, failures and last success in the 
 
 ### Split RPC routing and transaction v1
 
-`SOLANA_TRAFFIC_RPC_URL` controls getTransaction/getSignaturesForAddress; `SOLANA_HOLDER_RPC_URL` controls account, supply and indexed holder methods. Both fall back to legacy `SOLANA_RPC_URL` when set. Without overrides traffic uses `https://solana-rpc.publicnode.com`, holders use `https://api.mainnet-beta.solana.com`. Set these server-side in each runtime; never expose provider keys to the browser. No automatic endpoint rotation or paid account creation.
+`SOLANA_TRAFFIC_RPC_URLS` and `SOLANA_HOLDER_RPC_URLS` accept comma-separated ordered RPC failover chains. The singular `SOLANA_TRAFFIC_RPC_URL` / `SOLANA_HOLDER_RPC_URL` and legacy `SOLANA_RPC_URL` remain compatible fallbacks. Retryable 429/403/timeout/network/RPC failures cool down the failed endpoint and move to the next configured provider without exposing provider URLs or credentials to clients. Without overrides traffic starts with PublicNode and holders with Solana mainnet RPC.
 
 Transaction reads request integer maxSupportedTransactionVersion=1. The direct-swap decoder accepts parsed legacy/v0/v1 with the same verified account/discriminator/balance evidence; binary responses, future versions, routers and ambiguous operations remain unknown. v1 resource configuration is not interpreted as swap evidence. Existing Map sample freshness/minimum-evidence gates continue to apply.
 
@@ -159,3 +159,11 @@ The worker uses an adaptive ceiling of three holder observations and three traff
 Traffic summaries expose `warming`, `sparse`, `usable`, or `degraded` evidence. A usable direct-swap sample requires at least five recognized swaps; RPC failures/unavailable transactions make it degraded. Token Signal Card separates observed 15m sample pressure/net flow from the DexScreener-derived 1h estimate. Buy-pressure alerts prefer fresh observed evidence and fall back to aggregate counts only when at least 20 trades exist. The public worker status reports fresh and usable traffic coverage without performing a live RPC request.
 
 Server alert persistence applies a 30-minute cooldown per token and alert kind, plus exact event-ID deduplication. Each cycle keeps the strongest alert per token and persists at most eight, ranking critical and warning events before informational movement. The cached 24h panel collapses older noisy history to the newest alert per token/kind; existing database rows are retained and age out under the normal storage policy.
+
+### Project hardening (2026-10-05)
+
+- Expensive first-time token bootstrap is serialized in Postgres with a per-mint lease and a global ceiling of three concurrent bootstraps. Duplicate serverless requests receive a pending response instead of repeating RPC work.
+- Holder-map React paints are capped around 30fps and D3 physics pauses while the document/map is hidden or offscreen. Market-map decluttering is memoized so selection/quick-action renders do not rerun the O(n²) collision pass.
+- Search and market double-click navigation no longer wait for `/api/tokens/track`; the holder page owns bootstrap/priority work, eliminating duplicate Vercel requests.
+- Cross-device watchlist sync uses a 64-hex-character private key. Treat it like a password; anyone with the key can read or replace that synchronized watchlist.
+- `npm run worker:check` prevents the committed Supabase Edge bundle from drifting from shared TypeScript sources. `npm run check:budgets` prevents accidental growth of the largest map/CSS/worker files.
