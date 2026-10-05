@@ -19,7 +19,7 @@ export default function ProjectHealthDashboard({usage}:{usage:any}){
        <small>last worker cycle</small>
      </article>
      <article className="health-card">
-       <span>RPC diagnostics</span><strong>{Object.values(w?.trafficDiagnostics??{}).reduce((a:any,b:any)=>Number(a)+Number(b),0)}</strong>
+       <span>RPC diagnostics</span><strong>{Number(Object.values((w?.trafficDiagnostics??{}) as Record<string,unknown>).reduce((sum:number,item)=>sum+Number(item||0),0))}</strong>
        <small>{Object.entries(w?.trafficDiagnostics??{}).slice(0,3).map(([k,v])=>`${k}: ${v}`).join(" · ")||"no classified failures"}</small>
      </article>
      <article className="health-card">
