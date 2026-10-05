@@ -127,6 +127,7 @@ function AnimatedComet({
   ].filter(Boolean).join(" ");
 
   return <g className={cls} data-comet-key={comet.key} data-comet-cycle={cycle}>
+    <path d={comet.path} className={`targeted-comet-trail targeted-comet-trail-${comet.direction}`} data-evidence={comet.evidence} pointerEvents="none"/>
     <circle cx={comet.target.x} cy={comet.target.y} r={comet.target.r+4} className="targeted-comet-impact" opacity="0" pointerEvents="none">
       <animate ref={impactOpacity as any} attributeName="opacity" values={comet.direction==="in"?"0;.95;0":".9;.35;0"} keyTimes="0;.35;1" dur=".65s" begin="indefinite" fill="freeze"/>
       <animate ref={impactRadius as any} attributeName="r" values={`${comet.target.r+2};${comet.target.r+15};${comet.target.r+21}`} keyTimes="0;.55;1" dur=".65s" begin="indefinite" fill="freeze"/>
