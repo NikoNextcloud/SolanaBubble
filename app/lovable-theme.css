@@ -1412,3 +1412,33 @@ button.market-section-row:hover{background:#35373b!important}
 @media(prefers-reduced-motion:reduce){
   .market-comet-runner{display:none!important}
 }
+
+
+/* Readable coordinate clusters + Lovable high-hype green particle halo. */
+.market-anchor-link{
+  stroke:#81878f;
+  stroke-width:.7;
+  stroke-dasharray:2 3;
+  opacity:.24;
+  vector-effect:non-scaling-stroke;
+}
+.hype-particle-cloud .hype-green-particle{
+  fill:#43d993!important;
+  filter:drop-shadow(0 0 3px rgba(67,217,147,.9));
+  transform-box:fill-box;
+  transform-origin:center;
+}
+.signals-animated .hype-particle-cloud .hype-green-particle{
+  animation:hypeParticleTwinkle var(--particle-duration,2.8s) ease-in-out var(--particle-delay,0s) infinite alternate;
+}
+.signals-paused .hype-particle-cloud .hype-green-particle{
+  animation:none!important;
+}
+@keyframes hypeParticleTwinkle{
+  0%{opacity:.25;transform:scale(.72)}
+  55%{opacity:.9;transform:scale(1.2)}
+  100%{opacity:.45;transform:scale(.88)}
+}
+@media(prefers-reduced-motion:reduce){
+  .hype-particle-cloud .hype-green-particle{animation:none!important}
+}
