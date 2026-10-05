@@ -204,14 +204,24 @@ try {
   assert.ok(Math.abs(mobileInitial.navBottom - 844) <= 2, "bottom navigation must stay inside the viewport");
   assert.ok(mobileInitial.navTop >= 760, "bottom navigation must remain thumb reachable");
 
-  const coordinateUi = await page.evaluate(`(() => ({
-    axisTitle: [...document.querySelectorAll(".lovable-coordinate-grid .axis-title")].map((el) => el.textContent).join(" · "),
-    fullscreenButton: Boolean(document.querySelector(".market-fullscreen-button")),
-    cometCount: document.querySelectorAll(".market-comet-runner").length,
-  }))()`);
+  const coordinateUi = await page.evaluate(`(() => {
+    const map = document.querySelector(".market-map")?.getBoundingClientRect();
+    const full = document.querySelector(".market-fullscreen-button");
+    const rect = full?.getBoundingClientRect();
+    const style = full ? getComputedStyle(full) : null;
+    return {
+      axisTitle: [...document.querySelectorAll(".lovable-coordinate-grid .axis-title")].map((el) => el.textContent).join(" · "),
+      fullscreenButton: Boolean(full),
+      fullscreenVisible: Boolean(full && rect && style?.display !== "none" && style?.visibility !== "hidden" && rect.width > 0 && rect.height > 0),
+      fullscreenInsideMap: Boolean(map && rect && rect.left >= map.left && rect.right <= map.right && rect.top >= map.top && rect.bottom <= map.bottom),
+      cometCount: document.querySelectorAll(".market-comet-runner").length,
+    };
+  })()`);
   assert.match(coordinateUi.axisTitle, /PRICE CHANGE · 1H/);
   assert.match(coordinateUi.axisTitle, /MARKET CAP/);
   assert.equal(coordinateUi.fullscreenButton, true, "map must expose a fullscreen control");
+  assert.equal(coordinateUi.fullscreenVisible, true, "fullscreen control must be visibly reachable");
+  assert.equal(coordinateUi.fullscreenInsideMap, true, "fullscreen control must stay inside the map");
   assert.ok(coordinateUi.cometCount >= 1, "active tokens must render Lovable-style moving comets");
 
   const fixedBefore = await page.evaluate(`(() => {
