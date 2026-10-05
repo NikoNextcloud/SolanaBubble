@@ -409,7 +409,7 @@ try {
       }
       return originalFetch(input, init);
     };
-    const el = document.querySelector(".market-token-bubble[aria-label^=\"BTEST:\"]");
+    const el = document.querySelector('.market-token-bubble[aria-label^="BTEST:"]');
     el?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, detail: 2 }));
   })()`);
   await page.waitFor(`location.pathname === "/token/${TEST_MINT}"`);
