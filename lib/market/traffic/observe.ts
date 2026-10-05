@@ -68,6 +68,10 @@ export async function observeTraffic(
  const merged=new Map<string,RecognizedSwap>();
  for(const row of [...(prior.data??[]),...allNew])merged.set(`${row.signature}:${row.wallet}`,row as RecognizedSwap);
  const cache=await db.from('api_cache').select('payload,updated_at').eq('cache_key',`intelligence:holders:${token.mint}`).maybeSingle();
+ const holderPayload=cache.data?.payload;
+ const holderSupply=Number(holderPayload?.supply??0);
+ const holderBalances=Array.isArray(holderPayload?.balances)?holderPayload.balances:[];
+ const walletPctSupply=holderSupply>0?new Map<string,number>(holderBalances.map((h:any)=>[String(h.wallet),Number(h.balance??0)/holderSupply*100])):undefined;
  const linked=holder?.linkedWallets!=null&&holder?.walletEvidence?new Set(holder.walletEvidence.flatMap(e=>e.wallets)):undefined;
  const activePools=pools.slice(0,Math.max(1,cycleScans.length)).map(p=>p.pairAddress);
  const relevantHistorical=previousScans.filter(s=>activePools.includes(s.pool));
@@ -75,6 +79,7 @@ export async function observeTraffic(
   holderAt:cache.data?.updated_at,
   wallets:cache.data?.payload?.balances?new Set(cache.data.payload.balances.map((h:any)=>h.wallet)):undefined,
   linkedWallets:linked,
+  walletPctSupply,
  },(prior.data?.length??0)>=1800);
  const write=await db.from('api_cache').upsert({cache_key:`intelligence:traffic:${token.mint}`,payload:summary,updated_at:at});if(write.error)throw write.error;
  return summary;
