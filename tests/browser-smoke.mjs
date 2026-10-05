@@ -204,6 +204,24 @@ try {
   assert.ok(Math.abs(mobileInitial.navBottom - 844) <= 2, "bottom navigation must stay inside the viewport");
   assert.ok(mobileInitial.navTop >= 760, "bottom navigation must remain thumb reachable");
 
+  const mobileMapBounds = await page.evaluate(`(() => {
+    const map = document.querySelector(".market-map")?.getBoundingClientRect();
+    const bubbles = [...document.querySelectorAll(".market-token-bubble")].map((el) => el.getBoundingClientRect());
+    const labels = [...document.querySelectorAll(".reference-node-label")].map((el) => el.getBoundingClientRect());
+    if (!map) return { bubblesInside: false, labelsInside: false };
+    const inside = (rect, pad = 1) =>
+      rect.left >= map.left + pad &&
+      rect.right <= map.right - pad &&
+      rect.top >= map.top + pad &&
+      rect.bottom <= map.bottom - pad;
+    return {
+      bubblesInside: bubbles.length > 0 && bubbles.every((rect) => inside(rect, 1)),
+      labelsInside: labels.length > 0 && labels.every((rect) => inside(rect, 4)),
+    };
+  })()`);
+  assert.equal(mobileMapBounds.bubblesInside, true, "mobile bubbles must not be clipped by the map edges");
+  assert.equal(mobileMapBounds.labelsInside, true, "mobile bubble labels must remain readable inside the map");
+
   await page.evaluate("document.querySelector('.mobile-search-toggle')?.click()");
   await page.waitFor("Boolean(document.querySelector('.lovable-header-search.is-mobile-open'))");
   await page.evaluate("document.querySelector('.mobile-search-toggle')?.click()");
