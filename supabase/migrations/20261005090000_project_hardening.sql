@@ -1,4 +1,15 @@
--- Project hardening: serialize expensive token bootstrap work and lock down DB size helper.
+-- Project hardening: serialize expensive token bootstrap work, sync watchlists securely, and lock down DB helpers.
+create table if not exists public.watchlist_sync (
+  sync_hash text primary key,
+  payload jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now(),
+  expires_at timestamptz not null default now()+interval '365 days'
+);
+create index if not exists watchlist_sync_expires_idx on public.watchlist_sync(expires_at);
+alter table public.watchlist_sync enable row level security;
+revoke all on public.watchlist_sync from public,anon,authenticated;
+grant all on public.watchlist_sync to service_role;
+
 create table if not exists public.token_bootstrap_leases (
   mint text primary key,
   lease_until timestamptz not null default '-infinity',
