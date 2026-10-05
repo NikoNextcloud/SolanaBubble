@@ -169,6 +169,29 @@ const snapshot = {
       activityDelta: -3,
       hypeDelta: -2,
     },
+    {
+      mint: "5OverlapHype111111111111111111111111111111111",
+      name: "Overlap Hype",
+      symbol: "HYPE",
+      dex: "raydium",
+      pairAddress: "BrowserPair333",
+      priceUsd: 0.00125,
+      marketCap: 420000,
+      liquidityUsd: 112000,
+      volume1h: 64000,
+      volume24h: 510000,
+      buys1h: 140,
+      sells1h: 38,
+      trades1h: 178,
+      priceChange1h: 8.2,
+      priceChange24h: 31.1,
+      boost: 11,
+      hypeScore: 94,
+      traffic: "in",
+      netFlowUsd1h: 28700,
+      activityDelta: 34,
+      hypeDelta: 14,
+    },
   ],
 };
 
@@ -215,6 +238,8 @@ try {
       fullscreenVisible: Boolean(full && rect && style?.display !== "none" && style?.visibility !== "hidden" && rect.width > 0 && rect.height > 0),
       fullscreenInsideMap: Boolean(map && rect && rect.left >= map.left && rect.right <= map.right && rect.top >= map.top && rect.bottom <= map.bottom),
       cometCount: document.querySelectorAll(".market-comet-runner").length,
+      hypeParticleCount: document.querySelectorAll(".hype-green-particle").length,
+      anchorLinkCount: document.querySelectorAll(".market-anchor-link").length,
     };
   })()`);
   assert.match(coordinateUi.axisTitle, /PRICE CHANGE · 1H/);
@@ -223,6 +248,8 @@ try {
   assert.equal(coordinateUi.fullscreenVisible, true, "fullscreen control must be visibly reachable");
   assert.equal(coordinateUi.fullscreenInsideMap, true, "fullscreen control must stay inside the map");
   assert.ok(coordinateUi.cometCount >= 1, "active tokens must render Lovable-style moving comets");
+  assert.ok(coordinateUi.hypeParticleCount >= 12, "high-hype planets must render a visible green particle halo");
+  assert.ok(coordinateUi.anchorLinkCount >= 1, "decluttered coordinate clusters must keep a subtle anchor guide");
 
   const fixedBefore = await page.evaluate(`(() => {
     const el = document.querySelector(".market-token-bubble");
@@ -238,6 +265,28 @@ try {
   assert.ok(fixedBefore && fixedAfter);
   assert.ok(Math.abs(fixedAfter.x - fixedBefore.x) < 0.5, "planet x position must stay fixed on its data coordinate");
   assert.ok(Math.abs(fixedAfter.y - fixedBefore.y) < 0.5, "planet y position must stay fixed on its data coordinate");
+
+  const declutterState = await page.evaluate(`(() => {
+    const bubbles = [...document.querySelectorAll(".market-token-bubble")].map((el) => {
+      const rect = el.getBoundingClientRect();
+      return {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+        r: rect.width / 2,
+      };
+    });
+    let minimumClearance = Infinity;
+    for (let i = 0; i < bubbles.length; i += 1) {
+      for (let j = i + 1; j < bubbles.length; j += 1) {
+        const a = bubbles[i];
+        const b = bubbles[j];
+        const clearance = Math.hypot(a.x - b.x, a.y - b.y) - a.r - b.r;
+        minimumClearance = Math.min(minimumClearance, clearance);
+      }
+    }
+    return { minimumClearance };
+  })()`);
+  assert.ok(declutterState.minimumClearance >= 8, "overlapping coordinate planets must be visually separated");
 
   const mobileMapBounds = await page.evaluate(`(() => {
     const map = document.querySelector(".market-map")?.getBoundingClientRect();
@@ -405,7 +454,7 @@ try {
   assert.equal(desktopQuickInside, true, "desktop quick actions must stay within the map");
 
   await page.screenshot("/tmp/solanabubble-desktop.png");
-  console.log("Browser smoke passed: Lovable coordinates, fixed pulsing planets, comets, fullscreen control, responsive interactions and pan/zoom.");
+  console.log("Browser smoke passed: Lovable coordinates, decluttered planets, green high-hype particles, comets, fullscreen and responsive interactions.");
 } finally {
   page.ws.close();
 }
