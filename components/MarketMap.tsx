@@ -600,10 +600,10 @@ export default function MarketMap() {
   const mapNodes = nodes.filter((n) => !n.isCore);
   const declutteredMapNodes = viewMode === "map"
     ? declutterMarketNodes(mapNodes, {
-        gap: size.w <= 700 ? 26 : 42,
-        maxDisplacement: size.w <= 700 ? 92 : 170,
-        iterations: size.w <= 700 ? 14 : 20,
-        anchorStrength: size.w <= 700 ? .075 : .05,
+        gap: size.w <= 700 ? 42 : 72,
+        maxDisplacement: size.w <= 700 ? 132 : 250,
+        iterations: size.w <= 700 ? 20 : 28,
+        anchorStrength: size.w <= 700 ? .055 : .032,
       })
     : mapNodes.map((n) => ({ ...n, anchorX: n.x, anchorY: n.y, displacement: 0 }));
   const renderedNodes = viewMode === "map" ? declutteredMapNodes : nodes;
@@ -658,12 +658,12 @@ export default function MarketMap() {
   // Hype particle halo: strong green signal cloud around high-hype planets.
   const signalDust = viewMode === "map"
     ? [...renderedNodes]
-        .filter((n) => !n.isCore && hypeScore(n) >= 55)
+        .filter((n) => !n.isCore && hypeScore(n) >= 65)
         .sort((a, b) => hypeScore(b) - hypeScore(a))
         .slice(0, 18)
         .flatMap((n, nodeIndex) => {
           const hype = hypeScore(n);
-          const normalized = Math.max(0, Math.min(1, (hype - 55) / 45));
+          const normalized = Math.max(0, Math.min(1, (hype - 65) / 35));
           const count = Math.round(7 + normalized * 23);
           return Array.from({ length: count }, (_, i) => {
             const seed = nodeIndex * 1307 + i * 29 + n.mint.charCodeAt(i % n.mint.length);
