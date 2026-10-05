@@ -1,10 +1,8 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY, type Simulation } from "d3-force";
 import { useRouter } from "next/navigation";
 
 import type { Intelligence, SignalAlert } from "@/lib/market/signals";
-import { separateMapNodes } from "@/lib/market/layout";
 import WorkerStatus from "./WorkerStatus";
 import TokenSignalCard from "./TokenSignalCard";
 import MoversPanel from "./MoversPanel";
@@ -16,6 +14,7 @@ import {useWatchlist} from "./useWatchlist";
 import {matchesWatchFilters} from "@/lib/watchlist";
 import { fomoTokenUrl, gmgnTokenUrl } from "@/lib/token-links";
 import { positionQuickActions } from "@/lib/market/quick-actions";
+import { MARKET_X_TICKS, MARKET_Y_TICKS, applyMarketViewport, marketCoordinateBase } from "@/lib/market/coordinates";
 
 type MarketToken = Intelligence & {
   marketObservedAt?:string|null;
@@ -78,7 +77,6 @@ type HotPath = {
 };
 
 type MarketViewMode = "map" | "list";
-type MarketAxis = "marketCap" | "liquidityUsd" | "volume24h";
 
 type Flow = {
   from: string;
@@ -91,19 +89,6 @@ type Flow = {
   confidence?: number;
   sharedWallets?: number;
 };
-
-function keepMarketNodeVisible(node: Node, width: number, height: number) {
-  if (node.isCore || width <= 0 || height <= 0) return;
-  const side = Math.min(width / 2, Math.max(72, node.r + 30));
-  const top = Math.min(height / 2, Math.max(72, node.r + 48));
-  const bottom = Math.min(height / 2, Math.max(72, node.r + 48));
-  const x = Math.max(side, Math.min(width - side, node.x));
-  const y = Math.max(top, Math.min(height - bottom, node.y));
-  node.x = x;
-  node.y = y;
-  if (node.fx != null) node.fx = x;
-  if (node.fy != null) node.fy = y;
-}
 
 const fmtUsd = (n: number) => {
   if (!Number.isFinite(n)) return "—";
@@ -197,12 +182,9 @@ export default function MarketMap() {
   const router = useRouter();
   const watch=useWatchlist();
   const wrap = useRef<HTMLDivElement>(null);
-  const sim = useRef<Simulation<any, any> | null>(null);
   const nodeMap = useRef(new Map<string, Node>());
-  const lastSimRender = useRef(0);
   const [tick, setTick] = useState(0);
   const [size, setSize] = useState({ w: 1000, h: 700 });
-  const sizeRef = useRef(size);
   const [tokens, setTokens] = useState<MarketToken[]>([]);
   const [flows, setFlows] = useState<Flow[]>([]);
   const [expansionFlows, setExpansionFlows] = useState<Flow[]>([]);
@@ -233,7 +215,6 @@ export default function MarketMap() {
   const [viewMode, setViewMode] = useState<MarketViewMode>("map");
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
-  const [xAxis, setXAxis] = useState<MarketAxis>("marketCap");
   const [showTrafficOverlay, setShowTrafficOverlay] = useState(true);
   const [autoGraph, setAutoGraph] = useState(true);
   const lastAutoExpand = useRef(0);
@@ -244,12 +225,12 @@ export default function MarketMap() {
   const [loadingMint, setLoadingMint] = useState<string | null>(null);
   const [error, setError] = useState("");
   const lastActivity = useRef(Date.now());
-  const drag = useRef({ active: false, pointerId: -1, mint: "", lastX: 0, lastY: 0, moved: false });
   const [mapView, setMapView] = useState({ x: 0, y: 0, k: 1 });
   const mapPanDrag = useRef({ active: false, pointerId: -1, startX: 0, startY: 0, baseX: 0, baseY: 0 });
+  const [isMapFullscreen, setIsMapFullscreen] = useState(false);
 
   const beginMapPan = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (e.button !== 0 || drag.current.active) return;
+    if (e.button !== 0) return;
     setQuickActionMint(null);
     setMobileDetailOpen(false);
     mapPanDrag.current = {
@@ -307,78 +288,27 @@ export default function MarketMap() {
     zoomMapAt(rect.left + rect.width / 2, rect.top + rect.height / 2, factor, svg);
   };
 
-  const savePinnedMarketNodes = () => {
-    try {
-      const pinned: Record<string, { x: number; y: number }> = {};
-      for (const n of nodeMap.current.values()) {
-        if (n.fx != null && n.fy != null) pinned[n.mint] = { x: n.fx, y: n.fy };
-      }
-      localStorage.setItem("solanabubble:market-pinned", JSON.stringify(pinned));
-    } catch {}
-  };
-
-  const beginMarketDrag = (e: React.PointerEvent<SVGCircleElement>, mint: string) => {
-    e.stopPropagation();
-    const n = nodeMap.current.get(mint);
-    if (!n) return;
-    n.fx = n.x;
-    n.fy = n.y;
-    n.vx = 0;
-    n.vy = 0;
-    drag.current = { active: true, pointerId: e.pointerId, mint, lastX: e.clientX, lastY: e.clientY, moved: false };
-    e.currentTarget.setPointerCapture(e.pointerId);
-    sim.current?.alpha(0.8).alphaTarget(0.22).restart();
-    setTick((x) => x + 1);
-  };
-
-  const moveMarketDrag = (e: React.PointerEvent<SVGCircleElement>) => {
-    const d = drag.current;
-    if (!d.active || d.pointerId !== e.pointerId) return;
-    e.stopPropagation();
-    const n = nodeMap.current.get(d.mint);
-    if (!n) return;
-    const dx = e.clientX - d.lastX;
-    const dy = e.clientY - d.lastY;
-    if (Math.abs(dx) + Math.abs(dy) > 1) d.moved = true;
-    d.lastX = e.clientX;
-    d.lastY = e.clientY;
-    n.fx = (n.fx ?? n.x) + dx;
-    n.fy = (n.fy ?? n.y) + dy;
-    n.x = n.fx;
-    n.y = n.fy;
-    keepMarketNodeVisible(n, size.w, size.h);
-    sim.current?.alpha(0.72).restart();
-    setTick((x) => x + 1);
-  };
-
-  const endMarketDrag = (e: React.PointerEvent<SVGCircleElement>) => {
-    const d = drag.current;
-    if (!d.active || d.pointerId !== e.pointerId) return;
-    e.stopPropagation();
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
-    const n = nodeMap.current.get(d.mint);
-    if (n) {
-      n.fx = n.x;
-      n.fy = n.y;
-      n.vx = 0;
-      n.vy = 0;
-    }
-    d.active = false;
-    savePinnedMarketNodes();
-    sim.current?.alpha(0.45).alphaTarget(0).restart();
-    setTick((x) => x + 1);
-  };
-
-  const resetMarketPositions = () => {
+  const resetMarketView = () => {
     setMapView({ x: 0, y: 0, k: 1 });
-    for (const n of nodeMap.current.values()) {
-      n.fx = null;
-      n.fy = null;
-    }
-    try { localStorage.removeItem("solanabubble:market-pinned"); } catch {}
-    sim.current?.alpha(0.85).alphaTarget(0).restart();
-    setTick((x) => x + 1);
+    setQuickActionMint(null);
   };
+
+  const toggleMapFullscreen = async () => {
+    const map = wrap.current;
+    if (!map) return;
+    try {
+      if (document.fullscreenElement === map) await document.exitFullscreen();
+      else await map.requestFullscreen();
+    } catch {
+      setError("Браузърът не позволи режим на цял екран.");
+    }
+  };
+
+  useEffect(() => {
+    const syncFullscreen = () => setIsMapFullscreen(document.fullscreenElement === wrap.current);
+    document.addEventListener("fullscreenchange", syncFullscreen);
+    return () => document.removeEventListener("fullscreenchange", syncFullscreen);
+  }, []);
 
   const totals = useMemo(() => {
     return tokens.reduce((a, t) => ({
@@ -405,99 +335,32 @@ export default function MarketMap() {
     return { active: active.length, avgMove, sentiment, smartFlow };
   }, [tokens, totals]);
 
-  const axisStats = useMemo(() => {
-    const values = tokens.map((t) => Math.max(0, Number(t[xAxis] ?? 0))).filter((v) => v > 0);
-    const logs = values.map((v) => Math.log10(v + 1));
-    const min = logs.length ? Math.min(...logs) : 0;
-    const max = logs.length ? Math.max(...logs) : 1;
-    const changes = tokens.map((t) => Number(t.priceChange24h || 0));
-    const abs = Math.max(25, Math.min(150, changes.length ? Math.max(...changes.map((v) => Math.abs(v))) : 100));
-    return { min, max: Math.max(min + .1, max), changeAbs: abs };
-  }, [tokens, xAxis]);
-
-  useEffect(() => {
-    sizeRef.current = size;
-  }, [size]);
-
   useEffect(() => {
     const el = wrap.current;
     if (!el) return;
-    const ro = new ResizeObserver(([e]) => setSize({ w: e.contentRect.width, h: e.contentRect.height }));
+    const ro = new ResizeObserver(([entry]) => {
+      setSize({ w: entry.contentRect.width, h: entry.contentRect.height });
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
 
   useEffect(() => {
-    const s = forceSimulation<any>()
-      .alphaDecay(0.025)
-      .velocityDecay(0.35)
-      .force("charge", forceManyBody().strength(-12))
-      .on("tick", () => {
-        const now = performance.now();
-        if (now - lastSimRender.current < 34) return;
-        const visibleNodes = [...nodeMap.current.values()];
-        separateMapNodes(visibleNodes,95);
-        for (const node of visibleNodes) keepMarketNodeVisible(node, sizeRef.current.w, sizeRef.current.h);
-        lastSimRender.current = now;
-        setTick((x) => x + 1);
-      });
-    sim.current = s;
-    return () => { s.stop(); };
-  }, []);
-
-  useEffect(() => {
-    const s = sim.current;
-    if (!s) return;
-    const nodes = [...nodeMap.current.values()];
-    for (const node of nodes) {
-      if (node.isCore) node.r = node.symbol === "SOL" ? 42 : 34;
-      else node.r = viewMode === "map" ? marketMapRadius(node) : radius(node);
+    for (const node of nodeMap.current.values()) {
+      if (node.isCore) continue;
+      const point = marketCoordinateBase(node.marketCap, node.priceChange1h, size.w, size.h);
+      node.x = point.x;
+      node.y = point.y;
+      node.fx = null;
+      node.fy = null;
+      node.vx = 0;
+      node.vy = 0;
     }
-    const links = [...flows, ...expansionFlows]
-      .filter((f) => nodeMap.current.has(f.from) && nodeMap.current.has(f.to))
-      .map((f) => ({ source: f.from, target: f.to, usd1h: f.usd1h }));
-
-    s.nodes(nodes);
-    s.force("center", forceCenter(size.w / 2, size.h / 2).strength(0.005));
-    s.force("charge", forceManyBody().strength((d: any) => d.isCore ? -65 : -75));
-    s.force("x", forceX<any>((d) => {
-      if (viewMode === "map") {
-        if (d.isCore) return size.w / 2;
-        const raw = Math.max(0, Number(d[xAxis] ?? 0));
-        const log = Math.log10(raw + 1);
-        const pct = (log - axisStats.min) / Math.max(.1, axisStats.max - axisStats.min);
-        return 74 + Math.max(0, Math.min(1, pct)) * Math.max(100, size.w - 148);
-      }
-      if (d.isCore) {
-        if (d.symbol === "SOL") return size.w * 0.5;
-        if (d.symbol === "USDC") return size.w * 0.22;
-        return size.w * 0.78;
-      }
-      const imbalance = (d.buys1h - d.sells1h) / Math.max(1, d.buys1h + d.sells1h);
-      return size.w / 2 + imbalance * size.w * 0.28;
-    }).strength((d: any) => d.isCore ? .02 : .12));
-    s.force("y", forceY<any>((d) => {
-      if (viewMode === "map") {
-        if (d.isCore) return size.h * .58;
-        const pct = (Number(d.priceChange24h || 0) + axisStats.changeAbs) / (axisStats.changeAbs * 2);
-        return Math.max(84, Math.min(size.h - 72, 70 + (1 - Math.max(0, Math.min(1, pct))) * Math.max(120, size.h - 150)));
-      }
-      if (d.isCore) return d.symbol === "SOL" ? size.h * 0.52 : size.h * 0.48;
-      const activityRank = Math.min(1, Math.log10(Math.max(1, d.volume1h)) / 7);
-      return size.h * (0.58 - activityRank * 0.24);
-    }).strength((d: any) => d.isCore ? .02 : .14));
-    s.force("link", forceLink<any, any>(viewMode === "map" && !showTrafficOverlay ? [] : links)
-      .id((d: any) => d.mint)
-      .distance((l: any) => 190 + Math.max(0, 100 - Math.log10(Math.max(1, l.usd1h)) * 10))
-      .strength((l: any) => Math.min(0.12, 0.025 + Math.log10(Math.max(1, l.usd1h)) * 0.03)));
-    s.force("collide", forceCollide<any>((d) => d.r + 55).strength(1).iterations(4));
-    s.alpha(.58).restart();
-  }, [size, tokens, flows, expansionFlows, viewMode, xAxis, showTrafficOverlay, axisStats]);
+    setTick((x) => x + 1);
+  }, [size, tokens, expansionFlows, viewMode]);
 
   const applySnapshot = (j: any) => {
     const list = (j.tokens ?? []).map((t:MarketToken)=>({...t,marketObservedAt:j.fetchedAt??null})) as MarketToken[];
-    let pinned: Record<string, { x: number; y: number }> = {};
-    try { pinned = JSON.parse(localStorage.getItem("solanabubble:market-pinned") || "{}"); } catch {}
     const nextFlows = (j.flows ?? []) as Flow[];
     if (!list.length && j.warming) { setError("Snapshot worker is warming the cache…"); return; }
     setTokens(list);
@@ -525,17 +388,20 @@ export default function MarketMap() {
 
     for (const t of list) {
       const prev = nodeMap.current.get(t.mint);
-      if (prev) Object.assign(prev, t, { r: radius(t), isCore: false });
+      if (prev) {
+        const point = marketCoordinateBase(t.marketCap, t.priceChange1h, size.w, size.h);
+        Object.assign(prev, t, { x: point.x, y: point.y, fx: null, fy: null, r: marketMapRadius(t), isCore: false });
+      }
       else {
-        const pin = pinned[t.mint];
+        const point = marketCoordinateBase(t.marketCap, t.priceChange1h, size.w, size.h);
         nodeMap.current.set(t.mint, {
           ...t,
           depth: t.depth ?? 0,
-          x: pin?.x ?? size.w / 2 + (Math.random() - 0.5) * 180,
-          y: pin?.y ?? size.h / 2 + (Math.random() - 0.5) * 140,
-          fx: pin?.x ?? null,
-          fy: pin?.y ?? null,
-          r: radius(t),
+          x: point.x,
+          y: point.y,
+          fx: null,
+          fy: null,
+          r: marketMapRadius(t),
           isCore: false,
         });
       }
@@ -556,12 +422,12 @@ export default function MarketMap() {
         buys1h: 0, sells1h: 0, trades1h: 0, priceChange1h: 0,
         priceChange24h: 0, boost: 0,
       };
-      if (prev) Object.assign(prev, coreNode, { r: meta.symbol === "SOL" ? 42 : 34, isCore: true });
+      if (prev) Object.assign(prev, coreNode, { x: size.w / 2, y: size.h / 2, r: meta.symbol === "SOL" ? 42 : 34, isCore: true });
       else nodeMap.current.set(mint, {
         ...coreNode,
         depth: 0,
-        x: size.w / 2 + (Math.random() - 0.5) * 80,
-        y: size.h / 2 + (Math.random() - 0.5) * 80,
+        x: size.w / 2,
+        y: size.h / 2,
         r: meta.symbol === "SOL" ? 42 : 34,
         isCore: true,
       });
@@ -613,8 +479,6 @@ export default function MarketMap() {
     setStreamLive(next);
     setAutoPaused(automatic && !next);
     lastActivity.current = Date.now();
-    if (next) sim.current?.alpha(0.55).restart();
-    else sim.current?.stop();
   }
 
   useEffect(() => {
@@ -646,7 +510,6 @@ export default function MarketMap() {
       const j = await r.json();
       if (!r.ok) throw new Error(j?.error || "expand");
 
-      const center = nodeMap.current.get(t.mint);
       const additions = (j.tokens ?? []) as MarketToken[];
       additions.forEach((token, i) => {
         const prev = nodeMap.current.get(token.mint);
@@ -659,16 +522,15 @@ export default function MarketMap() {
           });
           return;
         }
-        const angle = (Math.PI * 2 * i) / Math.max(1, additions.length) + Math.random() * 0.25;
-        const distance = 105 + (i % 3) * 34;
+        const point = marketCoordinateBase(token.marketCap, token.priceChange1h, size.w, size.h);
         nodeMap.current.set(token.mint, {
           ...token,
           expanded: true,
           depth: currentDepth + 1,
           parentMint: t.mint,
-          x: (center?.x ?? size.w / 2) + Math.cos(angle) * distance,
-          y: (center?.y ?? size.h / 2) + Math.sin(angle) * distance,
-          r: Math.max(10, radius(token) * 0.8),
+          x: point.x,
+          y: point.y,
+          r: Math.max(10, marketMapRadius(token) * 0.82),
           isCore: false,
         });
       });
@@ -682,7 +544,6 @@ export default function MarketMap() {
         return [...keyed.values()].slice(-120);
       });
       setExpandedMints((current) => [...new Set([...current, t.mint])].slice(-12));
-      sim.current?.alpha(0.9).restart();
       setTick((x) => x + 1);
     } catch {
       setError("Не успях да разширя мрежата за този токен.");
@@ -699,7 +560,6 @@ export default function MarketMap() {
       if (!node || node.isCore || (node.depth ?? 0) >= 3) continue;
       await expandToken(node);
     }
-    sim.current?.alpha(0.85).restart();
   }
 
   useEffect(() => {
@@ -830,11 +690,7 @@ export default function MarketMap() {
           </div>
           <div className="market-toolbar-actions">
 
-            {viewMode === "map" && <select value={xAxis} onChange={(e) => setXAxis(e.target.value as MarketAxis)} aria-label="Хоризонтална ос">
-              <option value="marketCap">Market cap</option>
-              <option value="liquidityUsd">Liquidity</option>
-              <option value="volume24h">24h volume</option>
-            </select>}
+            {viewMode === "map" && <span className="market-coordinate-mode">Market cap × Price 1h</span>}
             <button
               className={`go-live-control ${streamLive === true ? "is-live" : ""}`}
               onClick={() => changeLive(streamLive !== true)}
@@ -850,7 +706,7 @@ export default function MarketMap() {
             title="Автоматично разгръща токени със surge или buy pressure, най-много веднъж на 45 секунди."
           >{autoGraph ? "✦ Auto graph" : "○ Auto graph"}</button>
           <button type="button" aria-pressed={pulsesEnabled&&!reducedMotion} disabled={reducedMotion} onClick={togglePulses} title={reducedMotion?'Reduced motion е включен в системата.':'Спира визуалните ефекти; обновяването на данните остава активно.'}>◌ Анимации: {pulsesEnabled&&!reducedMotion?'Вкл':'Изкл'}</button>
-          <button type="button" onClick={resetMarketPositions}>↺ Нулирай позиции</button>
+          <button type="button" onClick={resetMarketView}>↺ Нулирай изгледа</button>
         </div>
       </div>
       <button
@@ -888,7 +744,7 @@ export default function MarketMap() {
 
       <section className="market-workspace reference-market-workspace">
         <div className="market-map" ref={wrap}>
-          {viewMode === "map" && <div className="lovable-map-hint">Клик: FoMo/GmGn · Двоен клик: Holders · Drag · Scroll zoom</div>}
+          {viewMode === "map" && <div className="lovable-map-hint">Клик: FoMo/GmGn · Двоен клик: Holders · Планетите = координати · Drag картата · Scroll zoom</div>}
           {watch.ready && (viewMode === "list" ? !filteredTokens.length : !renderedNodes.length) && tokens.length > 0 && <div className="pause-banner">No tokens match your saved filters. Reset filters or add favorites.</div>}
           {streamLive === false && <div className="pause-banner">
             {autoPaused ? "Автоматична пауза след 2 мин. без активност" : "Live режимът е на пауза"} · данните са от кеша
@@ -975,21 +831,25 @@ export default function MarketMap() {
             <ellipse cx={size.w / 2} cy={size.h / 2} rx={size.w * .34} ry={size.h * .34} fill="url(#marketGlow)" />
 
             {viewMode === "map" && <>
-              <g className="market-axis-grid" pointerEvents="none">
-                {[1, .75, .5, .25, 0].map((p, i) => {
-                  const value = axisStats.changeAbs - p * axisStats.changeAbs * 2;
-                  const y = 70 + p * Math.max(120, size.h - 150);
-                  return <g key={`axis-y-${i}`}>
-                    <line x1="48" y1={y} x2={size.w - 18} y2={y} />
-                    <text x="14" y={y + 4}>{value >= 0 ? "+" : ""}{value.toFixed(0)}%</text>
+              <g className="market-axis-grid lovable-coordinate-grid" pointerEvents="none">
+                {MARKET_Y_TICKS.map((value) => {
+                  const base = marketCoordinateBase(1e4, value, size.w, size.h);
+                  const screen = applyMarketViewport(base, mapView);
+                  return <g key={`axis-y-${value}`}>
+                    <line x1="0" y1={screen.y} x2={size.w} y2={screen.y} className={value === 0 ? "axis-zero-line" : ""} />
+                    <text x="8" y={screen.y - 5}>{value > 0 ? "+" : ""}{value}%</text>
                   </g>;
                 })}
-                {[.25,.5,.75].map((p, i) => {
-                  const x = 74 + p * Math.max(100, size.w - 148);
-                  return <line key={`axis-x-${i}`} x1={x} y1="54" x2={x} y2={size.h - 56} />;
+                {MARKET_X_TICKS.map(({ value, label }) => {
+                  const base = marketCoordinateBase(value, 0, size.w, size.h);
+                  const screen = applyMarketViewport(base, mapView);
+                  return <g key={`axis-x-${value}`}>
+                    <line x1={screen.x} y1="0" x2={screen.x} y2={size.h} />
+                    <text x={screen.x} y={size.h - 9} textAnchor="middle">{label}</text>
+                  </g>;
                 })}
-                <text x="12" y="28" className="axis-title">PRICE CHANGE 24H</text>
-                <text x={size.w / 2} y={size.h - 18} textAnchor="middle" className="axis-title">{xAxis === "marketCap" ? "MARKET CAP" : xAxis === "liquidityUsd" ? "LIQUIDITY" : "24H VOLUME"}</text>
+                <text x="48" y="14" className="axis-title">PRICE CHANGE · 1H</text>
+                <text x={size.w - 14} y={size.h - 9} textAnchor="end" className="axis-title">MARKET CAP</text>
               </g>
             </>}
             <g transform={`translate(${mapView.x} ${mapView.y}) scale(${mapView.k})`} className="market-pan-layer">
@@ -1003,6 +863,38 @@ export default function MarketMap() {
                 opacity={p.opacity}
               />)}
             </g>
+            {viewMode === "map" && animateSignals && [...renderedNodes]
+              .filter((n) => !n.isCore && n.trades1h > 0)
+              .sort((a, b) => b.trades1h - a.trades1h)
+              .slice(0, 5)
+              .map((n, i) => {
+                const seed = n.mint.charCodeAt(0) + i * 37;
+                const angle = visualNoise(seed) * Math.PI * 2;
+                const distance = 180 + visualNoise(seed + 4) * 170;
+                const dx = Math.cos(angle) * distance;
+                const dy = Math.sin(angle) * distance;
+                const tailAngle = Math.atan2(dy, dx) * 180 / Math.PI;
+                return <g
+                  key={`comet-${n.mint}`}
+                  transform={`translate(${n.x} ${n.y})`}
+                  className="market-comet-anchor"
+                  pointerEvents="none"
+                >
+                  <g
+                    className="market-comet-runner"
+                    style={{
+                      ["--comet-dx" as any]: `${dx}px`,
+                      ["--comet-dy" as any]: `${dy}px`,
+                      ["--comet-angle" as any]: `${tailAngle}deg`,
+                      ["--comet-delay" as any]: `${i * .72}s`,
+                      ["--comet-duration" as any]: `${2.6 + visualNoise(seed + 9) * 1.2}s`,
+                    }}
+                  >
+                    <line x1="0" y1="0" x2="52" y2="0" className="market-comet-tail" />
+                    <circle cx="0" cy="0" r="3.5" className="market-comet-head" />
+                  </g>
+                </g>;
+              })}
             {renderedNodes.map((n, i) => {
               const signal=bubbleSignal(n,signalNow??NaN);
               const confidence=trafficConfidence(n.trafficSample,signalNow??NaN);
@@ -1064,18 +956,13 @@ export default function MarketMap() {
                   role="button"
                   aria-label={`${n.symbol||n.name||n.mint}: ${signal.label}; Traffic confidence: ${confidence.label}${signal.liquidityDrop?', Liquidity ↓':''}${signal.whaleLabel?', '+signal.whaleLabel:''}`}
                   onKeyDown={e=>{if(!n.isCore&&(e.key==='Enter'||e.key===' ')){e.preventDefault();setSelected(n);setQuickActionMint(n.mint);expandToken(n);}}}
-                  onPointerDown={(e) => beginMarketDrag(e, n.mint)}
-                  onPointerMove={moveMarketDrag}
-                  onPointerUp={endMarketDrag}
-                  onPointerCancel={endMarketDrag}
                   onClick={() => {
-                    if (!drag.current.moved && !n.isCore) {
+                    if (!n.isCore) {
                       setSelected(n);
                       setQuickActionMint(n.mint);
                       setMobileDetailOpen(false);
                       expandToken(n);
                     }
-                    drag.current.moved = false;
                   }}
                   onDoubleClick={() => {
                     if (!n.isCore) openToken(n);
@@ -1145,7 +1032,8 @@ export default function MarketMap() {
             <button onClick={() => zoomMapBy(1 / 1.18)} aria-label="Zoom out">−</button>
             <span>{Math.round(mapView.k * 100)}%</span>
             <button onClick={() => zoomMapBy(1.18)} aria-label="Zoom in">＋</button>
-            <button onClick={() => setMapView({ x: 0, y: 0, k: 1 })} aria-label="Reset zoom">⛶</button>
+            <button onClick={resetMarketView} aria-label="Reset zoom">⛶</button>
+            <button className="market-fullscreen-button" onClick={toggleMapFullscreen} aria-label={isMapFullscreen ? "Exit fullscreen map" : "Fullscreen map"} title={isMapFullscreen ? "Изход от цял екран" : "Карта на цял екран"}>{isMapFullscreen ? "↙" : "⛶"}</button>
           </div>}
           <details className="market-legend map-signal-legend" open>
             <summary>Как да четеш балоните · оценка</summary>
