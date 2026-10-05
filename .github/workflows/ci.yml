@@ -22,4 +22,41 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
           SUPABASE_SERVICE_ROLE_KEY: placeholder
           ADMIN_SECRET: placeholder
+      - name: Browser smoke (mobile + desktop)
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
+          SUPABASE_SERVICE_ROLE_KEY: placeholder
+          ADMIN_SECRET: placeholder
+        run: |
+          set -euo pipefail
+          npm run start -- -H 127.0.0.1 -p 3000 > /tmp/solanabubble-next.log 2>&1 &
+          APP_PID=$!
+          CHROME_PID=""
+          trap 'kill ${CHROME_PID:-} ${APP_PID:-} 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000 >/dev/null; then break; fi
+            if ! kill -0 "$APP_PID" 2>/dev/null; then cat /tmp/solanabubble-next.log; exit 1; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3000 >/dev/null
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          test -n "$CHROME_BIN"
+          "$CHROME_BIN" --headless --no-sandbox --disable-gpu --remote-debugging-port=9222 --user-data-dir=/tmp/solanabubble-chrome about:blank > /tmp/solanabubble-chrome.log 2>&1 &
+          CHROME_PID=$!
+          for i in $(seq 1 50); do
+            if curl -fsS http://127.0.0.1:9222/json/version >/dev/null; then break; fi
+            sleep 0.2
+          done
+          curl -fsS http://127.0.0.1:9222/json/version >/dev/null
+          node tests/browser-smoke.mjs
+      - name: Upload browser smoke screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-smoke-screenshots
+          path: |
+            /tmp/solanabubble-mobile.png
+            /tmp/solanabubble-desktop.png
+          if-no-files-found: ignore
       - run: npm run test:api
