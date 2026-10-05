@@ -22,6 +22,7 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
           SUPABASE_SERVICE_ROLE_KEY: placeholder
           ADMIN_SECRET: placeholder
+      - run: npm run test:api
       - name: Browser smoke (mobile + desktop)
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
@@ -40,16 +41,26 @@ jobs:
             sleep 1
           done
           curl -fsS http://127.0.0.1:3000 >/dev/null
+
           CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
           test -n "$CHROME_BIN"
-          "$CHROME_BIN" --headless --no-sandbox --disable-gpu --remote-debugging-port=9222 --user-data-dir=/tmp/solanabubble-chrome about:blank > /tmp/solanabubble-chrome.log 2>&1 &
+          CHROME_PROFILE=/tmp/solanabubble-chrome
+          rm -rf "$CHROME_PROFILE"
+          "$CHROME_BIN" --headless=new --no-sandbox --disable-gpu --remote-debugging-address=127.0.0.1 --remote-debugging-port=0 --user-data-dir="$CHROME_PROFILE" about:blank > /tmp/solanabubble-chrome.log 2>&1 &
           CHROME_PID=$!
-          for i in $(seq 1 50); do
-            if curl -fsS http://127.0.0.1:9222/json/version >/dev/null; then break; fi
+
+          for i in $(seq 1 100); do
+            if [ -s "$CHROME_PROFILE/DevToolsActivePort" ]; then break; fi
+            if ! kill -0 "$CHROME_PID" 2>/dev/null; then cat /tmp/solanabubble-chrome.log; exit 1; fi
             sleep 0.2
           done
-          curl -fsS http://127.0.0.1:9222/json/version >/dev/null
-          node tests/browser-smoke.mjs
+          if [ ! -s "$CHROME_PROFILE/DevToolsActivePort" ]; then
+            cat /tmp/solanabubble-chrome.log
+            exit 1
+          fi
+          CHROME_PORT="$(head -n 1 "$CHROME_PROFILE/DevToolsActivePort")"
+          curl -fsS "http://127.0.0.1:${CHROME_PORT}/json/version" >/dev/null
+          CHROME_DEBUG_URL="http://127.0.0.1:${CHROME_PORT}" node tests/browser-smoke.mjs
       - name: Upload browser smoke screenshots
         if: always()
         uses: actions/upload-artifact@v4
@@ -59,4 +70,3 @@ jobs:
             /tmp/solanabubble-mobile.png
             /tmp/solanabubble-desktop.png
           if-no-files-found: ignore
-      - run: npm run test:api
