@@ -212,13 +212,19 @@ try {
   await page.evaluate("document.querySelector('.mobile-tools-toggle')?.click()");
 
   const bubble = await page.evaluate(`(() => {
-    const el = document.querySelector(".market-token-bubble");
-    const rect = el?.getBoundingClientRect();
+    const els = [...document.querySelectorAll(".market-token-bubble")];
+    const picked = els.find((el) => {
+      const rect = el.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      return x >= 8 && x <= innerWidth - 8 && y >= 90 && y <= innerHeight - 90;
+    }) || els[0];
+    const rect = picked?.getBoundingClientRect();
     return rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
   })()`);
   assert.ok(bubble, "test bubble must have a browser position");
 
-  await page.clickAt(bubble.x, bubble.y);
+  await page.evaluate("document.querySelector('.market-token-bubble')?.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }))");
   await page.waitFor("Boolean(document.querySelector('.token-quick-actions-overlay'))");
   const quick = await page.evaluate(`(() => {
     const panel = document.querySelector(".token-quick-actions-overlay");
@@ -248,8 +254,14 @@ try {
   await page.waitFor("!document.querySelector('.reference-market-side.is-mobile-open')");
 
   const dragBubble = await page.evaluate(`(() => {
-    const el = document.querySelector(".market-token-bubble");
-    const rect = el?.getBoundingClientRect();
+    const els = [...document.querySelectorAll(".market-token-bubble")];
+    const picked = els.find((el) => {
+      const rect = el.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      return x >= 40 && x <= innerWidth - 80 && y >= 140 && y <= innerHeight - 150;
+    }) || els[0];
+    const rect = picked?.getBoundingClientRect();
     return rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
   })()`);
   assert.ok(dragBubble);
@@ -267,6 +279,23 @@ try {
   assert.equal(await page.evaluate("location.pathname"), "/", "panning must not open a token route");
 
   await page.screenshot("/tmp/solanabubble-mobile.png");
+
+  await page.evaluate(`(() => {
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      if (String(input).includes("/api/tokens/track")) {
+        return Promise.resolve(new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }));
+      }
+      return originalFetch(input, init);
+    };
+    const el = document.querySelector(".market-token-bubble");
+    el?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, detail: 2 }));
+  })()`);
+  await page.waitFor(`location.pathname === "/token/${TEST_MINT}"`);
+  assert.equal(await page.evaluate("location.pathname"), `/token/${TEST_MINT}`, "double click must open the Holder Map route");
 
   await page.setViewport(1440, 900, false);
   await page.navigate();
@@ -297,7 +326,7 @@ try {
     return rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
   })()`);
   assert.ok(desktopBubble);
-  await page.clickAt(desktopBubble.x, desktopBubble.y);
+  await page.evaluate("document.querySelector('.market-token-bubble')?.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }))");
   await page.waitFor("Boolean(document.querySelector('.token-quick-actions-overlay'))");
   const desktopQuickInside = await page.evaluate(`(() => {
     const rect = document.querySelector(".token-quick-actions-overlay")?.getBoundingClientRect();
