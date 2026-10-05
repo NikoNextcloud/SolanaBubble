@@ -15,6 +15,7 @@ import {matchesWatchFilters} from "@/lib/watchlist";
 import { fomoTokenUrl, gmgnTokenUrl } from "@/lib/token-links";
 import { positionQuickActions } from "@/lib/market/quick-actions";
 import { MARKET_X_TICKS, MARKET_Y_TICKS, applyMarketViewport, marketCoordinateBase } from "@/lib/market/coordinates";
+import { declutterMarketNodes } from "@/lib/market/declutter";
 
 type MarketToken = Intelligence & {
   marketObservedAt?:string|null;
@@ -596,8 +597,18 @@ export default function MarketMap() {
 
   const filteredTokens=tokens.filter(t=>matchesWatchFilters(t,watch.state.filters,watch.state.entries));
   const nodes = [...nodeMap.current.values()].filter(n=>n.isCore||matchesWatchFilters(n,watch.state.filters,watch.state.entries));
-  const renderedNodes = viewMode === "map" ? nodes.filter((n) => !n.isCore) : nodes;
-  const quickActionNode = quickActionMint ? nodeMap.current.get(quickActionMint) : null;
+  const mapNodes = nodes.filter((n) => !n.isCore);
+  const declutteredMapNodes = viewMode === "map"
+    ? declutterMarketNodes(mapNodes, {
+        gap: size.w <= 700 ? 42 : 72,
+        maxDisplacement: size.w <= 700 ? 132 : 250,
+        iterations: size.w <= 700 ? 20 : 28,
+        anchorStrength: size.w <= 700 ? .055 : .032,
+      })
+    : mapNodes.map((n) => ({ ...n, anchorX: n.x, anchorY: n.y, displacement: 0 }));
+  const renderedNodes = viewMode === "map" ? declutteredMapNodes : nodes;
+  const renderNodeByMint = new Map(renderedNodes.map((n) => [n.mint, n]));
+  const quickActionNode = quickActionMint ? (renderNodeByMint.get(quickActionMint) ?? nodeMap.current.get(quickActionMint)) : null;
   const quickActionLayout = quickActionNode ? positionQuickActions({
     nodeX: quickActionNode.x,
     nodeY: quickActionNode.y,
@@ -644,32 +655,33 @@ export default function MarketMap() {
     .sort((a, b) => hypeScore(b) - hypeScore(a))
     .slice(0, 5);
 
-  // Latest Lovable visual: a lightweight signal cloud around active tokens.
-  // It is static and capped so it does not bring back the old Galaxy performance cost.
+  // Hype particle halo: strong green signal cloud around high-hype planets.
   const signalDust = viewMode === "map"
     ? [...renderedNodes]
-        .filter((n) => !n.isCore && hypeScore(n) >= 20)
+        .filter((n) => !n.isCore && hypeScore(n) >= 65)
         .sort((a, b) => hypeScore(b) - hypeScore(a))
-        .slice(0, 20)
+        .slice(0, 18)
         .flatMap((n, nodeIndex) => {
           const hype = hypeScore(n);
-          const traffic = trafficState(n);
-          const count = Math.min(10, Math.max(3, Math.round(hype / 11)));
+          const normalized = Math.max(0, Math.min(1, (hype - 65) / 35));
+          const count = Math.round(7 + normalized * 23);
           return Array.from({ length: count }, (_, i) => {
-            const seed = nodeIndex * 1000 + i * 17 + n.mint.charCodeAt(i % n.mint.length);
+            const seed = nodeIndex * 1307 + i * 29 + n.mint.charCodeAt(i % n.mint.length);
             const angle = visualNoise(seed) * Math.PI * 2;
-            const distance = n.r + 10 + Math.pow(visualNoise(seed + 1.4), .72) * (16 + hype * .18);
+            const ring = Math.pow(visualNoise(seed + 1.7), .62);
+            const distance = n.r + 12 + ring * (26 + normalized * 46);
             return {
-              key: `${n.mint}:signal:${i}`,
+              key: `${n.mint}:hype-particle:${i}`,
               x: n.x + Math.cos(angle) * distance,
-              y: n.y + Math.sin(angle) * distance * .8,
-              r: visualNoise(seed + 2.2) > .84 ? 1.3 : .7,
-              opacity: .10 + visualNoise(seed + 3.1) * Math.min(.42, .14 + hype / 210),
-              cls: traffic.cls,
+              y: n.y + Math.sin(angle) * distance * .82,
+              r: .65 + visualNoise(seed + 2.6) * (1.25 + normalized * .7),
+              opacity: .18 + normalized * .42 + visualNoise(seed + 3.3) * .16,
+              delay: visualNoise(seed + 5.1) * 2.8,
+              duration: 1.9 + visualNoise(seed + 7.2) * 2.3,
             };
           });
         })
-        .slice(0, 180)
+        .slice(0, 360)
     : [];
 
   void tick;
@@ -853,14 +865,18 @@ export default function MarketMap() {
               </g>
             </>}
             <g transform={`translate(${mapView.x} ${mapView.y}) scale(${mapView.k})`} className="market-pan-layer">
-            <g className="market-signal-dust" pointerEvents="none">
+            <g className="market-signal-dust hype-particle-cloud" pointerEvents="none">
               {signalDust.map((p) => <circle
                 key={p.key}
                 cx={p.x}
                 cy={p.y}
                 r={p.r}
-                className={`signal-dust-dot ${p.cls}`}
+                className="signal-dust-dot hype-green-particle"
                 opacity={p.opacity}
+                style={{
+                  ["--particle-delay" as any]: `${p.delay}s`,
+                  ["--particle-duration" as any]: `${p.duration}s`,
+                }}
               />)}
             </g>
             {viewMode === "map" && animateSignals && [...renderedNodes]
@@ -908,12 +924,21 @@ export default function MarketMap() {
               const focusDimmed = Boolean(selected?.mint && !focusMints.has(n.mint) && !n.isCore);
               const pulseDuration = n.isCore ? 3.2 : Math.max(.8, Math.min(5, 4 - Math.tanh(Number(signal.fresh?n.hypeAcceleration??0:0) / .3) * 3));
               const brightness = Math.max(.65, Math.min(1.5, 1 + Math.tanh(Math.abs(Number(signal.fresh?n.hypeVelocity??0:0))) * .5));
+              const anchorDistance = "anchorX" in n ? Number((n as any).displacement ?? 0) : 0;
               return <g
                 key={n.mint}
                 transform={`translate(${n.x} ${n.y})`}
                 className={`market-node-group ${animateSignals ? "is-animated" : "is-paused"}`}
                 style={{ ["--node-pulse-duration" as any]: `${pulseDuration}s` }}
               >
+                {anchorDistance > 18 && <line
+                  x1={0}
+                  y1={0}
+                  x2={Number((n as any).anchorX) - n.x}
+                  y2={Number((n as any).anchorY) - n.y}
+                  className="market-anchor-link"
+                  pointerEvents="none"
+                />}
                 <circle
                   r={n.r + 6 + hype * .045}
                   className="market-hype-glow"
