@@ -1,5 +1,7 @@
 import { admin } from "./db";
-import { evaluatePersonalAlerts, normalizeWatchState, type WatchToken } from "./watchlist";
+import { evaluatePersonalAlerts, normalizeWatchState, type PersonalAlert, type WatchToken } from "./watchlist";
+
+export type PushJob={syncHash:string;alert:PersonalAlert};
 
 /** Evaluate synced personal rules in the background worker without exposing sync secrets. */
 export async function evaluateSyncedWatchlists(tokens: WatchToken[], observedAt: string, limit = 100) {
@@ -13,9 +15,11 @@ export async function evaluateSyncedWatchlists(tokens: WatchToken[], observedAt:
   if (error) throw error;
 
   let updated = 0;
+  const jobs:PushJob[]=[];
   const now = Date.parse(observedAt);
   for (const row of data ?? []) {
     const before = normalizeWatchState(row.payload);
+    const previousIds=new Set(before.alerts.map(a=>a.id));
     const next = evaluatePersonalAlerts(before, tokens, now);
     if (next === before) continue;
     const write = await db
@@ -24,6 +28,7 @@ export async function evaluateSyncedWatchlists(tokens: WatchToken[], observedAt:
       .eq("sync_hash", row.sync_hash);
     if (write.error) throw write.error;
     updated++;
+    for(const alert of next.alerts)if(!previousIds.has(alert.id))jobs.push({syncHash:row.sync_hash,alert});
   }
-  return updated;
+  return {updated,jobs:jobs.slice(0,50)};
 }
