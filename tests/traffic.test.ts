@@ -79,3 +79,24 @@ test('fresh sufficient swap sample drives map; stale or sparse sample keeps coun
 test('parsed v1 resource config preserves direct swap evidence; future/binary formats stay unknown',()=>{
  const tx:any=fixture();tx.version=1;tx.transaction.message.transactionConfig={computeUnitLimit:30000,heapSize:null,loadedAccountsDataSizeLimit:200000,priorityFee:null};assert.equal(decodeDirectSwap(tx,'mint','pool',null)?.side,'buy');tx.version=2;assert.equal(decodeDirectSwap(tx,'mint','pool',null),null);assert.equal(decodeDirectSwap({version:1,blockTime:now/1000,meta:{err:null},transaction:['bytes','base64']},'mint','pool',null),null);
 });
+
+test('versioned routed swaps can use loaded lookup-table addresses and inner Jupiter instructions',()=>{
+ const tx:any=routedFixture();
+ tx.transaction.message.accountKeys=[{pubkey:'buyer',signer:true},{pubkey:'targetAta',signer:false},{pubkey:'quoteAta',signer:false}];
+ tx.meta.loadedAddresses={writable:['pool'],readonly:[JUPITER_V6_PROGRAM]};
+ tx.transaction.message.instructions=[{programId:'wrapper',accounts:[0]}];
+ tx.meta.innerInstructions=[{index:0,instructions:[{programIdIndex:4,accounts:[0,3]}]}];
+ const result=decodeRoutedSwap(tx,'mint','pool',100);
+ assert.equal(result?.evidence,'routed');assert.equal(result?.side,'buy');
+});
+
+test('traffic summary combines retained rows from multiple selected pools',()=>{
+ const rows=[row('a',2),{...row('b',3),pool:'pool-2'}];
+ const summary=summarizeTraffic(rows,[
+  {pool:'pool',listed:1,parsed:1,recognized:1,directRecognized:1,routedRecognized:0,unavailable:0,unrecognized:0,failures:{}},
+  {pool:'pool-2',listed:1,parsed:1,recognized:1,directRecognized:1,routedRecognized:0,unavailable:0,unrecognized:0,failures:{}},
+ ],at,['pool','pool-2']);
+ assert.deepEqual(summary.pools,['pool','pool-2']);
+ assert.equal(summary.windows['15'].swaps,2);
+ assert.equal(summary.recentBuys.length,2);
+});

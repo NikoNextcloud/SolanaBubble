@@ -5,6 +5,8 @@ import test from "node:test";
 const workspace = readFileSync(new URL("../components/WorkspaceShell.tsx", import.meta.url), "utf8");
 const market = readFileSync(new URL("../components/MarketMap.tsx", import.meta.url), "utf8");
 const theme = readFileSync(new URL("../app/lovable-theme.css", import.meta.url), "utf8");
+const holder = readFileSync(new URL("../components/BubbleMap.tsx", import.meta.url), "utf8");
+const worker = readFileSync(new URL("../workers/holder-physics.worker.ts", import.meta.url), "utf8");
 
 test("mobile workspace keeps token search reachable", () => {
   assert.match(workspace, /mobile-search-toggle/);
@@ -23,6 +25,13 @@ test("mobile market exposes filters and selected token details", () => {
   assert.match(theme, /safe-area-inset-bottom/);
   assert.match(market, /MARKET_X_TICKS/);
   assert.match(market, /PRICE CHANGE · 1H/);
-  assert.match(market, /market-comet-runner/);
+  assert.match(market, /MarketCometLayer/);
   assert.match(market, /market-fullscreen-button/);
+});
+
+test("large holder maps use worker physics and hybrid canvas rendering", () => {
+  assert.match(holder, /holder-physics\.worker\.ts/);
+  assert.match(holder, /HolderCanvasLayer/);
+  assert.match(holder, /visibleNodes\.length>=280/);
+  assert.match(worker, /forceSimulation/);
 });

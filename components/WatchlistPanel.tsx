@@ -6,6 +6,7 @@ import {validMint,ruleDefinitions,matchesWatchFilters,type WatchToken,type RuleK
 import DataQuality from './DataQuality';
 import FavoriteButton from './FavoriteButton';
 import SavedMarketFilters from './SavedMarketFilters';
+import PushNotifications from './PushNotifications';
 export default function WatchlistPanel(){
   const router=useRouter();const {state,ready,error,update,toggle,evaluate,syncKey,syncStatus,replaceSyncKey,syncNow}=useWatchlist();
   const [tokens,setTokens]=useState<WatchToken[]>([]),[mint,setMint]=useState(''),[status,setStatus]=useState(''),[loading,setLoading]=useState(false),[syncInput,setSyncInput]=useState('');
@@ -26,6 +27,7 @@ export default function WatchlistPanel(){
         <button type="button" onClick={async()=>{if(await replaceSyncKey(syncInput)){setSyncInput('');setStatus('Watchlist synced from the selected key.');}else setStatus('Invalid sync key or sync service unavailable.');}}>Use this key</button>
       </div>
     </details>
+    <PushNotifications syncKey={syncKey}/>
     <form className="watchlist-add" onSubmit={e=>{e.preventDefault();if(!validMint(mint.trim())){setStatus('Enter a valid Solana token mint.');return;}if(state.entries.some(t=>t.mint===mint.trim())){setStatus('Token already saved.');return;}toggle({mint:mint.trim()});setMint('');setStatus('');}}><label>Token mint <input value={mint} onChange={e=>setMint(e.target.value)} placeholder="Paste mint address"/></label><button disabled={!ready||state.entries.length>=50}>Add favorite</button><span>{state.entries.length}/50 {loading?'· Updating…':''}</span></form>
     <SavedMarketFilters/>{(error||status)&&<p role="status">{error||status}</p>}
     {!state.entries.length&&<p className="market-section-empty">Add a mint here or use ☆ Add to Watchlist in any Token Signal Card.</p>}

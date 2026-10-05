@@ -66,14 +66,21 @@ export async function collectMarket(previousPayload: any, trackedMints: string[]
     getJson<Pair[]>(`https://api.dexscreener.com/tokens/v1/solana/${chunk.join(",")}`)
   ));
 
-  const best = new Map<string, Pair>();
+  const poolsByMint = new Map<string, Pair[]>();
   for (const pairs of batch) {
     for (const p of pairs ?? []) {
-      if (p.chainId !== "solana" || !p.baseToken?.address) continue;
+      if (p.chainId !== "solana" || !p.baseToken?.address || !p.pairAddress) continue;
       const mint = p.baseToken.address;
-      const prev = best.get(mint);
-      if (!prev || Number(p.liquidity?.usd ?? 0) > Number(prev.liquidity?.usd ?? 0)) best.set(mint, p);
+      const list = poolsByMint.get(mint) ?? [];
+      if (!list.some((existing) => existing.pairAddress === p.pairAddress)) list.push(p);
+      poolsByMint.set(mint, list);
     }
+  }
+
+  const best = new Map<string, Pair>();
+  for (const [mint, pools] of poolsByMint) {
+    pools.sort((a, b) => Number(b.liquidity?.usd ?? 0) - Number(a.liquidity?.usd ?? 0));
+    if (pools[0]) best.set(mint, pools[0]);
   }
 
   if (!best.size) throw new Error("Market sources unavailable; retaining last successful snapshot");
@@ -87,6 +94,13 @@ export async function collectMarket(previousPayload: any, trackedMints: string[]
       symbol: p.baseToken?.symbol ?? null,
       dex: p.dexId ?? null,
       pairAddress: p.pairAddress ?? null,
+      trafficPools: (poolsByMint.get(mint) ?? []).slice(0, 3).map((pool) => ({
+        pairAddress: pool.pairAddress!,
+        dex: pool.dexId ?? null,
+        liquidityUsd: Number(pool.liquidity?.usd ?? 0),
+        quoteMint: pool.quoteToken?.address ?? null,
+        quoteSymbol: pool.quoteToken?.symbol ?? null,
+      })),
       quoteMint: p.quoteToken?.address ?? null,
       quoteSymbol: p.quoteToken?.symbol ?? null,
       priceUsd: Number(p.priceUsd ?? 0),

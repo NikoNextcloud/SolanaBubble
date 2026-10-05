@@ -41,6 +41,17 @@ export default function TokenSignalCard({ token }: { token: WatchToken }) {
         <b className={riskClass}>Risk {number(risk)} / 100 · {riskLabel}</b>
       </div>
       <FavoriteButton token={token} />
+      <div className="opportunity-score" aria-label="Opportunity Score">
+        <div><span>Opportunity</span><strong>{number(token.opportunityScore, " / 100")}</strong></div>
+        <small>{token.opportunityCoverage || "Waiting for enough signal families"}</small>
+        {(token.opportunityFactors?.length ?? 0) > 0 && <details>
+          <summary>Why this score</summary>
+          <ul>{token.opportunityFactors!.map((factor) => <li key={factor.label}>
+            <span>{factor.label}<small>{factor.evidence}</small></span>
+            <b className={factor.points >= 0 ? "buy" : "sell"}>{factor.points >= 0 ? "+" : ""}{factor.points}</b>
+          </li>)}</ul>
+        </details>}
+      </div>
       <TrafficCard sample={token.trafficSample} />
 
       {token.liquidityWarning && (

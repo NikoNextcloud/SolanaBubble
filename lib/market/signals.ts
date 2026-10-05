@@ -48,6 +48,9 @@ export type Intelligence = {
   riskReasons?: string[];
   riskCoverage?: string;
   liquidityWarning?: boolean;
+  opportunityScore?: number | null;
+  opportunityCoverage?: string;
+  opportunityFactors?: { label: string; points: number; evidence: string }[];
   baselineAt?: string | null;
 };
 export type SignalToken = Intelligence & {
@@ -62,6 +65,34 @@ export type SignalAlert = {
 };
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
 export const percentChange = (value: number, previous: number) => previous > 0 ? (value - previous) / previous * 100 : null;
+
+export function computeOpportunityScore(t: SignalToken) {
+  const factors:{label:string;points:number;evidence:string}[]=[];
+  const add=(label:string,points:number,evidence:string)=>factors.push({label,points:Math.round(points),evidence});
+  const hype=finite(t.hypeScore)?Math.max(0,Math.min(100,t.hypeScore)):0;
+  add('Hype',hype*.20,`Hype ${Math.round(hype)}/100`);
+
+  if(finite(t.hypeVelocity)) add('Hype velocity',Math.max(-8,Math.min(10,t.hypeVelocity*2.4)),`${t.hypeVelocity.toFixed(2)} H/min`);
+  const pressure=finite(t.observedBuyPressure15m)?t.observedBuyPressure15m:finite(t.buyPressure)?t.buyPressure:null;
+  if(pressure!=null) add('Buy pressure',Math.max(-8,Math.min(15,(pressure-50)*.45)),`${pressure.toFixed(1)}%${finite(t.observedBuyPressure15m)?' observed swaps':' aggregate counts'}`);
+  if(finite(t.holderGrowthPct)) add('Holder growth',Math.max(-8,Math.min(15,t.holderGrowthPct*1.8)),`${t.holderGrowthPct.toFixed(2)}%`);
+  if(finite(t.liquidityChangePct)) add('Liquidity trend',Math.max(-12,Math.min(10,t.liquidityChangePct*.35)),`${t.liquidityChangePct.toFixed(1)}%`);
+  if(finite(t.smartMoneyFlowUsd)) add('Observed whale balance Δ',Math.max(-8,Math.min(8,t.smartMoneyFlowUsd/2500)),`${Math.round(t.smartMoneyFlowUsd).toLocaleString()}`);
+  if(t.trafficEvidence==='usable'){
+    const direct=t.trafficSample?.directRecognizedTransactions??t.trafficSample?.recognizedTransactions??0;
+    add('Traffic evidence',direct>=3?10:5,direct>=3?`${direct} verified-direct swaps`:'mostly routed evidence');
+  }
+  if(finite(t.riskScore)) add('Risk penalty',-(t.riskScore*.28),`Risk ${Math.round(t.riskScore)}/100`);
+  if(t.liquidityWarning) add('Liquidity warning',-15,'Liquidity dropped ≥25%');
+
+  const raw=45+factors.reduce((sum,f)=>sum+f.points,0);
+  const score=Math.max(0,Math.min(100,Math.round(raw)));
+  const observed=[
+    finite(t.hypeScore),finite(t.hypeVelocity),pressure!=null,finite(t.holderGrowthPct),
+    finite(t.liquidityChangePct),finite(t.smartMoneyFlowUsd),t.trafficEvidence!=null,finite(t.riskScore)
+  ].filter(Boolean).length;
+  return {score,factors,coverage:`${observed}/8 signal families observed`};
+}
 export function deriveSignals(t: SignalToken, previous: SignalToken | undefined, at: string, baselineAt?: string): Intelligence {
   const minutes = baselineAt ? (Date.parse(at) - Date.parse(baselineAt)) / 60_000 : 0;
   const comparable = previous && minutes > 0 && minutes <= 60 && previous.pairAddress === t.pairAddress;
@@ -90,6 +121,7 @@ export function deriveSignals(t: SignalToken, previous: SignalToken | undefined,
   const acceleration = volumeVelocity != null && finite(previous?.volumeVelocity) ? (volumeVelocity - previous.volumeVelocity) / minutes : null;
   const sample=t.trafficSample,sampleAge=sample?(Date.parse(at)-Date.parse(sample.observedAt))/60000:null,sample15=sample?.windows?.['15'];
   const observedSample=sample&&sample15&&sampleAge!=null&&sampleAge>=-1&&sampleAge<10&&sample15.swaps>=5;
+  const opportunity=computeOpportunityScore({...t,hypeDelta,hypeVelocity,hypeAcceleration,volumeDelta,volumeVelocity,volumeAcceleration:acceleration,liquidityChange,liquidityChangePct,buyPressure:trades?(t.buys1h??0)/trades*100:null,liquidityWarning,riskScore:Math.round(Math.min(100,risk)),riskFactors,trafficEvidence:sample?.evidence??null,trafficObservedAt:sample?.observedAt??null,observedBuyPressure15m:observedSample?sample15.buys/sample15.swaps*100:null,observedNetFlowUsd15m:observedSample?sample15.netUsd:null});
   return { hypeDelta, hypeVelocity, hypeAcceleration, fdvLiquidityRatio, riskFactors,
     volumeDelta, volumeVelocity, volumeAcceleration: acceleration, liquidityChange, liquidityChangePct,
     buyPressure: trades ? (t.buys1h ?? 0) / trades * 100 : null,
@@ -98,6 +130,7 @@ export function deriveSignals(t: SignalToken, previous: SignalToken | undefined,
     trafficEvidence:sample?.evidence??null,trafficObservedAt:sample?.observedAt??null,
     observedBuyPressure15m:observedSample?sample15.buys/sample15.swaps*100:null,
     observedNetFlowUsd15m:observedSample?sample15.netUsd:null,
+    opportunityScore:opportunity.score,opportunityFactors:opportunity.factors,opportunityCoverage:opportunity.coverage,
     riskCoverage: finite(t.top10SupplyPct) ? 'market + observed holders (heuristic)' : 'market only; holder risk unknown' };
 }
 export function evaluateAlerts(t: SignalToken, previous: SignalToken | undefined, at: string): SignalAlert[] {
@@ -105,6 +138,7 @@ export function evaluateAlerts(t: SignalToken, previous: SignalToken | undefined
   const add = (kind: string, value: number, message: string, severity: SignalAlert['severity'] = 'info') => alerts.push({
     id: `${t.mint}:${kind}:${at}`, mint: t.mint, symbol: t.symbol ?? null, kind, severity, value, message, at,
     deltaTrades: 0, deltaVolume: t.volumeDelta ?? 0, hypeDelta: t.hypeDelta ?? 0 });
+  if ((t.opportunityScore ?? 0) >= 75 && (previous?.opportunityScore ?? 0) < 75) add('opportunity',t.opportunityScore!, 'Opportunity Score crossed 75/100');
   if ((t.hypeScore ?? 0) >= 70 && (previous?.hypeScore ?? 0) < 70) add('hype-threshold',t.hypeScore!, 'Hype crossed 70/100');
   if ((t.hypeVelocity ?? 0) >= 3 && (previous?.hypeVelocity ?? 0) < 3) add('hype-velocity',t.hypeVelocity!, 'Hype rises ≥3 points/min');
   if ((t.hypeAcceleration ?? 0) >= .3 && (previous?.hypeAcceleration ?? 0) < .3) add('hype-acceleration',t.hypeAcceleration!, 'Hype velocity accelerates ≥0.3 points/min²');

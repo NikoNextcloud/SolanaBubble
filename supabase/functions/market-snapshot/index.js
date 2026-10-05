@@ -288,16 +288,23 @@ export async function collectMarket(previousPayload, trackedMints = []) {
     for (let i = 0; i < picked.length; i += 30)
         chunks.push(picked.slice(i, i + 30));
     const batch = await Promise.all(chunks.map((chunk) => getJson(`https://api.dexscreener.com/tokens/v1/solana/${chunk.join(",")}`)));
-    const best = new Map();
+    const poolsByMint = new Map();
     for (const pairs of batch) {
         for (const p of pairs ?? []) {
-            if (p.chainId !== "solana" || !p.baseToken?.address)
+            if (p.chainId !== "solana" || !p.baseToken?.address || !p.pairAddress)
                 continue;
             const mint = p.baseToken.address;
-            const prev = best.get(mint);
-            if (!prev || Number(p.liquidity?.usd ?? 0) > Number(prev.liquidity?.usd ?? 0))
-                best.set(mint, p);
+            const list = poolsByMint.get(mint) ?? [];
+            if (!list.some((existing) => existing.pairAddress === p.pairAddress))
+                list.push(p);
+            poolsByMint.set(mint, list);
         }
+    }
+    const best = new Map();
+    for (const [mint, pools] of poolsByMint) {
+        pools.sort((a, b) => Number(b.liquidity?.usd ?? 0) - Number(a.liquidity?.usd ?? 0));
+        if (pools[0])
+            best.set(mint, pools[0]);
     }
     if (!best.size)
         throw new Error("Market sources unavailable; retaining last successful snapshot");
@@ -310,6 +317,13 @@ export async function collectMarket(previousPayload, trackedMints = []) {
             symbol: p.baseToken?.symbol ?? null,
             dex: p.dexId ?? null,
             pairAddress: p.pairAddress ?? null,
+            trafficPools: (poolsByMint.get(mint) ?? []).slice(0, 3).map((pool) => ({
+                pairAddress: pool.pairAddress,
+                dex: pool.dexId ?? null,
+                liquidityUsd: Number(pool.liquidity?.usd ?? 0),
+                quoteMint: pool.quoteToken?.address ?? null,
+                quoteSymbol: pool.quoteToken?.symbol ?? null,
+            })),
             quoteMint: p.quoteToken?.address ?? null,
             quoteSymbol: p.quoteToken?.symbol ?? null,
             priceUsd: Number(p.priceUsd ?? 0),
@@ -498,6 +512,38 @@ export async function collectMarket(previousPayload, trackedMints = []) {
 }
 const finite = (n) => typeof n === 'number' && Number.isFinite(n);
 export const percentChange = (value, previous) => previous > 0 ? (value - previous) / previous * 100 : null;
+export function computeOpportunityScore(t) {
+    const factors = [];
+    const add = (label, points, evidence) => factors.push({ label, points: Math.round(points), evidence });
+    const hype = finite(t.hypeScore) ? Math.max(0, Math.min(100, t.hypeScore)) : 0;
+    add('Hype', hype * .20, `Hype ${Math.round(hype)}/100`);
+    if (finite(t.hypeVelocity))
+        add('Hype velocity', Math.max(-8, Math.min(10, t.hypeVelocity * 2.4)), `${t.hypeVelocity.toFixed(2)} H/min`);
+    const pressure = finite(t.observedBuyPressure15m) ? t.observedBuyPressure15m : finite(t.buyPressure) ? t.buyPressure : null;
+    if (pressure != null)
+        add('Buy pressure', Math.max(-8, Math.min(15, (pressure - 50) * .45)), `${pressure.toFixed(1)}%${finite(t.observedBuyPressure15m) ? ' observed swaps' : ' aggregate counts'}`);
+    if (finite(t.holderGrowthPct))
+        add('Holder growth', Math.max(-8, Math.min(15, t.holderGrowthPct * 1.8)), `${t.holderGrowthPct.toFixed(2)}%`);
+    if (finite(t.liquidityChangePct))
+        add('Liquidity trend', Math.max(-12, Math.min(10, t.liquidityChangePct * .35)), `${t.liquidityChangePct.toFixed(1)}%`);
+    if (finite(t.smartMoneyFlowUsd))
+        add('Observed whale balance Δ', Math.max(-8, Math.min(8, t.smartMoneyFlowUsd / 2500)), `${Math.round(t.smartMoneyFlowUsd).toLocaleString()}`);
+    if (t.trafficEvidence === 'usable') {
+        const direct = t.trafficSample?.directRecognizedTransactions ?? t.trafficSample?.recognizedTransactions ?? 0;
+        add('Traffic evidence', direct >= 3 ? 10 : 5, direct >= 3 ? `${direct} verified-direct swaps` : 'mostly routed evidence');
+    }
+    if (finite(t.riskScore))
+        add('Risk penalty', -(t.riskScore * .28), `Risk ${Math.round(t.riskScore)}/100`);
+    if (t.liquidityWarning)
+        add('Liquidity warning', -15, 'Liquidity dropped ≥25%');
+    const raw = 45 + factors.reduce((sum, f) => sum + f.points, 0);
+    const score = Math.max(0, Math.min(100, Math.round(raw)));
+    const observed = [
+        finite(t.hypeScore), finite(t.hypeVelocity), pressure != null, finite(t.holderGrowthPct),
+        finite(t.liquidityChangePct), finite(t.smartMoneyFlowUsd), t.trafficEvidence != null, finite(t.riskScore)
+    ].filter(Boolean).length;
+    return { score, factors, coverage: `${observed}/8 signal families observed` };
+}
 export function deriveSignals(t, previous, at, baselineAt) {
     const minutes = baselineAt ? (Date.parse(at) - Date.parse(baselineAt)) / 60_000 : 0;
     const comparable = previous && minutes > 0 && minutes <= 60 && previous.pairAddress === t.pairAddress;
@@ -534,6 +580,7 @@ export function deriveSignals(t, previous, at, baselineAt) {
     const acceleration = volumeVelocity != null && finite(previous?.volumeVelocity) ? (volumeVelocity - previous.volumeVelocity) / minutes : null;
     const sample = t.trafficSample, sampleAge = sample ? (Date.parse(at) - Date.parse(sample.observedAt)) / 60000 : null, sample15 = sample?.windows?.['15'];
     const observedSample = sample && sample15 && sampleAge != null && sampleAge >= -1 && sampleAge < 10 && sample15.swaps >= 5;
+    const opportunity = computeOpportunityScore({ ...t, hypeDelta, hypeVelocity, hypeAcceleration, volumeDelta, volumeVelocity, volumeAcceleration: acceleration, liquidityChange, liquidityChangePct, buyPressure: trades ? (t.buys1h ?? 0) / trades * 100 : null, liquidityWarning, riskScore: Math.round(Math.min(100, risk)), riskFactors, trafficEvidence: sample?.evidence ?? null, trafficObservedAt: sample?.observedAt ?? null, observedBuyPressure15m: observedSample ? sample15.buys / sample15.swaps * 100 : null, observedNetFlowUsd15m: observedSample ? sample15.netUsd : null });
     return { hypeDelta, hypeVelocity, hypeAcceleration, fdvLiquidityRatio, riskFactors,
         volumeDelta, volumeVelocity, volumeAcceleration: acceleration, liquidityChange, liquidityChangePct,
         buyPressure: trades ? (t.buys1h ?? 0) / trades * 100 : null,
@@ -542,6 +589,7 @@ export function deriveSignals(t, previous, at, baselineAt) {
         trafficEvidence: sample?.evidence ?? null, trafficObservedAt: sample?.observedAt ?? null,
         observedBuyPressure15m: observedSample ? sample15.buys / sample15.swaps * 100 : null,
         observedNetFlowUsd15m: observedSample ? sample15.netUsd : null,
+        opportunityScore: opportunity.score, opportunityFactors: opportunity.factors, opportunityCoverage: opportunity.coverage,
         riskCoverage: finite(t.top10SupplyPct) ? 'market + observed holders (heuristic)' : 'market only; holder risk unknown' };
 }
 export function evaluateAlerts(t, previous, at) {
@@ -550,6 +598,8 @@ export function evaluateAlerts(t, previous, at) {
         id: `${t.mint}:${kind}:${at}`, mint: t.mint, symbol: t.symbol ?? null, kind, severity, value, message, at,
         deltaTrades: 0, deltaVolume: t.volumeDelta ?? 0, hypeDelta: t.hypeDelta ?? 0
     });
+    if ((t.opportunityScore ?? 0) >= 75 && (previous?.opportunityScore ?? 0) < 75)
+        add('opportunity', t.opportunityScore, 'Opportunity Score crossed 75/100');
     if ((t.hypeScore ?? 0) >= 70 && (previous?.hypeScore ?? 0) < 70)
         add('hype-threshold', t.hypeScore, 'Hype crossed 70/100');
     if ((t.hypeVelocity ?? 0) >= 3 && (previous?.hypeVelocity ?? 0) < 3)
@@ -851,6 +901,28 @@ function decodeInstructionBytes(value) { const alphabet = '123456789ABCDEFGHJKLM
         break;
     bytes.unshift(0);
 } return bytes; }
+function transactionKeys(tx) {
+    const raw = tx.transaction?.message?.accountKeys;
+    if (!Array.isArray(raw))
+        return { keys: [], addresses: [], signers: new Set() };
+    const addresses = raw.map((k) => typeof k === 'string' ? k : k.pubkey);
+    const loaded = [...(tx.meta?.loadedAddresses?.writable ?? []), ...(tx.meta?.loadedAddresses?.readonly ?? [])].map((k) => typeof k === 'string' ? k : k.pubkey);
+    for (const address of loaded)
+        if (address && !addresses.includes(address))
+            addresses.push(address);
+    const signers = new Set(raw.filter((k) => typeof k !== 'string' && k.signer).map((k) => k.pubkey));
+    const required = Number(tx.transaction?.message?.header?.numRequiredSignatures ?? 0);
+    if (!signers.size && required > 0)
+        for (const address of addresses.slice(0, required))
+            signers.add(address);
+    return { keys: raw, addresses, signers };
+}
+function instructionProgramId(ix, addresses) { return ix?.programId ?? addresses[ix?.programIdIndex]; }
+function allInstructions(tx) {
+    const top = Array.isArray(tx.transaction?.message?.instructions) ? tx.transaction.message.instructions : [];
+    const inner = Array.isArray(tx.meta?.innerInstructions) ? tx.meta.innerInstructions.flatMap((group) => Array.isArray(group?.instructions) ? group.instructions : []) : [];
+    return { top, inner, all: [...top, ...inner] };
+}
 /** Conservative direct single-swap decoder. Routers, liquidity operations and ambiguous balance movements stay unrecognized. */
 export function decodeDirectSwap(tx, mint, pool, solUsd) {
     if (!tx || !tx.meta || tx.meta.err || !tx.blockTime || !tx.transaction?.signatures?.[0])
@@ -859,18 +931,17 @@ export function decodeDirectSwap(tx, mint, pool, solUsd) {
         return null;
     if (!Array.isArray(tx.transaction.message?.accountKeys) || !Array.isArray(tx.transaction.message?.instructions))
         return null;
-    const keys = tx.transaction.message?.accountKeys ?? [];
-    const addresses = keys.map((k) => typeof k === 'string' ? k : k.pubkey);
+    const { keys, addresses, signers } = transactionKeys(tx);
     const instructions = tx.transaction.message?.instructions ?? [];
-    const candidates = instructions.filter((i) => swapPrograms.some(p => p.program === (i.programId ?? addresses[i.programIdIndex])));
+    const candidates = instructions.filter((i) => swapPrograms.some(p => p.program === instructionProgramId(i, addresses)));
     if (candidates.length !== 1)
         return null;
-    const ix = candidates[0], program = ix.programId ?? addresses[ix.programIdIndex];
+    const ix = candidates[0], program = instructionProgramId(ix, addresses);
     // Reject extra program calls, including routing/multiple DEX legs.
-    if (instructions.some((i) => { const id = i.programId ?? addresses[i.programIdIndex]; return id !== program && !safePrograms.has(id); }))
+    if (instructions.some((i) => { const id = instructionProgramId(i, addresses); return id !== program && !safePrograms.has(id); }))
         return null;
     // Top-level token transfers could contaminate net account deltas.
-    if (instructions.some((i) => { const id = i.programId ?? addresses[i.programIdIndex]; if (id !== 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' && id !== 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb')
+    if (instructions.some((i) => { const id = instructionProgramId(i, addresses); if (id !== 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' && id !== 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb')
         return false; return i.parsed?.type?.startsWith('transfer') || (typeof i.data === 'string' && [3, 12].includes(decodeInstructionBytes(i.data)[0])); }))
         return null;
     if (typeof ix.data !== 'string')
@@ -884,8 +955,8 @@ export function decodeDirectSwap(tx, mint, pool, solUsd) {
     const accounts = (ix.accounts ?? []).map((a) => typeof a === 'number' ? addresses[a] : a);
     if (accounts[adapter.poolIndex] !== pool)
         return null;
-    const wallet = accounts[adapter.userIndex], walletKey = keys.find((k) => k.pubkey === wallet);
-    if (!wallet || !walletKey?.signer)
+    const wallet = accounts[adapter.userIndex];
+    if (!wallet || !signers.has(wallet))
         return null;
     const balances = new Map();
     for (const [field, sign] of [['preTokenBalances', -1], ['postTokenBalances', 1]])
@@ -921,24 +992,22 @@ export function decodeRoutedSwap(tx, mint, pool, solUsd) {
         return null;
     if (tx.version != null && tx.version !== 'legacy' && tx.version !== 0 && tx.version !== 1)
         return null;
-    const keys = tx.transaction.message?.accountKeys;
-    const instructions = tx.transaction.message?.instructions;
-    if (!Array.isArray(keys) || !Array.isArray(instructions))
+    const { addresses, signers } = transactionKeys(tx);
+    const instructions = allInstructions(tx);
+    if (!addresses.length || !instructions.top.length)
         return null;
-    const addresses = keys.map((k) => typeof k === 'string' ? k : k.pubkey);
     if (!addresses.includes(pool))
         return null;
-    const programIds = instructions.map((i) => i.programId ?? addresses[i.programIdIndex]).filter(Boolean);
+    const programIds = instructions.all.map((i) => instructionProgramId(i, addresses)).filter(Boolean);
     if (!programIds.includes(JUPITER_V6_PROGRAM))
         return null;
-    const signers = keys.filter((k) => typeof k !== 'string' && k.signer).map((k) => k.pubkey);
-    if (!signers.length)
+    if (!signers.size)
         return null;
     const ownerDeltas = new Map();
     for (const [field, sign] of [['preTokenBalances', -1], ['postTokenBalances', 1]]) {
         for (const b of tx.meta[field] ?? []) {
             const owner = b.owner;
-            if (!owner || !signers.includes(owner))
+            if (!owner || !signers.has(owner))
                 continue;
             const amount = Number(b.uiTokenAmount?.uiAmountString ?? b.uiTokenAmount?.uiAmount);
             if (!Number.isFinite(amount))
@@ -964,7 +1033,8 @@ export function decodeRoutedSwap(tx, mint, pool, solUsd) {
     return null;
 }
 export function summarizeTraffic(rows, scans, at, pool, context, rowLimitReached = false) {
-    const now = Date.parse(at), sorted = [...rows].filter(s => s.pool === pool && Date.parse(s.block_at) <= now).sort((a, b) => Date.parse(a.block_at) - Date.parse(b.block_at));
+    const pools = Array.isArray(pool) ? [...new Set(pool)] : [pool], primaryPool = pools[0] ?? '';
+    const now = Date.parse(at), sorted = [...rows].filter(s => pools.includes(s.pool) && Date.parse(s.block_at) <= now).sort((a, b) => Date.parse(a.block_at) - Date.parse(b.block_at));
     const windows = {};
     for (const minutes of [5, 15, 60]) {
         const cutoff = now - minutes * 60000, sample = sorted.filter(s => Date.parse(s.block_at) >= cutoff), buy = sample.filter(s => s.side === 'buy'), sell = sample.filter(s => s.side === 'sell');
@@ -988,64 +1058,94 @@ export function summarizeTraffic(rows, scans, at, pool, context, rowLimitReached
         acc[k] = (acc[k] ?? 0) + Number(v); return acc; }, {}), parsed = scans.reduce((n, s) => n + (s.parsed ?? 0), 0), recognized = scans.reduce((n, s) => n + (s.recognized ?? 0), 0), unavailable = scans.reduce((n, s) => n + (s.unavailable ?? 0), 0);
     const directRecognized = scans.reduce((n, s) => n + (s.directRecognized ?? s.recognized ?? 0), 0), routedRecognized = scans.reduce((n, s) => n + (s.routedRecognized ?? 0), 0);
     const evidence = unavailable > 0 || Object.values(failures).some(v => v > 0) ? 'degraded' : recognized >= 5 ? 'usable' : parsed >= 5 ? 'sparse' : 'warming';
-    return { observedAt: at, pool, coverage: 'partial', evidence, failures, scans: scans.length, listedSignatures: scans.reduce((n, s) => n + (s.listed ?? 0), 0), parsedTransactions: parsed, recognizedTransactions: recognized, directRecognizedTransactions: directRecognized, routedRecognizedTransactions: routedRecognized, unavailableTransactions: unavailable, unrecognizedTransactions: scans.reduce((n, s) => n + (s.unrecognized ?? 0), 0), limitedScans: scans.filter(s => s.limited).length, rowLimitReached, windows, note: 'Partial selected-pool sample. Verified-direct adapters: PumpSwap, Raydium CPMM/CLMM, Meteora DLMM and Orca Whirlpool. Jupiter routes are conservative signer-balance inference and are labelled routed, not verified-direct. USD uses USDC=$1 or SOL price at scan time, not historical execution USD. New buyers means first seen in retained 2h sample; quick resale does not establish profit. No completeness or bot verdict.' };
+    const recentBuys = sorted.filter(s => s.side === 'buy').slice(-8).reverse().map(s => ({ signature: s.signature, wallet: s.wallet, usdValue: s.usd_value, quoteMint: s.quote_mint, quoteAmount: s.quote_amount, blockAt: s.block_at, pool: s.pool, evidence: s.evidence ?? 'direct', program: s.program }));
+    return { observedAt: at, pool: primaryPool, pools, coverage: 'partial', evidence, failures, scans: scans.length, listedSignatures: scans.reduce((n, s) => n + (s.listed ?? 0), 0), parsedTransactions: parsed, recognizedTransactions: recognized, directRecognizedTransactions: directRecognized, routedRecognizedTransactions: routedRecognized, unavailableTransactions: unavailable, unrecognizedTransactions: scans.reduce((n, s) => n + (s.unrecognized ?? 0), 0), limitedScans: scans.filter(s => s.limited).length, rowLimitReached, windows, recentBuys, note: `Partial sample across ${pools.length} selected liquid pool${pools.length === 1 ? '' : 's'}. Verified-direct adapters: PumpSwap, Raydium CPMM/CLMM, Meteora DLMM and Orca Whirlpool. Jupiter routes are conservative signer-balance inference and are labelled routed, not verified-direct. USD uses USDC=$1 or SOL price at scan time, not historical execution USD. New buyers means first seen in retained 2h sample; quick resale does not establish profit. No completeness or bot verdict.` };
 }
 export async function observeTraffic(token, solUsd, holder, deadline = Date.now() + 45000) {
-    if (!token.pairAddress)
+    const configured = [
+        ...(token.trafficPools ?? []).filter(p => p?.pairAddress),
+        ...(token.pairAddress ? [{ pairAddress: token.pairAddress }] : []),
+    ];
+    const pools = [...new Map(configured.map(p => [p.pairAddress, p])).values()]
+        .sort((a, b) => Number(b.liquidityUsd ?? 0) - Number(a.liquidityUsd ?? 0))
+        .slice(0, 3);
+    if (!pools.length)
         throw new Error('No selected pool');
-    const db = admin(), at = new Date().toISOString();
-    const recent = await fetchRecentSignatures(token.pairAddress, 12);
-    const since = new Date(Date.now() - 2 * 3600000).toISOString();
-    const prior = await db.from('traffic_swaps').select('mint,pool,signature,wallet,side,token_amount,quote_mint,quote_amount,usd_value,block_at,program,evidence').eq('mint', token.mint).gte('block_at', since).order('block_at', { ascending: false }).limit(1000);
+    const db = admin(), at = new Date().toISOString(), since = new Date(Date.now() - 2 * 3600000).toISOString();
+    const prior = await db.from('traffic_swaps').select('mint,pool,signature,wallet,side,token_amount,quote_mint,quote_amount,usd_value,block_at,program,evidence').eq('mint', token.mint).gte('block_at', since).order('block_at', { ascending: false }).limit(1800);
     if (prior.error)
         throw prior.error;
-    const scans = await db.from('traffic_scans').select('payload').eq('mint', token.mint).gte('scanned_at', since).order('scanned_at', { ascending: false }).limit(100);
+    const scans = await db.from('traffic_scans').select('payload').eq('mint', token.mint).gte('scanned_at', since).order('scanned_at', { ascending: false }).limit(180);
     if (scans.error)
         throw scans.error;
-    const seen = new Set((scans.data ?? []).flatMap(s => s.payload.processedSignatures ?? []));
-    const pending = (scans.data ?? []).filter(s => s.payload.pool === token.pairAddress).flatMap(s => s.payload.pendingSignatures ?? []);
-    const eligible = [...new Map([...pending, ...recent].filter(s => !s.err && s.blockTime && s.blockTime * 1000 >= Date.now() - 3600000 && s.blockTime * 1000 <= Date.now() - 10000 && !seen.has(s.signature)).map(s => [s.signature, s])).values()].sort((a, b) => a.blockTime - b.blockTime).slice(0, 12);
-    const swaps = [];
-    const processed = [];
-    let parsed = 0, unavailable = 0, unrecognized = 0;
-    const failures = {};
-    const retry = [];
-    let attempted = 0;
-    for (const s of eligible) {
-        if (Date.now() >= deadline - 16000)
+    const previousScans = (scans.data ?? []).map(s => s.payload);
+    const seen = new Set(previousScans.flatMap(s => s.processedSignatures ?? []));
+    const allNew = [];
+    const cycleScans = [];
+    let remainingTxBudget = 14;
+    for (const selected of pools) {
+        if (Date.now() >= deadline - 16000 || remainingTxBudget <= 0)
             break;
-        attempted++;
-        const result = await fetchParsedTransactionResult(s.signature);
-        if (!result.transaction) {
-            unavailable++;
-            const reason = result.failure ?? 'not_found';
-            const key = result.failureCode != null ? `${reason}:${result.failureCode}` : reason;
-            failures[key] = (failures[key] ?? 0) + 1;
-            retry.push({ signature: s.signature, blockTime: s.blockTime });
-            if (['rate_limited', 'forbidden', 'timeout', 'rpc_error'].includes(reason))
+        const pool = selected.pairAddress;
+        const recent = await fetchRecentSignatures(pool, Math.min(8, remainingTxBudget + 2));
+        const priorPoolScans = previousScans.filter(s => s.pool === pool);
+        const pending = priorPoolScans.flatMap(s => s.pendingSignatures ?? []);
+        const eligible = [...new Map([...pending, ...recent]
+                .filter(s => !s.err && s.blockTime && s.blockTime * 1000 >= Date.now() - 3600000 && s.blockTime * 1000 <= Date.now() - 10000 && !seen.has(s.signature))
+                .map(s => [s.signature, s])).values()]
+            .sort((a, b) => a.blockTime - b.blockTime)
+            .slice(0, Math.min(remainingTxBudget, 6));
+        const swaps = [];
+        const processed = [];
+        let parsed = 0, unavailable = 0, unrecognized = 0, attempted = 0;
+        const failures = {};
+        const retry = [];
+        for (const s of eligible) {
+            if (Date.now() >= deadline - 16000)
                 break;
-            continue;
+            attempted++;
+            remainingTxBudget--;
+            const result = await fetchParsedTransactionResult(s.signature);
+            if (!result.transaction) {
+                unavailable++;
+                const reason = result.failure ?? 'not_found';
+                const key = result.failureCode != null ? `${reason}:${result.failureCode}` : reason;
+                failures[key] = (failures[key] ?? 0) + 1;
+                retry.push({ signature: s.signature, blockTime: s.blockTime });
+                if (['rate_limited', 'forbidden', 'timeout', 'rpc_error'].includes(reason))
+                    break;
+                continue;
+            }
+            parsed++;
+            processed.push(s.signature);
+            seen.add(s.signature);
+            const swap = decodeDirectSwap(result.transaction, token.mint, pool, solUsd) ?? decodeRoutedSwap(result.transaction, token.mint, pool, solUsd);
+            if (swap)
+                swaps.push(swap);
+            else
+                unrecognized++;
         }
-        parsed++;
-        processed.push(s.signature);
-        const swap = decodeDirectSwap(result.transaction, token.mint, token.pairAddress, solUsd) ?? decodeRoutedSwap(result.transaction, token.mint, token.pairAddress, solUsd);
-        if (swap)
-            swaps.push(swap);
-        else
-            unrecognized++;
+        const deferred = recent.filter(s => !s.err && s.blockTime && s.blockTime * 1000 > Date.now() - 10000 && !seen.has(s.signature)).map(s => ({ signature: s.signature, blockTime: s.blockTime }));
+        const unattempted = eligible.slice(attempted).map(s => ({ signature: s.signature, blockTime: s.blockTime }));
+        const scan = { pool, listed: recent.length, parsed, recognized: swaps.length, directRecognized: swaps.filter(s => s.evidence !== 'routed').length, routedRecognized: swaps.filter(s => s.evidence === 'routed').length, unavailable, unrecognized, failures, limited: recent.length >= 8 || attempted < eligible.length, processedSignatures: processed, pendingSignatures: [...new Map([...retry, ...unattempted, ...deferred].map(s => [s.signature, s])).values()].slice(0, 10), oldestListedAt: recent.at(-1)?.blockTime ? new Date(recent.at(-1).blockTime * 1000).toISOString() : null };
+        const save = await db.rpc('save_traffic_sample', { p_mint: token.mint, p_at: at, p_swaps: swaps, p_scan: scan });
+        if (save.error)
+            throw save.error;
+        cycleScans.push(scan);
+        allNew.push(...swaps);
     }
-    const deferred = recent.filter(s => !s.err && s.blockTime && s.blockTime * 1000 > Date.now() - 10000 && !seen.has(s.signature)).map(s => ({ signature: s.signature, blockTime: s.blockTime }));
-    const unattempted = eligible.slice(attempted).map(s => ({ signature: s.signature, blockTime: s.blockTime }));
-    const scan = { pool: token.pairAddress, listed: recent.length, parsed, recognized: swaps.length, directRecognized: swaps.filter(s => s.evidence !== 'routed').length, routedRecognized: swaps.filter(s => s.evidence === 'routed').length, unavailable, unrecognized, failures, limited: recent.length === 12 || attempted < eligible.length, processedSignatures: processed, pendingSignatures: [...new Map([...retry, ...unattempted, ...deferred].map(s => [s.signature, s])).values()].slice(0, 12), oldestListedAt: recent.at(-1)?.blockTime ? new Date(recent.at(-1).blockTime * 1000).toISOString() : null };
-    const save = await db.rpc('save_traffic_sample', { p_mint: token.mint, p_at: at, p_swaps: swaps, p_scan: scan });
-    if (save.error)
-        throw save.error;
     const merged = new Map();
-    for (const row of [...(prior.data ?? []), ...swaps])
+    for (const row of [...(prior.data ?? []), ...allNew])
         merged.set(`${row.signature}:${row.wallet}`, row);
     const cache = await db.from('api_cache').select('payload,updated_at').eq('cache_key', `intelligence:holders:${token.mint}`).maybeSingle();
     const linked = holder?.linkedWallets != null && holder?.walletEvidence ? new Set(holder.walletEvidence.flatMap(e => e.wallets)) : undefined;
-    const summary = summarizeTraffic([...merged.values()], [scan, ...(scans.data ?? []).filter(s => s.payload.pool === token.pairAddress).map(s => s.payload)], at, token.pairAddress, { holderAt: cache.data?.updated_at, wallets: cache.data?.payload?.balances ? new Set(cache.data.payload.balances.map((h) => h.wallet)) : undefined, linkedWallets: linked }, (prior.data?.length ?? 0) >= 1000);
+    const activePools = pools.slice(0, Math.max(1, cycleScans.length)).map(p => p.pairAddress);
+    const relevantHistorical = previousScans.filter(s => activePools.includes(s.pool));
+    const summary = summarizeTraffic([...merged.values()], [...cycleScans, ...relevantHistorical], at, activePools, {
+        holderAt: cache.data?.updated_at,
+        wallets: cache.data?.payload?.balances ? new Set(cache.data.payload.balances.map((h) => h.wallet)) : undefined,
+        linkedWallets: linked,
+    }, (prior.data?.length ?? 0) >= 1800);
     const write = await db.from('api_cache').upsert({ cache_key: `intelligence:traffic:${token.mint}`, payload: summary, updated_at: at });
     if (write.error)
         throw write.error;
@@ -1061,7 +1161,7 @@ export function selectHolderWork(tokens, priorityMints, cursor, budget) {
         candidates.push(rotating[(start + i) % rotating.length]);
     return { priority, rotating, candidates: candidates.slice(0, budget) };
 }
-export const ruleDefinitions = [{ key: 'hypeScore', label: 'Hype ≥', default: 70, min: 0, max: 100 }, { key: 'hypeVelocity', label: 'Hype velocity ≥ H/min', default: 3, min: 0, max: 100 }, { key: 'holderGrowthPct', label: 'Holder growth · 5m ≥ %', default: 5, min: 0, max: 1000 }, { key: 'buyPressure', label: 'Buy count pressure ≥ %', default: 70, min: 0, max: 100 }, { key: 'liquidityChangePct', label: 'Liquidity drop ≥ %', default: 25, min: 0, max: 100 }];
+export const ruleDefinitions = [{ key: 'opportunityScore', label: 'Opportunity ≥', default: 75, min: 0, max: 100 }, { key: 'hypeScore', label: 'Hype ≥', default: 70, min: 0, max: 100 }, { key: 'hypeVelocity', label: 'Hype velocity ≥ H/min', default: 3, min: 0, max: 100 }, { key: 'holderGrowthPct', label: 'Holder growth · 5m ≥ %', default: 5, min: 0, max: 1000 }, { key: 'buyPressure', label: 'Buy count pressure ≥ %', default: 70, min: 0, max: 100 }, { key: 'liquidityChangePct', label: 'Liquidity drop ≥ %', default: 25, min: 0, max: 100 }];
 export const emptyWatchState = () => ({ version: 1, entries: [], filters: { query: '', minHype: 0, maxRisk: 100, onlyFavorites: false }, alerts: [], seen: {}, active: {} });
 export const validMint = (m) => typeof m === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(m);
 export function normalizeWatchState(raw) {
@@ -1129,9 +1229,11 @@ export async function evaluateSyncedWatchlists(tokens, observedAt, limit = 100) 
     if (error)
         throw error;
     let updated = 0;
+    const jobs = [];
     const now = Date.parse(observedAt);
     for (const row of data ?? []) {
         const before = normalizeWatchState(row.payload);
+        const previousIds = new Set(before.alerts.map(a => a.id));
         const next = evaluatePersonalAlerts(before, tokens, now);
         if (next === before)
             continue;
@@ -1142,8 +1244,11 @@ export async function evaluateSyncedWatchlists(tokens, observedAt, limit = 100) 
         if (write.error)
             throw write.error;
         updated++;
+        for (const alert of next.alerts)
+            if (!previousIds.has(alert.id))
+                jobs.push({ syncHash: row.sync_hash, alert });
     }
-    return updated;
+    return { updated, jobs: jobs.slice(0, 50) };
 }
 import { randomUUID } from 'node:crypto';
 export async function ingestMarket() {
@@ -1244,7 +1349,7 @@ export async function ingestMarket() {
             if (!fresh)
                 Object.assign(metrics, { newHolders: null, exitedHolders: null, largestHolderPct: null, whaleConcentrationPct: null, linkedSupplyPct: null, holderWindows: {}, topHolderSales: [] });
             const sample = trafficByMint.get(t.mint);
-            const enriched = { ...t, ...metrics, trafficSample: sample?.pool === t.pairAddress ? sample : null };
+            const enriched = { ...t, ...metrics, trafficSample: sample?.pools?.includes(t.pairAddress) ? sample : sample?.pool === t.pairAddress ? sample : null };
             return { ...enriched, windows: compareMarketWindows(enriched, at, (baselines.data ?? [])), ...deriveSignals(enriched, prevTokens.get(t.mint), at, previous?.fetchedAt),
                 // Directional volume estimate based on trade counts, not measured capital transfers.
                 netFlowUsd1h: t.volume1h * (t.buys1h - t.sells1h) / Math.max(1, t.trades1h) };
@@ -1266,10 +1371,22 @@ export async function ingestMarket() {
             throw saved.error;
         let syncedWatchlists = 0;
         try {
-            syncedWatchlists = await evaluateSyncedWatchlists(tokens.map(t => ({ ...t, marketObservedAt: at })), at);
+            const syncResult = await evaluateSyncedWatchlists(tokens.map(t => ({ ...t, marketObservedAt: at })), at);
+            syncedWatchlists = syncResult.updated;
+            if (syncResult.jobs.length) {
+                const config = await db.from('push_dispatch_config').select('endpoint,secret').eq('id', 1).maybeSingle();
+                if (config.data?.endpoint && config.data?.secret) {
+                    await fetch(config.data.endpoint, {
+                        method: 'POST',
+                        headers: { 'content-type': 'application/json', 'x-push-dispatch-secret': config.data.secret },
+                        body: JSON.stringify({ jobs: syncResult.jobs }),
+                        signal: AbortSignal.timeout(8000),
+                    }).catch(() => { });
+                }
+            }
         }
         catch {
-            // Personal sync must never make market ingestion fail.
+            // Personal sync/push must never make market ingestion fail.
         }
         const finishedAt = new Date().toISOString();
         const statusDone = await db.from('api_cache').upsert({ cache_key: 'worker:status', payload: { state: 'ok', startedAt: new Date(ingestionStarted).toISOString(), finishedAt, lastSuccessAt: at, durationMs: Date.now() - ingestionStarted, holderFailures: failures.length, trafficFailures, holderCompleted: completed, trafficCompleted, tokens: tokens.length, recentHolders: tokens.filter(t => t.holderObservedAt && Date.now() - Date.parse(t.holderObservedAt) < 3600000).length, recentTraffic: tokens.filter(t => t.trafficObservedAt && Date.now() - Date.parse(t.trafficObservedAt) < 600000).length, usableTraffic: tokens.filter(t => t.trafficEvidence === 'usable' && t.trafficObservedAt && Date.now() - Date.parse(t.trafficObservedAt) < 600000).length, holderBudget: budget, trafficBudget, trafficDiagnostics: tokens.reduce((acc, t) => { for (const [k, v] of Object.entries(t.trafficSample?.failures ?? {}))

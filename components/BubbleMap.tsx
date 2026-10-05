@@ -3,6 +3,7 @@ import { fomoTokenUrl } from "@/lib/token-links";
 import HolderObservationStatus from "./HolderObservationStatus";
 import {balanceChanges,trackedFlow,walletFocus,type BalanceRow} from "@/lib/holder/insights";
 import WorkerStatus from "./WorkerStatus";
+import HolderCanvasLayer from "./HolderCanvasLayer";
 import TrackedTokenSignal from "./TrackedTokenSignal";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY, type Simulation } from "d3-force";
@@ -61,6 +62,8 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const edges = useRef<E[]>([]);
   const links = useRef<L[]>([]);
   const sim = useRef<Simulation<N, undefined>>(undefined);
+  const physicsWorker = useRef<Worker | null>(null);
+  const workerMode = useRef(false);
   const renderGate = useRef({ visible: true, inViewport: true, lastPaint: 0, raf: 0 });
   const pan = useRef({ active: false, x: 0, y: 0, tx: 0, ty: 0 });
   const drag = useRef({
@@ -201,6 +204,31 @@ export default function BubbleMap({ mint }: { mint: string }) {
     });
   };
 
+  const syncPhysicsWorker = (alpha = .62) => {
+    const worker = physicsWorker.current;
+    if (!worker) return false;
+    const useWorker = nodes.current.size >= 220;
+    workerMode.current = useWorker;
+    if (!useWorker) return false;
+    const groups = visualGroups();
+    worker.postMessage({
+      type: "sync",
+      width: size.w,
+      height: size.h,
+      alpha,
+      nodes: [...nodes.current.values()].map((n) => ({
+        wallet: n.wallet, x: n.x, y: n.y, vx: n.vx ?? 0, vy: n.vy ?? 0,
+        fx: n.fx ?? null, fy: n.fy ?? null, r: n.r, group: groups.get(n.wallet) ?? null,
+      })),
+      links: links.current.map((l: any) => ({
+        source: typeof l.source === "string" ? l.source : l.source.wallet,
+        target: typeof l.target === "string" ? l.target : l.target.wallet,
+        kind: l.kind,
+      })),
+    });
+    return true;
+  };
+
   const configureLayout = (s: Simulation<N, undefined>) => {
     const groups = visualGroups();
     const ids = [...new Set(groups.values())].sort((a, b) => a - b);
@@ -234,6 +262,8 @@ export default function BubbleMap({ mint }: { mint: string }) {
   const restart = () => {
     const s = sim.current; if (!s) return;
     rebuildLinks();
+    if (syncPhysicsWorker(.62)) { s.stop(); scheduleGraphPaint(); return; }
+    workerMode.current = false;
     s.nodes([...nodes.current.values()]);
     configureLayout(s);
     s.force("link", forceLink<N, any>(links.current)
@@ -498,7 +528,8 @@ export default function BubbleMap({ mint }: { mint: string }) {
     };
     setDraggingWallet(wallet);
     e.currentTarget.setPointerCapture(e.pointerId);
-    sim.current?.alpha(0.78).alphaTarget(0.24).restart();
+    if (workerMode.current) physicsWorker.current?.postMessage({ type: "drag", wallet, x: n.x, y: n.y });
+    else sim.current?.alpha(0.78).alphaTarget(0.24).restart();
     bump((x) => x + 1);
   };
 
@@ -531,7 +562,8 @@ export default function BubbleMap({ mint }: { mint: string }) {
 
     // Keep the simulation hot while dragging. Link forces make connected
     // wallets lag and then catch up instead of moving as one rigid block.
-    sim.current?.alpha(0.72).restart();
+    if (workerMode.current) physicsWorker.current?.postMessage({ type: "drag", wallet: d.wallet, x: n.x, y: n.y });
+    else sim.current?.alpha(0.72).restart();
     bump((x) => x + 1);
   };
 
@@ -562,7 +594,8 @@ export default function BubbleMap({ mint }: { mint: string }) {
 
     d.active = false;
     setDraggingWallet(null);
-    sim.current?.alpha(0.5).alphaTarget(0).restart();
+    if (workerMode.current && n) physicsWorker.current?.postMessage({ type: "pin", wallet: n.wallet, x: n.x, y: n.y });
+    else sim.current?.alpha(0.5).alphaTarget(0).restart();
     bump((x) => x + 1);
   };
 
@@ -574,7 +607,8 @@ export default function BubbleMap({ mint }: { mint: string }) {
     try { localStorage.removeItem(`solanabubble:pinned:${mint}`); } catch {}
     drag.current.active = false;
     setDraggingWallet(null);
-    sim.current?.alpha(0.65).alphaTarget(0).restart();
+    if (workerMode.current) physicsWorker.current?.postMessage({ type: "releaseAll" });
+    else sim.current?.alpha(0.65).alphaTarget(0).restart();
     bump((x) => x + 1);
   };
 
@@ -592,8 +626,13 @@ export default function BubbleMap({ mint }: { mint: string }) {
     const sync = () => {
       const active = !document.hidden && renderGate.current.inViewport;
       renderGate.current.visible = !document.hidden;
-      if (active) sim.current?.alpha(Math.max(sim.current.alpha(), 0.16)).restart();
-      else sim.current?.stop();
+      if (active) {
+        if (workerMode.current) physicsWorker.current?.postMessage({ type: "resume" });
+        else sim.current?.alpha(Math.max(sim.current.alpha(), 0.16)).restart();
+      } else {
+        sim.current?.stop();
+        physicsWorker.current?.postMessage({ type: "pause" });
+      }
     };
     const io = new IntersectionObserver(([entry]) => {
       renderGate.current.inViewport = entry?.isIntersecting !== false;
@@ -607,6 +646,26 @@ export default function BubbleMap({ mint }: { mint: string }) {
       document.removeEventListener("visibilitychange", sync);
       if (renderGate.current.raf) cancelAnimationFrame(renderGate.current.raf);
       renderGate.current.raf = 0;
+    };
+  }, []);
+
+  useEffect(() => {
+    const worker = new Worker(new URL("../workers/holder-physics.worker.ts", import.meta.url), { type: "module" });
+    physicsWorker.current = worker;
+    worker.onmessage = (event) => {
+      if (event.data?.type !== "tick" || !Array.isArray(event.data.nodes)) return;
+      for (const next of event.data.nodes) {
+        const node = nodes.current.get(next.wallet);
+        if (!node) continue;
+        node.x = next.x; node.y = next.y; node.vx = next.vx; node.vy = next.vy;
+        if (next.fx != null && next.fy != null) { node.fx = next.fx; node.fy = next.fy; }
+      }
+      scheduleGraphPaint();
+    };
+    return () => {
+      worker.terminate();
+      if (physicsWorker.current === worker) physicsWorker.current = null;
+      workerMode.current = false;
     };
   }, []);
 
@@ -709,6 +768,10 @@ export default function BubbleMap({ mint }: { mint: string }) {
   }, [mint]);
 
   useEffect(() => {
+    if (workerMode.current) {
+      physicsWorker.current?.postMessage({ type: "resize", width: size.w, height: size.h });
+      return;
+    }
     const s = sim.current; if (!s) return;
     configureLayout(s);
     s.alpha(0.42).restart();
@@ -778,6 +841,14 @@ export default function BubbleMap({ mint }: { mint: string }) {
   });
 
   const focusedWallets=walletFocus(sel,visibleLinks);
+  const canvasMode=view==="map"&&visibleNodes.length>=280;
+  const canvasLinks=visibleLinks.map((l:any)=>({
+    source:l.source?.wallet??l.source,
+    target:l.target?.wallet??l.target,
+    kind:l.kind,
+    group:l.group,
+    signalCount:l.signalCount,
+  }));
 
   const historyStart = Date.now() - 24 * HOUR;
   const history = Array.from({ length: 24 }, (_, i) => ({
@@ -1019,8 +1090,20 @@ export default function BubbleMap({ mint }: { mint: string }) {
               <span>{Math.round(transform.k * 100)}%</span>
             </div>
 
+            {canvasMode && <HolderCanvasLayer
+              width={size.w}
+              height={size.h}
+              nodes={visibleNodes}
+              links={canvasLinks}
+              groups={groups}
+              transform={transform}
+              selected={sel}
+              focused={focusedWallets}
+            />}
+
             <svg
               role="img"
+              className={canvasMode ? "holder-svg holder-svg-overlay" : "holder-svg"}
               aria-label="Карта на holders"
               style={{ touchAction: "none" }}
               onWheel={(e) => {
@@ -1058,7 +1141,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
               </defs>
 
               <g transform={`translate(${transform.x} ${transform.y}) scale(${transform.k})`}>
-                {visibleLinks.map((l: any, i) => {
+                {!canvasMode && visibleLinks.map((l: any, i) => {
                   if (l.source?.x === undefined || l.target?.x === undefined) return null;
                   const source = motionPoint(l.source as N);
                   const target = motionPoint(l.target as N);
@@ -1093,7 +1176,7 @@ export default function BubbleMap({ mint }: { mint: string }) {
                   ><title>{title}</title></line>;
                 })}
 
-                {motionOn && visibleLinks.slice(0, 90).map((l: any, i) => {
+                {!canvasMode && motionOn && visibleLinks.slice(0, 90).map((l: any, i) => {
                   if (l.source?.x === undefined || l.target?.x === undefined) return null;
                   const directed = l.kind.startsWith("flow-") || l.kind === "direct-transfer";
                   if (!directed) return null;
@@ -1116,6 +1199,36 @@ export default function BubbleMap({ mint }: { mint: string }) {
 
                 {visibleNodes.map((n) => {
                   const gid = groups.get(n.wallet);
+                  if (canvasMode) {
+                    const p = motionPoint(n);
+                    const active = sel === n.wallet;
+                    const over = hovered === n.wallet;
+                    return <g key={n.wallet} className="canvas-node-hit">
+                      {(active || over) && <circle cx={p.x} cy={p.y} r={n.r + 4} fill="none" stroke={active ? "#f4f7fb" : "#9aa6b5"} strokeWidth={active ? 2.6 : 1.4} pointerEvents="none" />}
+                      <circle
+                        className="canvas-hit-target"
+                        cx={p.x} cy={p.y} r={Math.max(10,n.r + 2)}
+                        fill="transparent"
+                        stroke="transparent"
+                        tabIndex={0}
+                        data-dragging={draggingWallet === n.wallet ? "true" : "false"}
+                        onPointerEnter={() => setHovered(n.wallet)}
+                        onPointerLeave={() => setHovered(null)}
+                        onPointerDown={(e) => beginNodeDrag(e, n.wallet)}
+                        onPointerMove={moveNodeDrag}
+                        onPointerUp={endNodeDrag}
+                        onPointerCancel={endNodeDrag}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!drag.current.moved) setSel(n.wallet);
+                          drag.current.moved = false;
+                        }}
+                        onKeyDown={(e) => e.key === "Enter" && setSel(n.wallet)}
+                      >
+                        <title>{displayWallet(n.wallet)} · {Number(n.pct_supply).toFixed(2)}%</title>
+                      </circle>
+                    </g>;
+                  }
                   const color = gid ? groupColor(gid) : "#69717f";
                   const active = sel === n.wallet;
                   const over = hovered === n.wallet;

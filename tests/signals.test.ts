@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { collapseAlertHistory, deriveSignals, evaluateAlerts, prioritizeAlerts, rankMovers, suppressRepeatedAlerts, type SignalAlert, type SignalToken } from '../lib/market/signals';
+import { collapseAlertHistory, computeOpportunityScore, deriveSignals, evaluateAlerts, prioritizeAlerts, rankMovers, suppressRepeatedAlerts, type SignalAlert, type SignalToken } from '../lib/market/signals';
 const at = '2026-10-01T12:05:00Z', before = '2026-10-01T12:00:00Z';
 const token: SignalToken = {mint:'mint',pairAddress:'pair',hypeScore:55,volume1h:2000,liquidityUsd:6000,buys1h:80,sells1h:20};
 const prev: SignalToken = {...token,hypeScore:45,volume1h:1000,liquidityUsd:10000,volumeVelocity:100};
@@ -45,4 +45,11 @@ test('server alert batch keeps one strongest signal per token and stays bounded'
 test('unknown metrics excluded from mover ranking; negative movers retained',()=>{
   const list=rankMovers([{hypeVelocity:null},{hypeVelocity:3},{hypeVelocity:-8}], 'hypeVelocity');
   assert.equal(list.length,2); assert.equal(list[0].hypeVelocity,-8);
+});
+
+test('Opportunity Score is bounded and explains positive and negative factors',()=>{
+ const strong=computeOpportunityScore({...token,hypeScore:88,hypeVelocity:4,buyPressure:78,holderGrowthPct:7,liquidityChangePct:12,smartMoneyFlowUsd:9000,riskScore:12});
+ const weak=computeOpportunityScore({...token,hypeScore:20,hypeVelocity:-3,buyPressure:25,holderGrowthPct:-4,liquidityChangePct:-35,riskScore:80,liquidityWarning:true});
+ assert.ok(strong.score>=0&&strong.score<=100);assert.ok(weak.score>=0&&weak.score<=100);assert.ok(strong.score>weak.score);
+ assert.ok(strong.factors.some(f=>f.points>0));assert.ok(weak.factors.some(f=>f.points<0));assert.match(strong.coverage,/signal families observed/);
 });

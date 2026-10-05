@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import WorkspaceShell from "@/components/WorkspaceShell";
+import ProjectHealthDashboard from "@/components/ProjectHealthDashboard";
 
 const TABLES = [
   ["tokens", "Токени"],
@@ -125,6 +126,8 @@ export default function AdminPage() {
         <small>{usage?.publicRpc?.note || "Solana Public RPC + DexScreener"}</small>
       </div>
     </section>
+
+    <ProjectHealthDashboard usage={usage} />
 
     <nav className="admin-tabs">
       {TABLES.map(([key, label]) => <button key={key} className={table === key ? "active" : ""} onClick={() => { setTable(key); load(key); }}>{label}</button>)}

@@ -167,3 +167,15 @@ Server alert persistence applies a 30-minute cooldown per token and alert kind, 
 - Search and market double-click navigation no longer wait for `/api/tokens/track`; the holder page owns bootstrap/priority work, eliminating duplicate Vercel requests.
 - Cross-device watchlist sync uses a 64-hex-character private key. Treat it like a password; anyone with the key can read or replace that synchronized watchlist.
 - `npm run worker:check` prevents the committed Supabase Edge bundle from drifting from shared TypeScript sources. `npm run check:budgets` prevents accidental growth of the largest map/CSS/worker files.
+
+### Full project upgrade (2026-10-05)
+
+- **Holder Map performance:** maps with 220+ holders move D3 force physics into `workers/holder-physics.worker.ts`; 280+ visible holders use a hybrid Canvas renderer for bulk nodes/links while SVG keeps the interactive hit targets. Small maps keep the original SVG/D3 path.
+- **Market architecture:** targeted comet rendering is extracted to `MarketCometLayer`; large-holder rendering is extracted to `HolderCanvasLayer`; project health and push notification controls are separate components.
+- **Traffic Engine v2:** the collector retains up to three liquid pools per token. Background traffic scans rotate across those pools under one bounded transaction budget, de-duplicate signatures, and combine them into one partial sample. Versioned transaction lookup-table addresses and inner Jupiter instructions are included in routed-evidence detection.
+- **Opportunity Score:** Token Signal Card exposes a transparent 0–100 score with factor-by-factor positive and negative contributions. Opportunity crossings can produce market alerts and personal Watchlist thresholds.
+- **Targeted capital comets:** up to four SVG particles originate outside a planet and follow a curved path toward a specific token. Verified/sampled buys include the shortened wallet and USD/SOL amount; when no fresh swap identity is available, positive Live Activity provides the fallback target. Arrival produces a small impact pulse on the planet.
+- **Background notifications:** Watchlist users may opt into browser Web Push. Subscriptions are tied only to the hashed private sync profile; push dispatch is protected by a server-only secret. Background market ingestion dispatches newly crossed personal thresholds after sync evaluation.
+- **Production Health:** Database admin now reports worker duration/failures, active bootstrap leases, direct vs routed retained traffic, synced watchlists, snapshot count and runtime metadata.
+- **Node runtime:** local metadata, GitHub CI and Vercel project runtime are aligned on Node 22.
+- **Deployment safety:** `vercel.json` still disables Git deployments. On the current Hobby project, Vercel's Pro-only deployment policy API is unavailable, so the project-level Ignored Build Step is additionally set to `exit 0` and preview deployments are disabled. Before an explicitly requested manual production deploy, that ignore command must be cleared for the deployment and restored afterwards.
