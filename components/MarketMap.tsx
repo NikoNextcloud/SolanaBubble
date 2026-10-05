@@ -218,6 +218,7 @@ export default function MarketMap() {
   function togglePulses(){setPulsesEnabled(v=>{try{localStorage.setItem('solanabubble:map-pulses',v?'off':'on');}catch{}return !v;});}
   const [viewMode, setViewMode] = useState<MarketViewMode>("map");
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [xAxis, setXAxis] = useState<MarketAxis>("marketCap");
   const [showTrafficOverlay, setShowTrafficOverlay] = useState(true);
   const [autoGraph, setAutoGraph] = useState(true);
@@ -236,6 +237,7 @@ export default function MarketMap() {
   const beginMapPan = (e: React.PointerEvent<SVGSVGElement>) => {
     if (e.button !== 0 || drag.current.active) return;
     setQuickActionMint(null);
+    setMobileDetailOpen(false);
     mapPanDrag.current = {
       active: true,
       pointerId: e.pointerId,
@@ -724,7 +726,7 @@ export default function MarketMap() {
     scale: mapView.k,
     viewportWidth: size.w,
     viewportHeight: size.h,
-    preferredWidth: size.w <= 640 ? 176 : 148,
+    preferredWidth: size.w <= 640 ? 236 : 148,
     panelHeight: size.w <= 640 ? 52 : 42,
   }) : null;
   const combinedFlows = [...flows, ...expansionFlows];
@@ -876,7 +878,7 @@ export default function MarketMap() {
             </div>
             {[...filteredTokens].sort((a,b) => b.volume24h - a.volume24h).map((t) => {
               const traffic = trafficState(t);
-              return <button key={t.mint} onClick={() => setSelected(t)} onDoubleClick={() => openToken(t)}>
+              return <button key={t.mint} onClick={() => { setSelected(t); setMobileDetailOpen(true); }} onDoubleClick={() => openToken(t)}>
                 <span className="market-list-token">
                   <span className="market-list-icon">{t.imageUrl ? <img src={t.imageUrl} alt="" /> : (t.symbol || "?").slice(0,2)}</span>
                   <span><strong>{t.symbol || t.name || t.mint.slice(0,6)}</strong><small>{t.name || t.dex || "Solana token"}</small></span>
@@ -1049,6 +1051,7 @@ export default function MarketMap() {
                     if (!drag.current.moved && !n.isCore) {
                       setSelected(n);
                       setQuickActionMint(n.mint);
+                      setMobileDetailOpen(false);
                       expandToken(n);
                     }
                     drag.current.moved = false;
@@ -1113,6 +1116,7 @@ export default function MarketMap() {
           >
             <a href={fomoTokenUrl(quickActionNode.mint)} target="_blank" rel="noreferrer">FoMo ↗</a>
             <a href={gmgnTokenUrl(quickActionNode.mint)} target="_blank" rel="noreferrer">GmGn ↗</a>
+            <button className="quick-detail-action" onClick={() => setMobileDetailOpen(true)}>Details</button>
             <button className="quick-holder-action" onClick={() => openToken(quickActionNode)} disabled={loadingMint === quickActionNode.mint}>Holders</button>
           </div>}
 
@@ -1129,7 +1133,7 @@ export default function MarketMap() {
         </div>
 
         <aside
-          className={`market-side reference-market-side ${selected ? "is-token-selected" : ""}`}
+          className={`market-side reference-market-side ${selected ? "is-token-selected" : ""} ${mobileDetailOpen ? "is-mobile-open" : ""}`}
           aria-label={selected ? `Детайли за ${selected.symbol || selected.name || "токен"}` : "Market intelligence"}
         >
           <WorkerStatus/>
@@ -1199,7 +1203,7 @@ export default function MarketMap() {
               </button>)}
             </div>
           </> : <>
-            <button className="market-back" onClick={() => setSelected(null)}>← Всички токени</button>
+            <button className="market-back" onClick={() => { setSelected(null); setMobileDetailOpen(false); }}>← Всички токени</button>
             <div className="selected-token-card">
               <div className="selected-token-head">
                 <span className="selected-token-avatar">
