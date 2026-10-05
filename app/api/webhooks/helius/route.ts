@@ -35,7 +35,7 @@ export async function POST(req:Request){
   const snapshot=await db.from("api_cache").select("payload").eq("cache_key","market:snapshot").maybeSingle();
   if(snapshot.error)return NextResponse.json({error:"snapshot_unavailable"},{status:503});
   const tokens:Array<any>=snapshot.data?.payload?.tokens??[];
-  const tracked=new Map(tokens.map(t=>[String(t.mint),t]));
+  const tracked=new Map<string,any>(tokens.map(t=>[String(t.mint),t] as const));
   const rows:any[]=[];
 
   for(const tx of txs.slice(0,100)){
