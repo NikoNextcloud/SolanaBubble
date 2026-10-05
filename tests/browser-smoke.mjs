@@ -323,6 +323,16 @@ try {
   await sleep(3400);
   const cometCycleAfter = await page.evaluate("Number(document.querySelector('.targeted-comet-layer')?.getAttribute('data-comet-cycle') || 0)");
   assert.ok(cometCycleAfter > cometCycleBefore, "comets must restart continuously instead of flying only once");
+  await sleep(700);
+  const replayVisible = await page.evaluate(`(() => {
+    const bodies = [...document.querySelectorAll('.targeted-comet-body')];
+    return bodies.some((el) => {
+      const opacity = Number(getComputedStyle(el).opacity || 0);
+      const matrix = el.getCTM?.();
+      return opacity > 0.05 && matrix && (Math.abs(matrix.e) > 0.5 || Math.abs(matrix.f) > 0.5);
+    });
+  })()`);
+  assert.equal(replayVisible, true, "a comet must be visibly moving again after the second animation cycle");
   assert.ok(coordinateUi.hypeParticleCount >= 12, "high-hype planets must render a visible green particle halo");
   assert.ok(coordinateUi.anchorLinkCount >= 1, "decluttered coordinate clusters must keep a subtle anchor guide");
 
