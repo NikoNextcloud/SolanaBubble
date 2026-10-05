@@ -121,18 +121,12 @@ export default function WorkspaceShell({
     };
   }, [query]);
 
-  async function openToken(token: SearchToken) {
+  function openToken(token: SearchToken) {
     setOpeningMint(token.mint);
-    try {
-      await fetch("/api/tokens/track", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mint: token.mint }),
-      });
-    } catch {}
     setOpen(false);
     setMobileSearchOpen(false);
     setQuery("");
+    // The holder page owns tracking/bootstrap. Navigate immediately so search never waits on RPC work.
     router.push(`/token/${token.mint}`);
   }
 

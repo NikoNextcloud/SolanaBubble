@@ -16,49 +16,69 @@ export class SolanaRpcError extends Error {
         this.code = code;
     }
 }
-/** Method routing keeps indexed holder scans on their own provider. Explicit URLs override defaults. */
-export function rpcEndpoint(method) {
-    const traffic = method === 'getTransaction' || method === 'getSignaturesForAddress';
-    return (traffic ? process.env.SOLANA_TRAFFIC_RPC_URL : process.env.SOLANA_HOLDER_RPC_URL) || process.env.SOLANA_RPC_URL || (traffic ? 'https://solana-rpc.publicnode.com' : 'https://api.mainnet-beta.solana.com');
+const TRAFFIC_METHODS = new Set(['getTransaction', 'getSignaturesForAddress']);
+const splitEndpoints = (raw) => raw?.split(',').map(v => v.trim()).filter(Boolean) ?? [];
+/** Ordered method routing. *_RPC_URLS accepts a comma-separated failover chain. */
+export function rpcEndpoints(method) {
+    const traffic = TRAFFIC_METHODS.has(method);
+    const primary = splitEndpoints(traffic ? process.env.SOLANA_TRAFFIC_RPC_URLS : process.env.SOLANA_HOLDER_RPC_URLS);
+    const single = (traffic ? process.env.SOLANA_TRAFFIC_RPC_URL : process.env.SOLANA_HOLDER_RPC_URL) || process.env.SOLANA_RPC_URL;
+    const defaults = traffic ? ['https://solana-rpc.publicnode.com', 'https://api.mainnet-beta.solana.com'] : ['https://api.mainnet-beta.solana.com'];
+    return [...new Set([...primary, ...(single ? [single] : []), ...defaults])];
 }
+export function rpcEndpoint(method) { return rpcEndpoints(method)[0]; }
+const retryable = new Set(['rate_limited', 'forbidden', 'timeout', 'network', 'http_error', 'rpc_error']);
 export class PublicSolanaRpcProvider {
-    endpoint;
+    endpoints;
     transactionQueue = Promise.resolve();
-    cooldownUntil = 0;
-    cooldownFailure = "rate_limited";
-    constructor(endpoint = rpcEndpoint) {
-        this.endpoint = endpoint;
+    health = new Map();
+    constructor(endpoints = rpcEndpoints) {
+        this.endpoints = endpoints;
     }
     request(method, params) {
         if (method !== 'getTransaction')
-            return this.send(method, params);
-        // All consumers share the same serial transaction lane, including holder relationships.
-        const work = this.transactionQueue.catch(() => { }).then(() => this.send(method, params));
+            return this.sendWithFailover(method, params);
+        // All transaction consumers share one lane so fallback does not become an RPC flood.
+        const work = this.transactionQueue.catch(() => { }).then(() => this.sendWithFailover(method, params));
         this.transactionQueue = work;
         return work;
     }
-    async send(method, params) {
-        if (method === 'getTransaction' && Date.now() < this.cooldownUntil)
-            throw new SolanaRpcError(this.cooldownFailure, this.cooldownFailure === 'rate_limited' ? 429 : undefined);
+    async sendWithFailover(method, params) {
+        const configured = this.endpoints(method);
+        const endpoints = Array.isArray(configured) ? configured : [configured];
+        let last;
+        for (const endpoint of endpoints) {
+            const state = this.health.get(endpoint);
+            if (state && Date.now() < state.cooldownUntil) {
+                last = new SolanaRpcError(state.failure, state.failure === 'rate_limited' ? 429 : undefined);
+                continue;
+            }
+            try {
+                const result = await this.send(endpoint, method, params);
+                this.health.delete(endpoint);
+                return result;
+            }
+            catch (error) {
+                const rpcError = error instanceof SolanaRpcError ? error : new SolanaRpcError('network');
+                last = rpcError;
+                if (!retryable.has(rpcError.kind))
+                    throw rpcError;
+                const cooldown = rpcError.kind === 'rate_limited' || rpcError.kind === 'forbidden' ? 60_000 : rpcError.kind === 'timeout' || rpcError.kind === 'network' ? 20_000 : 8_000;
+                this.health.set(endpoint, { cooldownUntil: Date.now() + cooldown, failure: rpcError.kind });
+            }
+        }
+        throw last ?? new SolanaRpcError('network');
+    }
+    async send(endpoint, method, params) {
         let response;
         try {
-            response = await fetch(this.endpoint(method), { signal: AbortSignal.timeout(15000), method: 'POST', cache: 'no-store', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
+            response = await fetch(endpoint, { signal: AbortSignal.timeout(15000), method: 'POST', cache: 'no-store', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
         }
         catch (e) {
-            const kind = e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError') ? 'timeout' : 'network';
-            if (method === 'getTransaction') {
-                this.cooldownUntil = Date.now() + 60000;
-                this.cooldownFailure = kind;
-            }
-            throw new SolanaRpcError(kind);
+            throw new SolanaRpcError(e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError') ? 'timeout' : 'network');
         }
-        if (!response.ok) {
-            if ([429, 401, 403].includes(response.status) && method === 'getTransaction') {
-                this.cooldownUntil = Date.now() + 60000;
-                this.cooldownFailure = response.status === 429 ? 'rate_limited' : 'forbidden';
-            }
+        if (!response.ok)
             throw new SolanaRpcError(response.status === 429 ? 'rate_limited' : [401, 403].includes(response.status) ? 'forbidden' : 'http_error', response.status);
-        }
         let data;
         try {
             data = await response.json();
@@ -755,92 +775,65 @@ export async function observeHolders(mint, price, provider = rpcHolderProvider) 
         throw error;
     return metrics;
 }
-// Verified against official PumpSwap IDL and Raydium cp-swap Swap accounts.
-// https://github.com/pump-fun/pump-public-docs/blob/main/idl/pump_amm.json
-// https://github.com/raydium-io/raydium-cp-swap/tree/master/programs/cp-swap/src/instructions
+// Verified against official program IDLs / generated instruction clients.
+// PumpSwap: https://github.com/pump-fun/pump-public-docs/blob/main/idl/pump_amm.json
+// Raydium CPMM/CLMM: https://github.com/raydium-io/raydium-idl
+// Meteora DLMM: https://github.com/MeteoraAg/dlmm-sdk/blob/main/idls/dlmm.json
+// Orca Whirlpool: https://github.com/orca-so/whirlpools
 export const swapPrograms = [
     {
-        "program": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
-        "name": "PumpSwap",
-        "poolIndex": 0,
-        "userIndex": 1,
-        "userTokenIndices": [
-            5,
-            6
+        program: "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+        name: "PumpSwap",
+        poolIndex: 0, userIndex: 1, userTokenIndices: [5, 6], vaultIndices: [7, 8],
+        discriminators: [
+            [102, 6, 61, 18, 1, 218, 235, 234],
+            [198, 46, 21, 82, 180, 217, 232, 112],
+            [51, 230, 133, 164, 1, 127, 131, 173],
         ],
-        "vaultIndices": [
-            7,
-            8
-        ],
-        "discriminators": [
-            [
-                102,
-                6,
-                61,
-                18,
-                1,
-                218,
-                235,
-                234
-            ],
-            [
-                198,
-                46,
-                21,
-                82,
-                180,
-                217,
-                232,
-                112
-            ],
-            [
-                51,
-                230,
-                133,
-                164,
-                1,
-                127,
-                131,
-                173
-            ]
-        ]
     },
     {
-        "program": "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C",
-        "name": "Raydium CPMM",
-        "poolIndex": 3,
-        "userIndex": 0,
-        "userTokenIndices": [
-            4,
-            5
+        program: "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C",
+        name: "Raydium CPMM",
+        poolIndex: 3, userIndex: 0, userTokenIndices: [4, 5], vaultIndices: [6, 7],
+        discriminators: [
+            [143, 190, 90, 218, 196, 30, 51, 222],
+            [55, 217, 98, 86, 163, 74, 180, 173],
         ],
-        "vaultIndices": [
-            6,
-            7
+    },
+    {
+        program: "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK",
+        name: "Raydium CLMM",
+        poolIndex: 2, userIndex: 0, userTokenIndices: [3, 4], vaultIndices: [5, 6],
+        discriminators: [
+            [248, 198, 158, 145, 225, 117, 135, 200],
+            [43, 4, 237, 11, 26, 201, 30, 98],
         ],
-        "discriminators": [
-            [
-                143,
-                190,
-                90,
-                218,
-                196,
-                30,
-                51,
-                222
-            ],
-            [
-                55,
-                217,
-                98,
-                86,
-                163,
-                74,
-                180,
-                173
-            ]
-        ]
-    }
+    },
+    {
+        program: "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+        name: "Meteora DLMM",
+        poolIndex: 0, userIndex: 10, userTokenIndices: [4, 5], vaultIndices: [2, 3],
+        discriminators: [
+            [248, 198, 158, 145, 225, 117, 135, 200],
+            [65, 75, 63, 76, 235, 91, 91, 136],
+            [250, 73, 101, 33, 38, 207, 75, 184],
+            [43, 215, 247, 132, 137, 60, 243, 81],
+            [56, 173, 230, 208, 173, 228, 156, 205],
+            [74, 98, 192, 214, 177, 51, 75, 51],
+        ],
+    },
+    {
+        program: "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+        name: "Orca Whirlpool",
+        poolIndex: 2, userIndex: 1, userTokenIndices: [3, 5], vaultIndices: [4, 6],
+        discriminators: [[248, 198, 158, 145, 225, 117, 135, 200]],
+    },
+    {
+        program: "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+        name: "Orca Whirlpool v2",
+        poolIndex: 4, userIndex: 3, userTokenIndices: [7, 9], vaultIndices: [8, 10],
+        discriminators: [[43, 4, 237, 11, 26, 201, 30, 98]],
+    },
 ];
 export const WSOL_MINT = 'So11111111111111111111111111111111111111112';
 export const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
@@ -872,7 +865,7 @@ export function decodeDirectSwap(tx, mint, pool, solUsd) {
     const candidates = instructions.filter((i) => swapPrograms.some(p => p.program === (i.programId ?? addresses[i.programIdIndex])));
     if (candidates.length !== 1)
         return null;
-    const ix = candidates[0], program = ix.programId ?? addresses[ix.programIdIndex], adapter = swapPrograms.find(p => p.program === program);
+    const ix = candidates[0], program = ix.programId ?? addresses[ix.programIdIndex];
     // Reject extra program calls, including routing/multiple DEX legs.
     if (instructions.some((i) => { const id = i.programId ?? addresses[i.programIdIndex]; return id !== program && !safePrograms.has(id); }))
         return null;
@@ -885,7 +878,8 @@ export function decodeDirectSwap(tx, mint, pool, solUsd) {
     const bytes = decodeInstructionBytes(ix.data);
     if (bytes.length < 24)
         return null;
-    if (!adapter.discriminators.some(d => d.every((b, i) => bytes[i] === b)))
+    const adapter = swapPrograms.find(p => p.program === program && p.discriminators.some(d => d.every((b, i) => bytes[i] === b)));
+    if (!adapter)
         return null;
     const accounts = (ix.accounts ?? []).map((a) => typeof a === 'number' ? addresses[a] : a);
     if (accounts[adapter.poolIndex] !== pool)
@@ -913,7 +907,61 @@ export function decodeDirectSwap(tx, mint, pool, solUsd) {
     if (!targetVault || !quote || !quote.delta || Math.sign(target.delta) === Math.sign(targetVault.delta) || Math.sign(target.delta) !== Math.sign(quote.delta))
         return null;
     const quoteAmount = Math.abs(quote.delta), price = quote.mint === USDC_MINT ? 1 : solUsd;
-    return { pool, signature: tx.transaction.signatures[0], wallet, side: target.delta > 0 ? 'buy' : 'sell', token_amount: Math.abs(target.delta), quote_mint: quote.mint, quote_amount: quoteAmount, usd_value: price != null && price > 0 ? quoteAmount * price : null, block_at: new Date(tx.blockTime * 1000).toISOString(), program: adapter.name };
+    return { pool, signature: tx.transaction.signatures[0], wallet, side: target.delta > 0 ? 'buy' : 'sell', token_amount: Math.abs(target.delta), quote_mint: quote.mint, quote_amount: quoteAmount, usd_value: price != null && price > 0 ? quoteAmount * price : null, block_at: new Date(tx.blockTime * 1000).toISOString(), program: adapter.name, evidence: 'direct' };
+}
+export const JUPITER_V6_PROGRAM = 'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4';
+/**
+ * Conservative routed-swap inference.
+ * The scan is already scoped to a selected pool address; a Jupiter top-level instruction,
+ * that pool in the transaction account keys, and opposite signer-owned target/quote deltas
+ * are all required. This is intentionally labelled routed rather than verified-direct.
+ */
+export function decodeRoutedSwap(tx, mint, pool, solUsd) {
+    if (!tx || !tx.meta || tx.meta.err || !tx.blockTime || !tx.transaction?.signatures?.[0])
+        return null;
+    if (tx.version != null && tx.version !== 'legacy' && tx.version !== 0 && tx.version !== 1)
+        return null;
+    const keys = tx.transaction.message?.accountKeys;
+    const instructions = tx.transaction.message?.instructions;
+    if (!Array.isArray(keys) || !Array.isArray(instructions))
+        return null;
+    const addresses = keys.map((k) => typeof k === 'string' ? k : k.pubkey);
+    if (!addresses.includes(pool))
+        return null;
+    const programIds = instructions.map((i) => i.programId ?? addresses[i.programIdIndex]).filter(Boolean);
+    if (!programIds.includes(JUPITER_V6_PROGRAM))
+        return null;
+    const signers = keys.filter((k) => typeof k !== 'string' && k.signer).map((k) => k.pubkey);
+    if (!signers.length)
+        return null;
+    const ownerDeltas = new Map();
+    for (const [field, sign] of [['preTokenBalances', -1], ['postTokenBalances', 1]]) {
+        for (const b of tx.meta[field] ?? []) {
+            const owner = b.owner;
+            if (!owner || !signers.includes(owner))
+                continue;
+            const amount = Number(b.uiTokenAmount?.uiAmountString ?? b.uiTokenAmount?.uiAmount);
+            if (!Number.isFinite(amount))
+                return null;
+            const byMint = ownerDeltas.get(owner) ?? new Map();
+            byMint.set(b.mint, (byMint.get(b.mint) ?? 0) + sign * amount);
+            ownerDeltas.set(owner, byMint);
+        }
+    }
+    for (const wallet of signers) {
+        const deltas = ownerDeltas.get(wallet);
+        if (!deltas)
+            continue;
+        const target = deltas.get(mint) ?? 0;
+        if (Math.abs(target) < 1e-12)
+            continue;
+        const quotes = [USDC_MINT, WSOL_MINT].map(q => ({ mint: q, delta: deltas.get(q) ?? 0 })).filter(q => Math.abs(q.delta) > 1e-12 && Math.sign(q.delta) !== Math.sign(target));
+        if (quotes.length !== 1)
+            continue;
+        const quote = quotes[0], quoteAmount = Math.abs(quote.delta), price = quote.mint === USDC_MINT ? 1 : solUsd;
+        return { pool, signature: tx.transaction.signatures[0], wallet, side: target > 0 ? 'buy' : 'sell', token_amount: Math.abs(target), quote_mint: quote.mint, quote_amount: quoteAmount, usd_value: price != null && price > 0 ? quoteAmount * price : null, block_at: new Date(tx.blockTime * 1000).toISOString(), program: 'Jupiter v6 route', evidence: 'routed' };
+    }
+    return null;
 }
 export function summarizeTraffic(rows, scans, at, pool, context, rowLimitReached = false) {
     const now = Date.parse(at), sorted = [...rows].filter(s => s.pool === pool && Date.parse(s.block_at) <= now).sort((a, b) => Date.parse(a.block_at) - Date.parse(b.block_at));
@@ -938,8 +986,9 @@ export function summarizeTraffic(rows, scans, at, pool, context, rowLimitReached
     }
     const failures = scans.reduce((acc, s) => { for (const [k, v] of Object.entries(s.failures ?? {}))
         acc[k] = (acc[k] ?? 0) + Number(v); return acc; }, {}), parsed = scans.reduce((n, s) => n + (s.parsed ?? 0), 0), recognized = scans.reduce((n, s) => n + (s.recognized ?? 0), 0), unavailable = scans.reduce((n, s) => n + (s.unavailable ?? 0), 0);
+    const directRecognized = scans.reduce((n, s) => n + (s.directRecognized ?? s.recognized ?? 0), 0), routedRecognized = scans.reduce((n, s) => n + (s.routedRecognized ?? 0), 0);
     const evidence = unavailable > 0 || Object.values(failures).some(v => v > 0) ? 'degraded' : recognized >= 5 ? 'usable' : parsed >= 5 ? 'sparse' : 'warming';
-    return { observedAt: at, pool, coverage: 'partial', evidence, failures, scans: scans.length, listedSignatures: scans.reduce((n, s) => n + (s.listed ?? 0), 0), parsedTransactions: parsed, recognizedTransactions: recognized, unavailableTransactions: unavailable, unrecognizedTransactions: scans.reduce((n, s) => n + (s.unrecognized ?? 0), 0), limitedScans: scans.filter(s => s.limited).length, rowLimitReached, windows, note: 'Partial sample of one selected pool; direct PumpSwap / Raydium CPMM only. Pool-vault quote movement excludes some fees. USD uses USDC=$1 or SOL price at scan time, not historical execution USD. New buyers means first seen in retained 2h sample; quick resale does not establish profit. No completeness or bot verdict.' };
+    return { observedAt: at, pool, coverage: 'partial', evidence, failures, scans: scans.length, listedSignatures: scans.reduce((n, s) => n + (s.listed ?? 0), 0), parsedTransactions: parsed, recognizedTransactions: recognized, directRecognizedTransactions: directRecognized, routedRecognizedTransactions: routedRecognized, unavailableTransactions: unavailable, unrecognizedTransactions: scans.reduce((n, s) => n + (s.unrecognized ?? 0), 0), limitedScans: scans.filter(s => s.limited).length, rowLimitReached, windows, note: 'Partial selected-pool sample. Verified-direct adapters: PumpSwap, Raydium CPMM/CLMM, Meteora DLMM and Orca Whirlpool. Jupiter routes are conservative signer-balance inference and are labelled routed, not verified-direct. USD uses USDC=$1 or SOL price at scan time, not historical execution USD. New buyers means first seen in retained 2h sample; quick resale does not establish profit. No completeness or bot verdict.' };
 }
 export async function observeTraffic(token, solUsd, holder, deadline = Date.now() + 45000) {
     if (!token.pairAddress)
@@ -947,7 +996,7 @@ export async function observeTraffic(token, solUsd, holder, deadline = Date.now(
     const db = admin(), at = new Date().toISOString();
     const recent = await fetchRecentSignatures(token.pairAddress, 12);
     const since = new Date(Date.now() - 2 * 3600000).toISOString();
-    const prior = await db.from('traffic_swaps').select('mint,pool,signature,wallet,side,token_amount,quote_mint,quote_amount,usd_value,block_at,program').eq('mint', token.mint).gte('block_at', since).order('block_at', { ascending: false }).limit(1000);
+    const prior = await db.from('traffic_swaps').select('mint,pool,signature,wallet,side,token_amount,quote_mint,quote_amount,usd_value,block_at,program,evidence').eq('mint', token.mint).gte('block_at', since).order('block_at', { ascending: false }).limit(1000);
     if (prior.error)
         throw prior.error;
     const scans = await db.from('traffic_scans').select('payload').eq('mint', token.mint).gte('scanned_at', since).order('scanned_at', { ascending: false }).limit(100);
@@ -979,7 +1028,7 @@ export async function observeTraffic(token, solUsd, holder, deadline = Date.now(
         }
         parsed++;
         processed.push(s.signature);
-        const swap = decodeDirectSwap(result.transaction, token.mint, token.pairAddress, solUsd);
+        const swap = decodeDirectSwap(result.transaction, token.mint, token.pairAddress, solUsd) ?? decodeRoutedSwap(result.transaction, token.mint, token.pairAddress, solUsd);
         if (swap)
             swaps.push(swap);
         else
@@ -987,7 +1036,7 @@ export async function observeTraffic(token, solUsd, holder, deadline = Date.now(
     }
     const deferred = recent.filter(s => !s.err && s.blockTime && s.blockTime * 1000 > Date.now() - 10000 && !seen.has(s.signature)).map(s => ({ signature: s.signature, blockTime: s.blockTime }));
     const unattempted = eligible.slice(attempted).map(s => ({ signature: s.signature, blockTime: s.blockTime }));
-    const scan = { pool: token.pairAddress, listed: recent.length, parsed, recognized: swaps.length, unavailable, unrecognized, failures, limited: recent.length === 12 || attempted < eligible.length, processedSignatures: processed, pendingSignatures: [...new Map([...retry, ...unattempted, ...deferred].map(s => [s.signature, s])).values()].slice(0, 12), oldestListedAt: recent.at(-1)?.blockTime ? new Date(recent.at(-1).blockTime * 1000).toISOString() : null };
+    const scan = { pool: token.pairAddress, listed: recent.length, parsed, recognized: swaps.length, directRecognized: swaps.filter(s => s.evidence !== 'routed').length, routedRecognized: swaps.filter(s => s.evidence === 'routed').length, unavailable, unrecognized, failures, limited: recent.length === 12 || attempted < eligible.length, processedSignatures: processed, pendingSignatures: [...new Map([...retry, ...unattempted, ...deferred].map(s => [s.signature, s])).values()].slice(0, 12), oldestListedAt: recent.at(-1)?.blockTime ? new Date(recent.at(-1).blockTime * 1000).toISOString() : null };
     const save = await db.rpc('save_traffic_sample', { p_mint: token.mint, p_at: at, p_swaps: swaps, p_scan: scan });
     if (save.error)
         throw save.error;
@@ -1011,6 +1060,90 @@ export function selectHolderWork(tokens, priorityMints, cursor, budget) {
     for (let i = 0; i < rotating.length && candidates.length < budget; i++)
         candidates.push(rotating[(start + i) % rotating.length]);
     return { priority, rotating, candidates: candidates.slice(0, budget) };
+}
+export const ruleDefinitions = [{ key: 'hypeScore', label: 'Hype ≥', default: 70, min: 0, max: 100 }, { key: 'hypeVelocity', label: 'Hype velocity ≥ H/min', default: 3, min: 0, max: 100 }, { key: 'holderGrowthPct', label: 'Holder growth · 5m ≥ %', default: 5, min: 0, max: 1000 }, { key: 'buyPressure', label: 'Buy count pressure ≥ %', default: 70, min: 0, max: 100 }, { key: 'liquidityChangePct', label: 'Liquidity drop ≥ %', default: 25, min: 0, max: 100 }];
+export const emptyWatchState = () => ({ version: 1, entries: [], filters: { query: '', minHype: 0, maxRisk: 100, onlyFavorites: false }, alerts: [], seen: {}, active: {} });
+export const validMint = (m) => typeof m === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(m);
+export function normalizeWatchState(raw) {
+    const state = emptyWatchState();
+    if (!raw || typeof raw !== 'object')
+        return state;
+    const entries = Array.isArray(raw.entries) ? raw.entries : Array.isArray(raw) ? raw : [];
+    const seen = new Set();
+    state.entries = entries.filter(e => validMint(e?.mint) && !seen.has(e.mint) && !!seen.add(e.mint)).slice(0, 50).map(e => ({ mint: e.mint, symbol: typeof e.symbol === 'string' ? e.symbol.slice(0, 30) : null, name: typeof e.name === 'string' ? e.name.slice(0, 100) : null, rules: Object.fromEntries(ruleDefinitions.filter(d => typeof e.rules?.[d.key] === 'number' && Number.isFinite(e.rules[d.key]) && e.rules[d.key] >= d.min && e.rules[d.key] <= d.max).map(d => [d.key, e.rules[d.key]])) }));
+    state.filters = { query: typeof raw.filters?.query === 'string' ? raw.filters.query.slice(0, 100) : '', minHype: Math.max(0, Math.min(100, Number(raw.filters?.minHype) || 0)), maxRisk: typeof raw.filters?.maxRisk === 'number' ? Math.max(0, Math.min(100, raw.filters.maxRisk)) : 100, onlyFavorites: raw.filters?.onlyFavorites === true };
+    state.alerts = Array.isArray(raw.alerts) ? raw.alerts.filter((a) => validMint(a?.mint) && ruleDefinitions.some(d => d.key === a.key) && typeof a.id === 'string' && Number.isFinite(a.value) && Number.isFinite(a.threshold) && Number.isFinite(Date.parse(a.at))).slice(0, 100) : [];
+    state.seen = raw.seen && typeof raw.seen === 'object' ? Object.fromEntries(Object.entries(raw.seen).filter(([k, v]) => k.length < 100 && typeof v === 'string').slice(0, 500)) : {};
+    state.active = raw.active && typeof raw.active === 'object' ? Object.fromEntries(Object.entries(raw.active).filter(([k, v]) => k.length < 100 && typeof v === 'boolean').slice(0, 500)) : {};
+    return state;
+}
+export function matchesWatchFilters(t, filters, entries) {
+    const q = filters.query.trim().toLowerCase();
+    return (!q || `${t.mint} ${t.symbol ?? ''} ${t.name ?? ''}`.toLowerCase().includes(q)) && (!filters.onlyFavorites || entries.some(e => e.mint === t.mint)) && (filters.minHype === 0 || (typeof t.hypeScore === 'number' && t.hypeScore >= filters.minHype)) && (filters.maxRisk === 100 || (typeof t.riskScore === 'number' && t.riskScore <= filters.maxRisk));
+}
+export function evaluatePersonalAlerts(state, tokens, now = Date.now()) {
+    const next = { ...state, seen: { ...state.seen }, active: { ...state.active }, alerts: [...state.alerts] };
+    let changed = false;
+    for (const entry of state.entries) {
+        const t = tokens.find(t => t.mint === entry.mint);
+        if (!t)
+            continue;
+        for (const definition of ruleDefinitions) {
+            const key = definition.key, threshold = entry.rules[key];
+            if (threshold == null)
+                continue;
+            const at = key === 'holderGrowthPct' ? t.holderWindows?.['5']?.observedAt : t.marketObservedAt;
+            const value = key === 'holderGrowthPct' ? t.holderWindows?.['5']?.holderGrowthPct : t[key];
+            if (!at || !Number.isFinite(Date.parse(at)) || now - Date.parse(at) > 10 * 60_000 || Date.parse(at) > now + 60_000 || typeof value !== 'number' || !Number.isFinite(value))
+                continue;
+            if (key === 'buyPressure' && (t.buys1h ?? 0) + (t.sells1h ?? 0) < 20)
+                continue;
+            const id = `${entry.mint}:${key}`;
+            const last = next.seen[id];
+            const lastTime = last ? Date.parse(last.slice(0, last.lastIndexOf(':'))) : NaN;
+            if (Number.isFinite(lastTime) && Date.parse(at) < lastTime)
+                continue;
+            const revision = `${at}:${threshold}`;
+            if (next.seen[id] === revision)
+                continue;
+            const crossed = key === 'liquidityChangePct' ? value <= -threshold : value >= threshold;
+            if (crossed && !next.active[id] && !next.alerts.some(a => a.id === `${id}:${revision}`))
+                next.alerts.unshift({ id: `${id}:${revision}`, mint: entry.mint, symbol: t.symbol ?? entry.symbol, key, value, threshold, at });
+            next.seen[id] = revision;
+            next.active[id] = crossed;
+            changed = true;
+        }
+    }
+    next.alerts = next.alerts.slice(0, 100);
+    return changed ? next : state;
+}
+/** Evaluate synced personal rules in the background worker without exposing sync secrets. */
+export async function evaluateSyncedWatchlists(tokens, observedAt, limit = 100) {
+    const db = admin();
+    const { data, error } = await db
+        .from("watchlist_sync")
+        .select("sync_hash,payload")
+        .gt("expires_at", observedAt)
+        .order("updated_at", { ascending: false })
+        .limit(limit);
+    if (error)
+        throw error;
+    let updated = 0;
+    const now = Date.parse(observedAt);
+    for (const row of data ?? []) {
+        const before = normalizeWatchState(row.payload);
+        const next = evaluatePersonalAlerts(before, tokens, now);
+        if (next === before)
+            continue;
+        const write = await db
+            .from("watchlist_sync")
+            .update({ payload: next, updated_at: observedAt })
+            .eq("sync_hash", row.sync_hash);
+        if (write.error)
+            throw write.error;
+        updated++;
+    }
+    return updated;
 }
 import { randomUUID } from 'node:crypto';
 export async function ingestMarket() {
@@ -1131,9 +1264,16 @@ export async function ingestMarket() {
         const saved = await db.rpc('commit_market_snapshot', { p_lease: lease, p_payload: payload, p_alerts: alerts });
         if (saved.error)
             throw saved.error;
+        let syncedWatchlists = 0;
+        try {
+            syncedWatchlists = await evaluateSyncedWatchlists(tokens.map(t => ({ ...t, marketObservedAt: at })), at);
+        }
+        catch {
+            // Personal sync must never make market ingestion fail.
+        }
         const finishedAt = new Date().toISOString();
         const statusDone = await db.from('api_cache').upsert({ cache_key: 'worker:status', payload: { state: 'ok', startedAt: new Date(ingestionStarted).toISOString(), finishedAt, lastSuccessAt: at, durationMs: Date.now() - ingestionStarted, holderFailures: failures.length, trafficFailures, holderCompleted: completed, trafficCompleted, tokens: tokens.length, recentHolders: tokens.filter(t => t.holderObservedAt && Date.now() - Date.parse(t.holderObservedAt) < 3600000).length, recentTraffic: tokens.filter(t => t.trafficObservedAt && Date.now() - Date.parse(t.trafficObservedAt) < 600000).length, usableTraffic: tokens.filter(t => t.trafficEvidence === 'usable' && t.trafficObservedAt && Date.now() - Date.parse(t.trafficObservedAt) < 600000).length, holderBudget: budget, trafficBudget, trafficDiagnostics: tokens.reduce((acc, t) => { for (const [k, v] of Object.entries(t.trafficSample?.failures ?? {}))
-                    acc[k] = (acc[k] ?? 0) + Number(v); return acc; }, {}), priorityMints: priority.map(t => t.mint) }, updated_at: finishedAt });
+                    acc[k] = (acc[k] ?? 0) + Number(v); return acc; }, {}), priorityMints: priority.map(t => t.mint), syncedWatchlists }, updated_at: finishedAt });
         if (statusDone.error)
             throw statusDone.error;
         return { ok: true, tokens: tokens.length, alerts: alerts.length, holderFailures: failures.length, fetchedAt: at };

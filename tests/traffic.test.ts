@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {decodeDirectSwap,USDC_MINT,WSOL_MINT,type RecognizedSwap} from '../lib/market/traffic/decode';
+import {decodeDirectSwap,decodeRoutedSwap,JUPITER_V6_PROGRAM,USDC_MINT,WSOL_MINT,type RecognizedSwap} from '../lib/market/traffic/decode';
 import {swapPrograms} from '../lib/market/traffic/programs';
 import {summarizeTraffic} from '../lib/market/traffic/summary';
 import {bubbleSignal,trafficConfidence} from '../lib/market/map-signals';
@@ -25,6 +25,21 @@ test('reject failed, unsigned, other pool, liquidity, truncated and routed trans
  for(const tx of [failed,unsigned,liquidity,truncated,routed,multiple,transfer])assert.equal(decodeDirectSwap(tx,'mint','pool',100),null);
  assert.equal(decodeDirectSwap(fixture(),'mint','other',100),null);
 });
+
+function routedFixture(side:'buy'|'sell'='buy',quote=USDC_MINT){
+ const sign=side==='buy'?1:-1;
+ const balance=(index:number,mint:string,amount:number)=>({accountIndex:index,mint,owner:'buyer',uiTokenAmount:{uiAmountString:String(amount)}});
+ return {version:0,blockTime:now/1000,transaction:{signatures:['jup-signature'],message:{accountKeys:[{pubkey:'buyer',signer:true},{pubkey:'pool',signer:false},{pubkey:'targetAta',signer:false},{pubkey:'quoteAta',signer:false},{pubkey:JUPITER_V6_PROGRAM,signer:false}],instructions:[{programId:JUPITER_V6_PROGRAM,accounts:[0,1,2,3]}]}},meta:{err:null,preTokenBalances:[balance(2,'mint',100),balance(3,quote,1000)],postTokenBalances:[balance(2,'mint',100+sign*10),balance(3,quote,1000-sign*20)]}};
+}
+
+test('Jupiter selected-pool routes are inferred from signer balance deltas and remain labelled routed',()=>{
+ for(const side of ['buy','sell'] as const){
+  const result=decodeRoutedSwap(routedFixture(side),'mint','pool',100);
+  assert.equal(result?.side,side);assert.equal(result?.token_amount,10);assert.equal(result?.usd_value,20);assert.equal(result?.evidence,'routed');assert.match(result?.program??'',/Jupiter/);
+ }
+ const wrongPool=routedFixture();assert.equal(decodeRoutedSwap(wrongPool,'mint','other',100),null);
+ const noJupiter=routedFixture() as any;noJupiter.transaction.message.instructions[0].programId='other';assert.equal(decodeRoutedSwap(noJupiter,'mint','pool',100),null);
+});
 test('SOL swaps remain USD unknown without a scan price',()=>{assert.equal(decodeDirectSwap(fixture(swapPrograms[0],'buy',WSOL_MINT),'mint','pool',null)?.usd_value,null);assert.equal(decodeDirectSwap(fixture(swapPrograms[0],'buy',WSOL_MINT),'mint','pool',100)?.usd_value,2000);});
 const row=(wallet:string,minutes:number,side:'buy'|'sell'='buy',usd=10):RecognizedSwap=>({wallet,signature:`${wallet}:${minutes}:${side}`,pool:'pool',side,token_amount:1,quote_mint:USDC_MINT,quote_amount:usd,usd_value:usd,block_at:new Date(now-minutes*60000).toISOString(),program:'PumpSwap'});
 test('sample buyers, repeat, resale, retention and USD use separate evidence',()=>{
@@ -48,6 +63,11 @@ test('traffic confidence separates reliable, partial and insufficient evidence',
  assert.equal(trafficConfidence(sparse,now).level,'insufficient');
  assert.equal(trafficConfidence({...usable,observedAt:new Date(now-11*60000).toISOString()},now).level,'insufficient');
  assert.equal(trafficConfidence(null,now).level,'insufficient');
+});
+test('routed-only usable samples stay partial confidence until direct evidence is present',()=>{
+ const rows=Array.from({length:5},(_,i)=>({...row(`r${i}`,i),evidence:'routed' as const,program:'Jupiter v6 route'}));
+ const routed=summarizeTraffic(rows,[{listed:5,parsed:5,recognized:5,directRecognized:0,routedRecognized:5,unavailable:0,unrecognized:0,failures:{}}],at,'pool');
+ assert.equal(routed.evidence,'usable');assert.equal(routed.directRecognizedTransactions,0);assert.equal(routed.routedRecognizedTransactions,5);assert.equal(trafficConfidence(routed,now).level,'partial');
 });
 test('fresh sufficient swap sample drives map; stale or sparse sample keeps count heuristic',()=>{
  const sample=summarizeTraffic(Array.from({length:8},(_,i)=>row(`w${i}`,i)),[],at,'pool');const t={mint:'mint',marketObservedAt:at,buys1h:50,sells1h:50,hypeVelocity:0,trafficSample:sample};

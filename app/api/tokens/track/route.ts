@@ -40,20 +40,22 @@ export async function POST(req: Request) {
 
   const needsBootstrap = !existing || !existing.bootstrapped_at || Number(holdingCount ?? 0) === 0;
 
+  let pending = false;
   if (needsBootstrap) {
     const result = await bootstrapToken(mint);
     holders = result.holders;
-    bootstrapped = true;
+    bootstrapped = !result.busy;
+    pending = result.busy === true;
   } else {
     holders = holdingCount ?? 0;
-
   }
 
   return NextResponse.json({
     mint,
     tracked: true,
     bootstrapped,
+    pending,
     holders,
     source: "public-rpc+dexscreener",
-  });
+  }, { status: pending ? 202 : 200 });
 }

@@ -8,6 +8,7 @@ import {WSOL_MINT} from './traffic/decode';
 import {fetchDexScreenerToken} from '../solana-public';
 import { observeHolders } from './holders';
 import { collapseAlertHistory, deriveSignals, evaluateAlerts, prioritizeAlerts, suppressRepeatedAlerts, type SignalToken, type Intelligence, type SignalAlert } from './signals';
+import { evaluateSyncedWatchlists } from '../watchlist-server';
 
 export async function ingestMarket() {
   const ingestionStarted=Date.now();
@@ -96,8 +97,14 @@ export async function ingestMarket() {
       metricNotes: { flow: 'USD estimate from rolling 1h trade counts', freshWallets: 'newly observed token holders; not wallet creation age', whales: 'owners ≥1% supply; pool/program owners included', smartMoney: 'whale balance change at current price; not verified swap flow', volumeAcceleration: 'acceleration of rolling 1h volume, USD/min²', risk: 'heuristic, not a security audit' } };
     const saved = await db.rpc('commit_market_snapshot', { p_lease: lease, p_payload: payload, p_alerts: alerts });
     if (saved.error) throw saved.error;
+    let syncedWatchlists=0;
+    try {
+      syncedWatchlists=await evaluateSyncedWatchlists(tokens.map(t=>({...t,marketObservedAt:at})),at);
+    } catch {
+      // Personal sync must never make market ingestion fail.
+    }
     const finishedAt=new Date().toISOString();
-    const statusDone=await db.from('api_cache').upsert({cache_key:'worker:status',payload:{state:'ok',startedAt:new Date(ingestionStarted).toISOString(),finishedAt,lastSuccessAt:at,durationMs:Date.now()-ingestionStarted,holderFailures:failures.length,trafficFailures,holderCompleted:completed,trafficCompleted,tokens:tokens.length,recentHolders:tokens.filter(t=>t.holderObservedAt&&Date.now()-Date.parse(t.holderObservedAt)<3600000).length,recentTraffic:tokens.filter(t=>t.trafficObservedAt&&Date.now()-Date.parse(t.trafficObservedAt)<600000).length,usableTraffic:tokens.filter(t=>t.trafficEvidence==='usable'&&t.trafficObservedAt&&Date.now()-Date.parse(t.trafficObservedAt)<600000).length,holderBudget:budget,trafficBudget,trafficDiagnostics:tokens.reduce((acc:Record<string,number>,t)=>{for(const [k,v] of Object.entries(t.trafficSample?.failures??{}))acc[k]=(acc[k]??0)+Number(v);return acc;},{}),priorityMints:priority.map(t=>t.mint)},updated_at:finishedAt});if(statusDone.error)throw statusDone.error;
+    const statusDone=await db.from('api_cache').upsert({cache_key:'worker:status',payload:{state:'ok',startedAt:new Date(ingestionStarted).toISOString(),finishedAt,lastSuccessAt:at,durationMs:Date.now()-ingestionStarted,holderFailures:failures.length,trafficFailures,holderCompleted:completed,trafficCompleted,tokens:tokens.length,recentHolders:tokens.filter(t=>t.holderObservedAt&&Date.now()-Date.parse(t.holderObservedAt)<3600000).length,recentTraffic:tokens.filter(t=>t.trafficObservedAt&&Date.now()-Date.parse(t.trafficObservedAt)<600000).length,usableTraffic:tokens.filter(t=>t.trafficEvidence==='usable'&&t.trafficObservedAt&&Date.now()-Date.parse(t.trafficObservedAt)<600000).length,holderBudget:budget,trafficBudget,trafficDiagnostics:tokens.reduce((acc:Record<string,number>,t)=>{for(const [k,v] of Object.entries(t.trafficSample?.failures??{}))acc[k]=(acc[k]??0)+Number(v);return acc;},{}),priorityMints:priority.map(t=>t.mint),syncedWatchlists},updated_at:finishedAt});if(statusDone.error)throw statusDone.error;
     return { ok: true, tokens: tokens.length, alerts: alerts.length, holderFailures: failures.length, fetchedAt: at };
   } catch(error) {
     await db.from('api_cache').upsert({cache_key:'worker:status',payload:{state:'error',startedAt:new Date(ingestionStarted).toISOString(),finishedAt:new Date().toISOString(),lastSuccessAt,error:'Background ingestion failed; previous market cache retained'},updated_at:new Date().toISOString()});throw error;
