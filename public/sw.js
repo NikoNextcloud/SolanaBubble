@@ -4,8 +4,6 @@ self.addEventListener("push",(event)=>{
     body:data.body||"A watched token crossed one of your thresholds.",
     tag:data.tag||"solanabubble-alert",
     data:{url:data.url||"/watchlist"},
-    icon:"/icon-192.png",
-    badge:"/icon-192.png",
     renotify:true
   }));
 });
