@@ -51,6 +51,12 @@ export type Intelligence = {
   opportunityScore?: number | null;
   opportunityCoverage?: string;
   opportunityFactors?: { label: string; points: number; evidence: string }[];
+  momentumScore?: number | null;
+  capitalFlowScore?: number | null;
+  holderQualityScore?: number | null;
+  liquidityHealthScore?: number | null;
+  manipulationRiskScore?: number | null;
+  signalDimensionsCoverage?: string;
   baselineAt?: string | null;
 };
 export type SignalToken = Intelligence & {
@@ -65,6 +71,42 @@ export type SignalAlert = {
 };
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
 export const percentChange = (value: number, previous: number) => previous > 0 ? (value - previous) / previous * 100 : null;
+
+export function computeSignalDimensions(t: SignalToken) {
+  const clamp=(n:number)=>Math.max(0,Math.min(100,Math.round(n)));
+  const hype=finite(t.hypeScore)?t.hypeScore:50;
+  const velocity=finite(t.hypeVelocity)?t.hypeVelocity:0;
+  const acceleration=finite(t.hypeAcceleration)?t.hypeAcceleration:0;
+  const momentum=clamp(48+hype*.34+velocity*5+acceleration*18);
+
+  const pressure=finite(t.observedBuyPressure15m)?t.observedBuyPressure15m:finite(t.buyPressure)?t.buyPressure:50;
+  const flow=finite(t.observedNetFlowUsd15m)?t.observedNetFlowUsd15m:finite(t.netFlowUsd1h)?t.netFlowUsd1h:0;
+  const flowBoost=Math.tanh(flow/12000)*24;
+  const evidenceBoost=t.trafficEvidence==='usable'?12:t.trafficEvidence==='sparse'?4:t.trafficEvidence==='degraded'?-4:0;
+  const capitalFlow=clamp(50+(pressure-50)*.55+flowBoost+evidenceBoost);
+
+  const holderGrowth=finite(t.holderGrowthPct)?t.holderGrowthPct:0;
+  const concentration=finite(t.top10SupplyPct)?t.top10SupplyPct:50;
+  const linked=finite(t.linkedSupplyPct)?t.linkedSupplyPct:0;
+  const holderQuality=clamp(58+holderGrowth*2.2-Math.max(0,concentration-35)*.65-linked*.55);
+
+  const liquidity=finite(t.liquidityUsd)?t.liquidityUsd:0;
+  const liqChange=finite(t.liquidityChangePct)?t.liquidityChangePct:0;
+  const fdvRatio=finite(t.fdvLiquidityRatio)?t.fdvLiquidityRatio:null;
+  const liquidityHealth=clamp(
+    40+Math.log10(Math.max(1,liquidity))*8+Math.max(-20,Math.min(20,liqChange*.35))-(fdvRatio!=null&&fdvRatio>100?Math.min(28,Math.log10(fdvRatio/100+1)*24):0)
+  );
+
+  const risk=finite(t.riskScore)?t.riskScore:50;
+  const manipulationRisk=clamp(risk+(finite(t.suspiciousWallets)?Math.min(18,t.suspiciousWallets*2):0)+(finite(t.whaleConcentrationPct)&&t.whaleConcentrationPct>35?12:0));
+
+  const observed=[
+    finite(t.hypeScore),finite(t.hypeVelocity),finite(t.observedBuyPressure15m)||finite(t.buyPressure),
+    finite(t.observedNetFlowUsd15m)||finite(t.netFlowUsd1h),finite(t.holderGrowthPct),finite(t.top10SupplyPct),
+    finite(t.liquidityUsd),finite(t.riskScore)
+  ].filter(Boolean).length;
+  return {momentumScore:momentum,capitalFlowScore:capitalFlow,holderQualityScore:holderQuality,liquidityHealthScore:liquidityHealth,manipulationRiskScore:manipulationRisk,signalDimensionsCoverage:`${observed}/8 signal families observed`};
+}
 
 export function computeOpportunityScore(t: SignalToken) {
   const factors:{label:string;points:number;evidence:string}[]=[];
@@ -121,7 +163,9 @@ export function deriveSignals(t: SignalToken, previous: SignalToken | undefined,
   const acceleration = volumeVelocity != null && finite(previous?.volumeVelocity) ? (volumeVelocity - previous.volumeVelocity) / minutes : null;
   const sample=t.trafficSample,sampleAge=sample?(Date.parse(at)-Date.parse(sample.observedAt))/60000:null,sample15=sample?.windows?.['15'];
   const observedSample=sample&&sample15&&sampleAge!=null&&sampleAge>=-1&&sampleAge<10&&sample15.swaps>=5;
-  const opportunity=computeOpportunityScore({...t,hypeDelta,hypeVelocity,hypeAcceleration,volumeDelta,volumeVelocity,volumeAcceleration:acceleration,liquidityChange,liquidityChangePct,buyPressure:trades?(t.buys1h??0)/trades*100:null,liquidityWarning,riskScore:Math.round(Math.min(100,risk)),riskFactors,trafficEvidence:sample?.evidence??null,trafficObservedAt:sample?.observedAt??null,observedBuyPressure15m:observedSample?sample15.buys/sample15.swaps*100:null,observedNetFlowUsd15m:observedSample?sample15.netUsd:null});
+  const derivedInput={...t,hypeDelta,hypeVelocity,hypeAcceleration,volumeDelta,volumeVelocity,volumeAcceleration:acceleration,liquidityChange,liquidityChangePct,buyPressure:trades?(t.buys1h??0)/trades*100:null,liquidityWarning,riskScore:Math.round(Math.min(100,risk)),riskFactors,trafficEvidence:sample?.evidence??null,trafficObservedAt:sample?.observedAt??null,observedBuyPressure15m:observedSample?sample15.buys/sample15.swaps*100:null,observedNetFlowUsd15m:observedSample?sample15.netUsd:null};
+  const opportunity=computeOpportunityScore(derivedInput);
+  const dimensions=computeSignalDimensions(derivedInput);
   return { hypeDelta, hypeVelocity, hypeAcceleration, fdvLiquidityRatio, riskFactors,
     volumeDelta, volumeVelocity, volumeAcceleration: acceleration, liquidityChange, liquidityChangePct,
     buyPressure: trades ? (t.buys1h ?? 0) / trades * 100 : null,
@@ -131,6 +175,7 @@ export function deriveSignals(t: SignalToken, previous: SignalToken | undefined,
     observedBuyPressure15m:observedSample?sample15.buys/sample15.swaps*100:null,
     observedNetFlowUsd15m:observedSample?sample15.netUsd:null,
     opportunityScore:opportunity.score,opportunityFactors:opportunity.factors,opportunityCoverage:opportunity.coverage,
+    ...dimensions,
     riskCoverage: finite(t.top10SupplyPct) ? 'market + observed holders (heuristic)' : 'market only; holder risk unknown' };
 }
 export function evaluateAlerts(t: SignalToken, previous: SignalToken | undefined, at: string): SignalAlert[] {
