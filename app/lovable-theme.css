@@ -1550,3 +1550,65 @@ button.market-section-row:hover{background:#35373b!important}
 @media(prefers-reduced-motion:reduce){
   .capital-flow-halo,.targeted-comet-live .targeted-comet-head{animation:none!important}
 }
+
+
+/* Visual Core v3: LOD, capital-flow mode, trails, signal dimensions and latency HUD. */
+.market-live-latency{display:inline-flex;align-items:center;height:28px;padding:0 9px;border:1px solid #39424b;border-radius:6px;font-size:9px;letter-spacing:.06em;background:#242a30}
+.market-live-latency.latency-live{color:#62e39b;border-color:#365d49}
+.market-live-latency.latency-delayed{color:#f0c46a;border-color:#64583b}
+.market-live-latency.latency-snapshot{color:#99a2ac}
+.capital-flow-toggle.active{border-color:#4d8063!important;color:#7be3ad!important;background:#20352b!important}
+
+.targeted-comet-trail{fill:none;stroke-width:1;vector-effect:non-scaling-stroke;opacity:.13;stroke-dasharray:3 7;animation:cometTrailFade 3.2s ease-out infinite}
+.targeted-comet-trail-in{stroke:#5fe09a}
+.targeted-comet-trail-out{stroke:#ff6979}
+.targeted-comet-routed .targeted-comet-trail{stroke:#65bcf6;stroke-dasharray:2 6}
+.targeted-comet-aggregate .targeted-comet-trail{opacity:.06}
+@keyframes cometTrailFade{0%{opacity:.04;stroke-dashoffset:22}45%{opacity:.2}100%{opacity:.03;stroke-dashoffset:0}}
+
+.market-pan-surface.lod-far .map-signal-status,
+.market-pan-surface.lod-far .reference-pool-chip,
+.market-pan-surface.lod-far .reference-pool-text,
+.market-pan-surface.lod-far .map-event-badge,
+.market-pan-surface.lod-far .market-anchor-link{display:none}
+.market-pan-surface.lod-far .reference-token-name{font-size:10px}
+.market-pan-surface.lod-mid .map-event-badge{opacity:.72}
+.market-pan-surface.lod-near .reference-token-name{font-size:12px}
+.market-pan-surface.lod-near .reference-node-label{filter:drop-shadow(0 1px 2px rgba(0,0,0,.65))}
+
+.market-pan-surface.capital-flow-only .market-axis-grid,
+.market-pan-surface.capital-flow-only .hype-particle-cloud,
+.market-pan-surface.capital-flow-only .market-anchor-link,
+.market-pan-surface.capital-flow-only .market-hype-glow-outer,
+.market-pan-surface.capital-flow-only .planet-highlight,
+.market-pan-surface.capital-flow-only .reference-pool-chip,
+.market-pan-surface.capital-flow-only .reference-pool-text,
+.market-pan-surface.capital-flow-only .map-event-badge{opacity:.08}
+.market-pan-surface.capital-flow-only .map-signal-status{display:none}
+.market-pan-surface.capital-flow-only .targeted-comet-layer,
+.market-pan-surface.capital-flow-only .traffic-confidence,
+.market-pan-surface.capital-flow-only .reference-token-name{opacity:1!important}
+
+.comet-trust-legend{display:flex!important;gap:7px!important;align-items:center;flex-wrap:wrap}
+.comet-trust-legend i{display:inline-block;width:18px;height:3px;border-radius:2px;margin-right:2px}
+.comet-trust-legend .direct{background:#5fe09a}
+.comet-trust-legend .routed{background:#65bcf6;border:1px solid #9ed9ff}
+.comet-trust-legend .aggregate{background:#89939e;opacity:.4}
+
+.signal-dimensions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:10px 0 12px}
+.signal-dimensions>div{display:grid;grid-template-columns:1fr auto;align-items:center;gap:4px 8px;padding:7px 8px;border:1px solid #343d46;border-radius:7px;background:#242a30}
+.signal-dimensions span{font-size:9px;color:#9da6af}.signal-dimensions b{font-size:11px}
+.signal-dimensions i{grid-column:1/-1;height:3px;border-radius:3px;background:#303841;overflow:hidden}.signal-dimensions em{display:block;height:100%;background:currentColor;opacity:.72}
+.signal-dimensions>small{grid-column:1/-1;color:#808a94;font-size:8px}
+.token-sparkline{margin:9px 0;padding:8px;border:1px solid #343d46;border-radius:7px;background:#22282e}
+.token-sparkline>div{display:flex;justify-content:space-between;align-items:center;font-size:9px}.token-sparkline svg{display:block;width:100%;height:42px}
+.token-sparkline circle{fill:#8d97a2}.token-sparkline .sparkline-buy{stroke:#62df9c}.token-sparkline .sparkline-sell{stroke:#f06d7a}.token-sparkline small{color:#7f8993;font-size:8px}
+
+@media(max-width:700px){
+ .market-live-latency{height:26px}
+ .signal-dimensions{grid-template-columns:1fr}
+ .targeted-comet-trail{opacity:.08}
+}
+@media(prefers-reduced-motion:reduce){
+ .targeted-comet-trail{animation:none!important}
+}
