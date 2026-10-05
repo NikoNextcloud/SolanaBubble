@@ -192,8 +192,23 @@ const snapshot = {
           quoteAmount: 700 + i * 125,
           blockAt: new Date(Date.now() - i * 1000).toISOString(),
           pool: "BrowserPair111",
+          evidence: i % 4 === 0 ? "routed" : "direct",
+          program: i % 4 === 0 ? "Jupiter v6 route" : "Browser DEX",
+          whale: i === 0,
+          walletPctSupply: i === 0 ? 1.4 : null,
+        })),
+        recentSells: Array.from({ length: 6 }, (_, i) => ({
+          signature: `browser-sell-${i}`,
+          wallet: `9xSBrowserWallet${String(i).padStart(2, "0")}8z`,
+          usdValue: 450 + i * 90,
+          quoteMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          quoteAmount: 450 + i * 90,
+          blockAt: new Date(Date.now() - i * 1200).toISOString(),
+          pool: "BrowserPair111",
           evidence: "direct",
           program: "Browser DEX",
+          whale: false,
+          walletPctSupply: null,
         })),
         note: "browser fixture",
       },
@@ -300,6 +315,14 @@ try {
   assert.equal(coordinateUi.fullscreenVisible, true, "fullscreen control must be visibly reachable");
   assert.equal(coordinateUi.fullscreenInsideMap, true, "fullscreen control must stay inside the map");
   assert.equal(coordinateUi.cometCount, 10, "mobile map must cap targeted capital comets at 10");
+  const cometCycleBefore = await page.evaluate("Number(document.querySelector('.targeted-comet-layer')?.getAttribute('data-comet-cycle') || 0)");
+  assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-in').length > 0"), "BUY comets must fly toward token planets");
+  assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-out').length > 0"), "SELL comets must fly away from token planets");
+  assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-routed').length > 0"), "routed traffic must remain visually distinct");
+  assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-whale').length > 0"), "observed whale traffic must have a distinct comet style");
+  await sleep(3400);
+  const cometCycleAfter = await page.evaluate("Number(document.querySelector('.targeted-comet-layer')?.getAttribute('data-comet-cycle') || 0)");
+  assert.ok(cometCycleAfter > cometCycleBefore, "comets must restart continuously instead of flying only once");
   assert.ok(coordinateUi.hypeParticleCount >= 12, "high-hype planets must render a visible green particle halo");
   assert.ok(coordinateUi.anchorLinkCount >= 1, "decluttered coordinate clusters must keep a subtle anchor guide");
 
@@ -508,7 +531,7 @@ try {
   assert.equal(desktopQuickInside, true, "desktop quick actions must stay within the map");
 
   await page.screenshot("/tmp/solanabubble-desktop.png");
-  console.log("Browser smoke passed: 10 mobile / 15 desktop targeted comets, Opportunity Score, real single-click FoMo/GmGn, double-click Holder Map, spacing and fullscreen.");
+  console.log("Browser smoke passed: continuous BUY/SELL 10 mobile / 15 desktop comets, routed/whale styles, Opportunity Score, single-click FoMo/GmGn and double-click Holder Map.");
 } finally {
   page.ws.close();
 }
