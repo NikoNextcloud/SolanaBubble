@@ -286,7 +286,7 @@ try {
     }
     return { minimumClearance };
   })()`);
-  assert.ok(declutterState.minimumClearance >= 8, "overlapping coordinate planets must be visually separated");
+  assert.ok(declutterState.minimumClearance >= 55, "dense coordinate planets must keep a wide visual gap");
 
   const mobileMapBounds = await page.evaluate(`(() => {
     const map = document.querySelector(".market-map")?.getBoundingClientRect();
