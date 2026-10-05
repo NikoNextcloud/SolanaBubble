@@ -1,6 +1,6 @@
 "use client";
 
-import {useEffect,useMemo,useState} from "react";
+import {useEffect,useMemo,useRef,useState} from "react";
 import type {TrafficSummary,TrafficRecentSwap} from "@/lib/market/traffic/summary";
 import type {LiveMarketEvent} from "@/lib/market/live-events";
 
@@ -84,6 +84,72 @@ function amountLabel(swap:{usdValue:number|null;quoteMint:string;quoteAmount:num
 function strengthFor(usdValue:number|null,quoteAmount:number){
   const basis=usdValue!=null&&usdValue>0?usdValue:Math.max(1,quoteAmount*10);
   return Math.max(0,Math.min(1,(Math.log10(basis+1)-1)/4));
+}
+
+function AnimatedComet({
+  comet,
+  quality,
+  cycle,
+  onSelect,
+}:{
+  comet:Comet;
+  quality:"full"|"reduced";
+  cycle:number;
+  onSelect:(comet:Comet)=>void;
+}){
+  const impactOpacity=useRef<SVGElement|null>(null);
+  const impactRadius=useRef<SVGElement|null>(null);
+  const bodyMotion=useRef<SVGElement|null>(null);
+  const bodyOpacity=useRef<SVGElement|null>(null);
+  const labelMotion=useRef<SVGElement|null>(null);
+  const labelOpacity=useRef<SVGElement|null>(null);
+
+  useEffect(()=>{
+    const begin=(ref:{current:SVGElement|null})=>{
+      const animation=ref.current as (SVGElement&{beginElement?:()=>void})|null;
+      animation?.beginElement?.();
+    };
+    const bodyTimer=window.setTimeout(()=>{
+      begin(bodyMotion);begin(bodyOpacity);begin(labelMotion);begin(labelOpacity);
+    },Math.max(0,comet.delay*1000));
+    const impactDelay=comet.direction==="in"
+      ? (comet.delay+comet.duration*.78)*1000
+      : comet.delay*1000;
+    const impactTimer=window.setTimeout(()=>{
+      begin(impactOpacity);begin(impactRadius);
+    },Math.max(0,impactDelay));
+    return()=>{window.clearTimeout(bodyTimer);window.clearTimeout(impactTimer);};
+  },[cycle,comet.key,comet.delay,comet.duration,comet.direction,quality]);
+
+  const cls=[
+    "targeted-comet",`targeted-comet-${comet.direction}`,`targeted-comet-${comet.evidence}`,
+    comet.whale?"targeted-comet-whale":"",comet.source==="live"?"targeted-comet-live":"",
+  ].filter(Boolean).join(" ");
+
+  return <g className={cls} data-comet-key={comet.key} data-comet-cycle={cycle}>
+    <circle cx={comet.target.x} cy={comet.target.y} r={comet.target.r+4} className="targeted-comet-impact" opacity="0" pointerEvents="none">
+      <animate ref={impactOpacity as any} attributeName="opacity" values={comet.direction==="in"?"0;.95;0":".9;.35;0"} keyTimes="0;.35;1" dur=".65s" begin="indefinite" fill="freeze"/>
+      <animate ref={impactRadius as any} attributeName="r" values={`${comet.target.r+2};${comet.target.r+15};${comet.target.r+21}`} keyTimes="0;.55;1" dur=".65s" begin="indefinite" fill="freeze"/>
+    </circle>
+
+    <g className="targeted-comet-body" opacity="0" role="button" tabIndex={0}
+      onClick={e=>{e.stopPropagation();onSelect(comet);}}
+      onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onSelect(comet);}}}>
+      <line x1={quality==="reduced"?-18:-32} y1="0" x2="-3" y2="0" className="targeted-comet-tail"/>
+      <circle cx="0" cy="0" r={comet.headRadius} className="targeted-comet-head"/>
+      <circle cx="0" cy="0" r={comet.headRadius+7} className="targeted-comet-hit"/>
+      <animateMotion ref={bodyMotion as any} path={comet.path} dur={`${comet.duration}s`} begin="indefinite" rotate="auto" fill="freeze"/>
+      <animate ref={bodyOpacity as any} attributeName="opacity" values="0;1;1;0" keyTimes="0;.06;.87;1" dur={`${comet.duration}s`} begin="indefinite" fill="freeze"/>
+    </g>
+
+    {quality==="full"&&<g className="targeted-comet-label" opacity="0" pointerEvents="all" onClick={e=>{e.stopPropagation();onSelect(comet);}}>
+      <rect x="9" y={-22+comet.labelOffsetY} rx="4" width={Math.min(170,Math.max(84,comet.label.length*6.2))} height="18"/>
+      <text x="14" y={-9+comet.labelOffsetY}>{comet.label}</text>
+      <animateMotion ref={labelMotion as any} path={comet.path} dur={`${comet.duration}s`} begin="indefinite" rotate="0" fill="freeze"/>
+      <animate ref={labelOpacity as any} attributeName="opacity" values="0;.88;.82;0" keyTimes="0;.16;.72;1" dur={`${comet.duration}s`} begin="indefinite" fill="freeze"/>
+    </g>}
+    <title>{`${comet.direction==="in"?"BUY →":"SELL ←"} ${comet.target.symbol||comet.target.name||comet.target.mint} · ${comet.label} · ${comet.evidence}`}</title>
+  </g>;
 }
 
 export default function MarketCometLayer({
@@ -234,37 +300,13 @@ export default function MarketCometLayer({
       {outCount>0&&<circle cx={node.x} cy={node.y} r={node.r+13+Math.min(10,outCount*1.4)} className="capital-flow-halo capital-flow-halo-out" style={{opacity:Math.min(.7,.16+outCount*.08)}}/>}
     </g>)}
 
-    {comets.map((comet,index)=>{
-      const cls=[
-        "targeted-comet",`targeted-comet-${comet.direction}`,`targeted-comet-${comet.evidence}`,
-        comet.whale?"targeted-comet-whale":"",comet.source==="live"?"targeted-comet-live":"",
-      ].filter(Boolean).join(" ");
-      const impactDuration=comet.duration+comet.delay+.45;
-      return <g key={`${cycle}:${comet.key}`} className={cls}>
-        <circle cx={comet.target.x} cy={comet.target.y} r={comet.target.r+4} className="targeted-comet-impact" opacity="0" pointerEvents="none">
-          <animate attributeName="opacity" values={comet.direction==="in"?"0;0;.9;0":".85;.3;0;0"} keyTimes="0;.65;.88;1" dur={`${impactDuration}s`} begin="0s" fill="freeze"/>
-          <animate attributeName="r" values={`${comet.target.r+2};${comet.target.r+5};${comet.target.r+15};${comet.target.r+20}`} keyTimes="0;.62;.88;1" dur={`${impactDuration}s`} begin="0s" fill="freeze"/>
-        </circle>
-
-        <g className="targeted-comet-body" opacity="0" role="button" tabIndex={0}
-          onClick={e=>{e.stopPropagation();setSelected(comet);}}
-          onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setSelected(comet);}}}>
-          <line x1={quality==="reduced"?-18:-32} y1="0" x2="-3" y2="0" className="targeted-comet-tail"/>
-          <circle cx="0" cy="0" r={comet.headRadius} className="targeted-comet-head"/>
-          <circle cx="0" cy="0" r={comet.headRadius+7} className="targeted-comet-hit"/>
-          <animateMotion path={comet.path} dur={`${comet.duration}s`} begin={`${comet.delay}s`} rotate="auto" fill="freeze"/>
-          <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.06;.87;1" dur={`${comet.duration}s`} begin={`${comet.delay}s`} fill="freeze"/>
-        </g>
-
-        {quality==="full"&&<g className="targeted-comet-label" opacity="0" pointerEvents="all" onClick={e=>{e.stopPropagation();setSelected(comet);}}>
-          <rect x="9" y={-22+comet.labelOffsetY} rx="4" width={Math.min(170,Math.max(84,comet.label.length*6.2))} height="18"/>
-          <text x="14" y={-9+comet.labelOffsetY}>{comet.label}</text>
-          <animateMotion path={comet.path} dur={`${comet.duration}s`} begin={`${comet.delay}s`} rotate="0" fill="freeze"/>
-          <animate attributeName="opacity" values="0;.88;.82;0" keyTimes="0;.16;.72;1" dur={`${comet.duration}s`} begin={`${comet.delay}s`} fill="freeze"/>
-        </g>}
-        <title>{`${comet.direction==="in"?"BUY →":"SELL ←"} ${comet.target.symbol||comet.target.name||comet.target.mint} · ${comet.label} · ${comet.evidence}`}</title>
-      </g>;
-    })}
+    {comets.map((comet)=><AnimatedComet
+      key={comet.key}
+      comet={comet}
+      quality={quality}
+      cycle={cycle}
+      onSelect={setSelected}
+    />)}
 
     {selected&&<g className="targeted-comet-detail" transform={`translate(${Math.max(18,selected.target.x-100)} ${Math.max(34,selected.target.y-selected.target.r-108)})`} onClick={e=>e.stopPropagation()}>
       <rect width="212" height="86" rx="7"/>
