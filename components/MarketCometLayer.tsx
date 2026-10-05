@@ -197,6 +197,24 @@ export default function MarketCometLayer({
     });
     const capacity=Math.max(1,maxComets);
     if(candidates.length<=capacity)return candidates;
+
+    // Keep both directions visible when the market has both BUY and SELL evidence.
+    const inbound=candidates.filter(c=>c.direction==="in");
+    const outbound=candidates.filter(c=>c.direction==="out");
+    if(inbound.length&&outbound.length){
+      const outQuota=Math.min(outbound.length,Math.max(1,Math.floor(capacity*.3)));
+      const inQuota=Math.min(inbound.length,capacity-outQuota);
+      const remaining=capacity-inQuota-outQuota;
+      const extraIn=Math.min(remaining,Math.max(0,inbound.length-inQuota));
+      const extraOut=Math.min(remaining-extraIn,Math.max(0,outbound.length-outQuota));
+      const take=(list:Comet[],count:number,offsetSeed:number)=>Array.from({length:count},(_,i)=>list[(offsetSeed+i)%list.length]);
+      const selected=[
+        ...take(inbound,inQuota+extraIn,(cycle*(inQuota+extraIn))%inbound.length),
+        ...take(outbound,outQuota+extraOut,(cycle*(outQuota+extraOut))%outbound.length),
+      ];
+      return selected.sort((a,b)=>hash(`${a.key}:${cycle}`)-hash(`${b.key}:${cycle}`));
+    }
+
     const offset=(cycle*capacity)%candidates.length;
     return Array.from({length:capacity},(_,i)=>candidates[(offset+i)%candidates.length]);
   },[active,nodes,events,liveEvents,maxComets,cycle]);
