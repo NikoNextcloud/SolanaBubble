@@ -412,8 +412,8 @@ try {
   await page.waitFor("Boolean(document.querySelector('.market-tools-drawer.is-open'))");
   await page.evaluate("document.querySelector('.mobile-tools-toggle')?.click()");
 
-  await page.waitFor("document.querySelectorAll('.intelligence-alerts button').length > 0");
-  assert.ok(await page.evaluate("document.querySelectorAll('.intelligence-alerts button').length > 0"), "smart alerts must surface in the existing Alerts panel");
+  assert.equal(await page.evaluate("document.querySelectorAll('.rail-chart').length"),3,"desktop/mobile market rail must expose exactly three primary charts");
+  assert.equal(await page.evaluate("document.querySelector('.sidebar-secondary')?.hasAttribute('open')"),false,"secondary alerts/live activity must stay collapsed by default");
 
   const bubble = await page.evaluate(`(() => {
     const el = document.querySelector('.market-token-bubble[aria-label^="BTEST:"]');
@@ -448,9 +448,11 @@ try {
     return Boolean(el && getComputedStyle(el).display !== "none");
   })()`);
   assert.equal(detailsOpen, true, "mobile token details must open only from the explicit Details action");
-  assert.match(await page.evaluate("document.querySelector('.opportunity-score')?.textContent || ''"), /Opportunity/);
-  assert.match(await page.evaluate("document.querySelector('.signal-dimensions')?.textContent || ''"), /Momentum/);
-  assert.match(await page.evaluate("document.querySelector('.signal-dimensions')?.textContent || ''"), /Capital Flow/);
+  assert.match(await page.evaluate("document.querySelector('.signal-summary-grid')?.textContent || ''"), /Opportunity/);
+  assert.match(await page.evaluate("document.querySelector('.signal-summary-grid')?.textContent || ''"), /Capital Flow/);
+  assert.ok(await page.evaluate("Boolean(document.querySelector('.token-sparkline'))"),"selected token must keep the trend chart");
+  assert.ok(await page.evaluate("Boolean(document.querySelector('.token-flow-chart'))"),"selected token must show compact buy/sell flow chart");
+  assert.equal(await page.evaluate("document.querySelector('.compact-advanced-details')?.hasAttribute('open')"),false,"advanced token details must be collapsed by default");
   await page.evaluate("document.querySelector('.market-back')?.click()");
   await page.waitFor("!document.querySelector('.reference-market-side.is-mobile-open')");
   await page.screenshot("/tmp/solanabubble-mobile.png");
@@ -560,7 +562,7 @@ try {
   assert.equal(desktopQuickInside, true, "desktop quick actions must stay within the map");
 
   await page.screenshot("/tmp/solanabubble-desktop.png");
-  console.log("Browser smoke passed: continuous BUY/SELL 10 mobile / 15 desktop comets, routed/whale/smart/coordinated styles, smart alerts, Opportunity Score, single-click FoMo/GmGn and double-click Holder Map.");
+  console.log("Browser smoke passed: compact three-chart market rail, compact token charts, continuous smart/coordinated comets, single-click FoMo/GmGn and double-click Holder Map.");
 } finally {
   page.ws.close();
 }

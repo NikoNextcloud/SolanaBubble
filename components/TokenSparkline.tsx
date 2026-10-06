@@ -7,7 +7,10 @@ function points(token:WatchToken){
     const delta=token.windows?.[key]?.hypeDelta;
     return delta==null?null:now-delta;
   });
-  return [...windows,now].filter((v):v is number=>Number.isFinite(v));
+  const historical=windows.filter((v):v is number=>Number.isFinite(v));
+  if(historical.length)return [...historical,now];
+  const delta=token.hypeDelta;
+  return Number.isFinite(Number(delta))?[now-Number(delta),now]:[now];
 }
 export default function TokenSparkline({token}:{token:WatchToken}){
   const values=points(token);

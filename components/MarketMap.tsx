@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import type { Intelligence, SignalAlert } from "@/lib/market/signals";
 import WorkerStatus from "./WorkerStatus";
 import TokenSignalCard from "./TokenSignalCard";
-import MoversPanel from "./MoversPanel";
 import AlertsPanel from "./AlertsPanel";
+import MarketSidebarCharts from "./MarketSidebarCharts";
 import DataQuality from "./DataQuality";
 import {bubbleSignal,trafficConfidence} from "@/lib/market/map-signals";
 import SavedMarketFilters from "./SavedMarketFilters";
@@ -1121,74 +1121,31 @@ export default function MarketMap() {
             <small className="signal-note">Snapshot: {updated ? new Date(updated).toLocaleString() : "warming"}</small>
             <p className="side-intro">Клик: FoMo/GmGn и подробности. Двоен клик: Holder Map.</p>
             {expansionLoading && <div className="market-expanding">Разгръщам wallet връзките…</div>}
-            <div className="market-hot-list reference-side-card">
-              <div className="market-hot-title">
-                <strong>Market Hype</strong>
-                {hotPath.length > 0 && <button className="follow-hot-path" onClick={followHotPath}>Проследи Hot Path</button>}
-              </div>
-              {hottest.map((t, i) => {
-                const traffic = trafficState(t);
-                return <button key={t.mint} onClick={() => { setSelected(t); expandToken(t); }}>
-                  <span>{i + 1}</span>
-                  <strong>{t.symbol || t.name || t.mint.slice(0, 6)}</strong>
-                  <b>H {hypeScore(t)}</b>
-                  <i className={traffic.cls}>{traffic.symbol}</i>
-                </button>;
-              })}
-            </div>
-            {(liveMarketEvents.length > 0 || recentEvents.length > 0) && <div className="market-activity-feed reference-side-card">
-              <div className="market-hot-title">
-                <strong>Live activity</strong>
-                <span className={solanaLive.status==="live"?"live-stream-ok":realtime.status==="live"?"live-stream-partial":"live-stream-wait"}>
-                  {solanaLive.status==="live"?"SOLANA WS":realtime.status==="live"?"REALTIME":"SNAPSHOT"}
-                </span>
-              </div>
-              {liveMarketEvents.slice(0,6).map((event) => {
-                const node=nodeMap.current.get(event.mint);
-                const positive=event.side==="buy";
-                const amount=event.usd_value!=null?fmtUsd(event.usd_value):event.quote_mint==="So11111111111111111111111111111111111111112"?`${event.quote_amount.toFixed(2)} SOL`:event.quote_amount.toFixed(2);
-                return <button key={`${event.mint}:${event.signature}:${event.wallet}`} onClick={()=>{if(node){setSelected(node);expandToken(node);}}}>
-                  <span className={positive?"event-dot in":"event-dot out"} />
-                  <strong>{node?.symbol||event.mint.slice(0,6)}</strong>
-                  <small>{positive?"BUY":"SELL"} · {event.whale?"Whale · ":""}{event.wallet.slice(0,4)}…{event.wallet.slice(-4)}</small>
-                  <b className={positive?"in":"out"}>{positive?"+":"−"}{amount}</b>
-                </button>;
-              })}
-              {liveMarketEvents.length===0&&recentEvents.slice(0,6).map((event,i)=>{
-                const node=nodeMap.current.get(event.mint);
-                const positive=event.kind==="surge"||event.kind==="buy-pressure";
-                return <button key={`${event.mint}:${event.kind}:${i}`} onClick={()=>{if(node){setSelected(node);expandToken(node);}}}>
-                  <span className={positive?"event-dot in":"event-dot out"} />
-                  <strong>{node?.symbol||event.symbol||event.mint.slice(0,6)}</strong>
-                  <small>{event.deltaTrades>=0?"+":""}{event.deltaTrades} tx</small>
-                  <b className={event.hypeDelta>=0?"in":"out"}>{event.hypeDelta>=0?"+":""}{event.hypeDelta} H</b>
-                </button>;
-              })}
-            </div>}
-            <MoversPanel tokens={tokens} onSelect={t => setSelected(t)} limit={5} />
-            <AlertsPanel alerts={visibleAlerts} onSelect={mint => { const t = tokens.find(t => t.mint === mint); if (t) setSelected(t); else router.push(`/token/${mint}`); }} />
-            {hotPath.length > 0 && <div className="market-hot-path-list reference-side-card">
-              <strong>Traffic Flow</strong>
-              {hotPath.slice(0, 4).map((step, i) => {
-                const from = nodeMap.current.get(step.from);
-                const to = nodeMap.current.get(step.to);
-                return <button key={`${step.from}:${step.to}:${i}`} onClick={() => {
-                  if (to) { setSelected(to); expandToken(to); }
-                }}>
-                  <span>{from?.symbol || step.from.slice(0, 4)}</span>
-                  <i>→</i>
-                  <span>{to?.symbol || step.to.slice(0, 4)}</span>
-                  <b>{Math.round((step.confidence ?? .5) * 100)}%</b>
-                </button>;
-              })}
-            </div>}
-            <div className="market-rank">
-              {tokens.slice(0, 12).map((t, i) => <button key={t.mint} onClick={() => setSelected(t)}>
-                <span>{i + 1}</span>
-                <strong>{t.symbol || t.name || t.mint.slice(0, 6)}</strong>
-                <small>{fmtUsd(t.volume1h)}</small>
-              </button>)}
-            </div>
+            <MarketSidebarCharts
+              tokens={tokens}
+              regime={marketRegime}
+              onSelect={mint=>{const t=tokens.find(t=>t.mint===mint);const node=nodeMap.current.get(mint);if(t)setSelected(t);if(node)expandToken(node);}}
+            />
+            <details className="sidebar-secondary">
+              <summary>Alerts & live activity</summary>
+              <AlertsPanel alerts={visibleAlerts} onSelect={mint => { const t = tokens.find(t => t.mint === mint); if (t) setSelected(t); else router.push(`/token/${mint}`); }} />
+              {(liveMarketEvents.length > 0 || recentEvents.length > 0) && <div className="market-activity-feed reference-side-card">
+                <div className="market-hot-title">
+                  <strong>Live activity</strong>
+                  <span className={solanaLive.status==="live"?"live-stream-ok":realtime.status==="live"?"live-stream-partial":"live-stream-wait"}>
+                    {solanaLive.status==="live"?"SOLANA WS":realtime.status==="live"?"REALTIME":"SNAPSHOT"}
+                  </span>
+                </div>
+                {liveMarketEvents.slice(0,4).map(event=>{
+                  const node=nodeMap.current.get(event.mint),positive=event.side==="buy";
+                  const amount=event.usd_value!=null?fmtUsd(event.usd_value):event.quote_mint==="So11111111111111111111111111111111111111112"?`${event.quote_amount.toFixed(2)} SOL`:event.quote_amount.toFixed(2);
+                  return <button key={`${event.mint}:${event.signature}:${event.wallet}`} onClick={()=>{if(node){setSelected(node);expandToken(node);}}}>
+                    <span className={positive?"event-dot in":"event-dot out"}/><strong>{node?.symbol||event.mint.slice(0,6)}</strong>
+                    <small>{positive?"BUY":"SELL"} · {event.wallet.slice(0,4)}…{event.wallet.slice(-4)}</small><b className={positive?"in":"out"}>{positive?"+":"−"}{amount}</b>
+                  </button>;
+                })}
+              </div>}
+            </details>
           </> : <>
             <button className="market-back" onClick={() => { setSelected(null); setMobileDetailOpen(false); }}>← Всички токени</button>
             <div className="selected-token-card">
