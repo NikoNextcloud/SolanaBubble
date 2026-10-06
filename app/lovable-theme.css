@@ -1612,3 +1612,12 @@ button.market-section-row:hover{background:#35373b!important}
 @media(prefers-reduced-motion:reduce){
  .targeted-comet-trail{animation:none!important}
 }
+
+/* Intelligence Core v4.1: Smart Money and coordinated-flow emphasis. */
+.targeted-comet-smart .targeted-comet-head{stroke:#b7ff6e;stroke-width:2;filter:drop-shadow(0 0 5px #a8ff67) drop-shadow(0 0 12px rgba(145,255,91,.66))}
+.targeted-comet-smart .targeted-comet-tail{stroke:#9bea62;stroke-width:1.8}
+.targeted-comet-smart .targeted-comet-trail{stroke:#9bea62;opacity:.24}
+.targeted-comet-coordinated .targeted-comet-head{stroke:#f4b4ff;stroke-width:2.3;filter:drop-shadow(0 0 5px #e88cff) drop-shadow(0 0 13px rgba(220,93,255,.7))}
+.targeted-comet-coordinated .targeted-comet-tail{stroke:#dd83f5;stroke-dasharray:6 2}
+.targeted-comet-coordinated .targeted-comet-trail{stroke:#dd83f5;opacity:.3}
+.adaptive-opportunity{border-color:#47633f!important;background:linear-gradient(180deg,rgba(80,118,62,.16),rgba(36,42,48,.96))!important}
