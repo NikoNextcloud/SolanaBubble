@@ -1124,7 +1124,7 @@ export default function MarketMap() {
             <MarketSidebarCharts
               tokens={tokens}
               regime={marketRegime}
-              onSelect={mint=>{const t=tokens.find(t=>t.mint===mint);if(t){setSelected(t);expandToken(t);}}}
+              onSelect={mint=>{const t=tokens.find(t=>t.mint===mint);const node=nodeMap.current.get(mint);if(t)setSelected(t);if(node)expandToken(node);}}
             />
             <details className="sidebar-secondary">
               <summary>Alerts & live activity</summary>
