@@ -33,7 +33,7 @@ export function buildWalletProfiles(rows:WalletSwap[],now=Date.now()):WalletProf
   const buyUsd=priced?buys.reduce((n,x)=>n+x.usd_value!,0):null,sellUsd=priced?sells.reduce((n,x)=>n+x.usd_value!,0):null;
   const netUsd=buyUsd!=null&&sellUsd!=null?buyUsd-sellUsd:null,avgTradeUsd=priced?list.reduce((n,x)=>n+x.usd_value!,0)/Math.max(1,list.length):null;
   let quickFlips=0,repeatEntries=0,lastBuy=-Infinity;
-  for(const row of list){const at=Date.parse(row.block_at);if(row.side==='buy'){if(Number.isFinite(lastBuy)&&at-lastBuy<=30*60000)repeatEntries++;lastBuy=at}else{const prior=[...list].reverse().find(x=>x.side==='buy'&&Date.parse(x.block_at)<at);if(prior&&at-Date.parse(prior.block_at)<=15*60000)quickFlips++}}
+  for(const row of list){const at=Date.parse(row.block_at);if(row.side==='buy'){if(Number.isFinite(lastBuy)&&at-lastBuy<=30*60000)repeatEntries++;lastBuy=at}else if(Number.isFinite(lastBuy)&&at-lastBuy<=15*60000)quickFlips++}
   const direct=list.filter(x=>(x.evidence??'direct')==='direct').length,directSharePct=list.length?direct/list.length*100:0;
   const ageMinutes=Math.max(0,(now-Date.parse(list.at(-1)?.block_at??new Date(now).toISOString()))/60000);
   let score=36;
