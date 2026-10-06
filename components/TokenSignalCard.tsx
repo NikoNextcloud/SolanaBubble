@@ -56,6 +56,17 @@ export default function TokenSignalCard({ token }: { token: WatchToken }) {
         </div>)}
         <small>{token.signalDimensionsCoverage||"Waiting for complete signal coverage"}</small>
       </div>
+      <div className="signal-engine-v3" aria-label="Signal Engine v3 intelligence">
+        <div className="signal-v3-grid">
+          <div><span>Confidence</span><strong>{number(token.signalConfidenceScore, " / 100")}</strong><small>{token.signalConfidenceLabel || "Low"} evidence confidence</small></div>
+          <div><span>Trend persistence</span><strong>{number(token.trendPersistenceScore, " / 100")}</strong><small>{token.trendPersistenceLabel || "Insufficient history"}</small></div>
+        </div>
+        <div className={`signal-thesis ${token.divergenceSignal === "bearish" ? "sell" : token.divergenceSignal === "bullish" ? "buy" : ""}`}>
+          <b>{token.divergenceSignal && token.divergenceSignal !== "none" ? `${token.divergenceSignal === "bullish" ? "Bullish" : "Bearish"} divergence` : "Signal thesis"}</b>
+          <p>{token.signalThesis || "Neutral setup: evidence is mixed or still incomplete."}</p>
+          {(token.divergenceReasons?.length ?? 0) > 0 && <ul>{token.divergenceReasons!.map(reason => <li key={reason}>{reason}</li>)}</ul>}
+        </div>
+      </div>
       <TokenSparkline token={token}/>
       <div className="opportunity-score" aria-label="Opportunity Score">
         <div><span>Opportunity</span><strong>{number(token.opportunityScore, " / 100")}</strong></div>

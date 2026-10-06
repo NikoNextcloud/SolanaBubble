@@ -540,6 +540,43 @@ export function computeSignalDimensions(t) {
     ].filter(Boolean).length;
     return { momentumScore: momentum, capitalFlowScore: capitalFlow, holderQualityScore: holderQuality, liquidityHealthScore: liquidityHealth, manipulationRiskScore: manipulationRisk, signalDimensionsCoverage: `${observed}/8 signal families observed` };
 }
+export function computeSignalEngineV3(t) {
+    const clamp = (n) => Math.max(0, Math.min(100, Math.round(n)));
+    const observed = [t.hypeScore, t.hypeVelocity, t.observedBuyPressure15m ?? t.buyPressure, t.observedNetFlowUsd15m ?? t.netFlowUsd1h, t.holderGrowthPct, t.liquidityUsd, t.liquidityChangePct, t.riskScore].filter(finite).length;
+    const confidenceScore = clamp(22 + observed * 8 + (t.trafficEvidence === 'usable' ? 14 : t.trafficEvidence === 'sparse' ? 6 : t.trafficEvidence === 'degraded' ? -6 : 0));
+    const signalConfidenceLabel = confidenceScore >= 75 ? 'High' : confidenceScore >= 50 ? 'Medium' : 'Low';
+    const directions = [
+        t.windows?.['5']?.priceChangePct, t.windows?.['15']?.priceChangePct, t.windows?.['60']?.priceChangePct,
+        t.windows?.['5']?.hypeDelta, t.windows?.['15']?.hypeDelta, t.windows?.['60']?.hypeDelta,
+        t.holderWindows?.['15']?.holderGrowthPct, t.hypeVelocity, t.liquidityChangePct
+    ].filter((v) => finite(v) && Math.abs(v) >= .5).map(v => v > 0 ? 1 : -1);
+    const positive = directions.filter(v => v > 0).length, dominant = Math.max(positive, directions.length - positive);
+    const trendPersistenceScore = directions.length ? clamp(dominant / directions.length * 100) : 50;
+    const trendPersistenceLabel = directions.length < 2 ? 'Insufficient history' : trendPersistenceScore >= 75 ? (positive >= directions.length - positive ? 'Persistent uptrend' : 'Persistent downtrend') : trendPersistenceScore >= 60 ? 'Developing trend' : 'Mixed trend';
+    const priceMove = t.windows?.['15']?.priceChangePct ?? t.windows?.['60']?.priceChangePct ?? t.priceChange1h ?? null;
+    const flow = t.observedNetFlowUsd15m ?? t.netFlowUsd1h ?? null;
+    const holders = t.holderWindows?.['15']?.holderGrowthPct ?? t.holderGrowthPct ?? null;
+    const divergenceReasons = [];
+    let divergenceSignal = 'none';
+    if (finite(priceMove) && priceMove >= 3 && ((finite(flow) && flow < 0) || (finite(holders) && holders < 0))) {
+        divergenceSignal = 'bearish';
+        if (finite(flow) && flow < 0)
+            divergenceReasons.push('Price up; capital flow negative');
+        if (finite(holders) && holders < 0)
+            divergenceReasons.push('Price up while holder growth is negative');
+    }
+    else if (finite(priceMove) && priceMove <= -3 && finite(flow) && flow > 0 && (!finite(holders) || holders >= 0)) {
+        divergenceSignal = 'bullish';
+        divergenceReasons.push('Price down while capital flow stays positive');
+    }
+    const risk = t.manipulationRiskScore ?? t.riskScore ?? 50, opportunity = t.opportunityScore ?? 50;
+    const signalThesis = divergenceSignal === 'bearish' ? 'Caution: price lacks flow/holder confirmation.' :
+        divergenceSignal === 'bullish' ? 'Constructive divergence: capital enters weakness.' :
+            risk >= 70 ? 'High-risk: manipulation risk outweighs upside.' :
+                opportunity >= 75 && confidenceScore >= 65 && risk < 55 ? 'Bullish: opportunity, flow and evidence align.' :
+                    'Neutral: evidence is mixed/incomplete.';
+    return { confidenceScore, signalConfidenceLabel, trendPersistenceScore, trendPersistenceLabel, divergenceSignal, divergenceReasons, signalThesis };
+}
 export function computeOpportunityScore(t) {
     const factors = [];
     const add = (label, points, evidence) => factors.push({ label, points: Math.round(points), evidence });
@@ -609,8 +646,9 @@ export function deriveSignals(t, previous, at, baselineAt) {
     const sample = t.trafficSample, sampleAge = sample ? (Date.parse(at) - Date.parse(sample.observedAt)) / 60000 : null, sample15 = sample?.windows?.['15'];
     const observedSample = sample && sample15 && sampleAge != null && sampleAge >= -1 && sampleAge < 10 && sample15.swaps >= 5;
     const derivedInput = { ...t, hypeDelta, hypeVelocity, hypeAcceleration, volumeDelta, volumeVelocity, volumeAcceleration: acceleration, liquidityChange, liquidityChangePct, buyPressure: trades ? (t.buys1h ?? 0) / trades * 100 : null, liquidityWarning, riskScore: Math.round(Math.min(100, risk)), riskFactors, trafficEvidence: sample?.evidence ?? null, trafficObservedAt: sample?.observedAt ?? null, observedBuyPressure15m: observedSample ? sample15.buys / sample15.swaps * 100 : null, observedNetFlowUsd15m: observedSample ? sample15.netUsd : null };
-    const opportunity = computeOpportunityScore(derivedInput);
     const dimensions = computeSignalDimensions(derivedInput);
+    const opportunity = computeOpportunityScore({ ...derivedInput, ...dimensions });
+    const v3 = computeSignalEngineV3({ ...derivedInput, ...dimensions, opportunityScore: opportunity.score });
     return { hypeDelta, hypeVelocity, hypeAcceleration, fdvLiquidityRatio, riskFactors,
         volumeDelta, volumeVelocity, volumeAcceleration: acceleration, liquidityChange, liquidityChangePct,
         buyPressure: trades ? (t.buys1h ?? 0) / trades * 100 : null,
@@ -621,6 +659,9 @@ export function deriveSignals(t, previous, at, baselineAt) {
         observedNetFlowUsd15m: observedSample ? sample15.netUsd : null,
         opportunityScore: opportunity.score, opportunityFactors: opportunity.factors, opportunityCoverage: opportunity.coverage,
         ...dimensions,
+        signalConfidenceScore: v3.confidenceScore, signalConfidenceLabel: v3.signalConfidenceLabel,
+        trendPersistenceScore: v3.trendPersistenceScore, trendPersistenceLabel: v3.trendPersistenceLabel,
+        divergenceSignal: v3.divergenceSignal, divergenceReasons: v3.divergenceReasons, signalThesis: v3.signalThesis,
         riskCoverage: finite(t.top10SupplyPct) ? 'market + observed holders (heuristic)' : 'market only; holder risk unknown' };
 }
 export function evaluateAlerts(t, previous, at) {
