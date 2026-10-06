@@ -3,6 +3,7 @@
 import FavoriteButton from "./FavoriteButton";
 import TrafficCard from "./TrafficCard";
 import TokenSparkline from "./TokenSparkline";
+import TokenIntelligenceV4 from "./TokenIntelligenceV4";
 import type { WatchToken } from "@/lib/watchlist";
 
 const number = (value: number | null | undefined, suffix = "") =>
@@ -67,6 +68,7 @@ export default function TokenSignalCard({ token }: { token: WatchToken }) {
           {(token.divergenceReasons?.length ?? 0) > 0 && <ul>{token.divergenceReasons!.map(reason => <li key={reason}>{reason}</li>)}</ul>}
         </div>
       </div>
+      <TokenIntelligenceV4 mint={token.mint}/>
       <TokenSparkline token={token}/>
       <div className="opportunity-score" aria-label="Opportunity Score">
         <div><span>Opportunity</span><strong>{number(token.opportunityScore, " / 100")}</strong></div>

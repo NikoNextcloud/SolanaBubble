@@ -20,6 +20,7 @@ import MarketCometLayer from "./MarketCometLayer";
 import {useLiveMarketEvents} from "./useLiveMarketEvents";
 import {useSolanaLiveSwaps,type LivePoolTarget} from "./useSolanaLiveSwaps";
 import type {LiveMarketEvent} from "@/lib/market/live-events";
+import {classifyMarketRegime} from "@/lib/market/intelligence-core";
 
 type MarketToken = Intelligence & {
   marketObservedAt?:string|null;
@@ -385,6 +386,8 @@ export default function MarketMap() {
     const smartFlow = tokens.reduce((sum, t) => sum + Number(t.netFlowUsd1h ?? 0), 0);
     return { active: active.length, avgMove, sentiment, smartFlow };
   }, [tokens, totals]);
+
+  const marketRegime = useMemo(() => classifyMarketRegime(tokens), [tokens]);
 
   useEffect(() => {
     const el = wrap.current;
@@ -785,9 +788,9 @@ export default function MarketMap() {
       </div>
       <section className="market-stats reference-market-stats">
         <div>
-          <span>MARKET SENTIMENT</span>
-          <b className={marketSummary.sentiment.cls}>{marketSummary.sentiment.label} <i>{marketSummary.sentiment.arrow}</i></b>
-          <small>{marketSummary.avgMove >= 0 ? "+" : ""}{marketSummary.avgMove.toFixed(1)}% avg 1h</small>
+          <span>MARKET REGIME</span>
+          <b className={marketRegime.key==="risk-on"||marketRegime.key==="mania"?"bullish":marketRegime.key==="risk-off"||marketRegime.key==="distribution"?"bearish":"neutral"}>{marketRegime.label} <i>{marketRegime.score>=0?"↗":"↘"}</i></b>
+          <small>{marketRegime.reason} · {marketSummary.sentiment.label} {marketSummary.avgMove >= 0 ? "+" : ""}{marketSummary.avgMove.toFixed(1)}%</small>
         </div>
         <div>
           <span>ACTIVE TOKENS</span>

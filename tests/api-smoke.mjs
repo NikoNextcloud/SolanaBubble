@@ -15,7 +15,11 @@ const db=http.createServer((req,res)=>{
   if(path==='/rest/v1/api_cache'&&key.includes('intelligence:holders:'))res.end(JSON.stringify([{payload:{supply:100,price:1,balances:[{wallet:'buyer',balance:10}],metrics:{holderCount:1,newHolders:2,exitedHolders:1,top10SupplyPct:50}},updated_at:at}]));
   else if(path==='/rest/v1/api_cache') res.end(JSON.stringify(missingMarket?[]:[{payload:{fetchedAt:at,tokens:[token],flows:[],alerts:[]},updated_at:at}]));
   else if(path==='/rest/v1/tokens')res.end(JSON.stringify([{price_usd:1,metadata_updated_at:at}]));
-  else if(path==='/rest/v1/market_snapshots') {const requested=new URL(req.url,'http://localhost').searchParams.get('mint')?.replace(/^eq\./,'')??mint;res.end(JSON.stringify([{observed_at:at,payload:{...token,mint:requested}}]));}
+  else if(path==='/rest/v1/market_snapshots') {const requested=new URL(req.url,'http://localhost').searchParams.get('mint')?.replace(/^eq\./,'')??mint;res.end(JSON.stringify([{observed_at:at,payload:{...token,mint:requested,opportunityScore:82,signalConfidenceScore:80,manipulationRiskScore:20}}]));}
+  else if(path==='/rest/v1/traffic_swaps') res.end(JSON.stringify([
+    {wallet:'smart-wallet',side:'buy',usd_value:2500,block_at:at,evidence:'direct',program:'Fixture DEX'},
+    {wallet:'smart-wallet',side:'buy',usd_value:1800,block_at:new Date(Date.now()-1200000).toISOString(),evidence:'direct',program:'Fixture DEX'}
+  ]));
   else {res.statusCode=500;res.end(JSON.stringify({error:'Unexpected database request'}));}
 });
 await new Promise(resolve=>db.listen(0,'127.0.0.1',resolve));
@@ -36,6 +40,7 @@ try {
   const cached=await market.json();assert.equal(cached.cached,true);assert.equal(cached.stale,false);assert.equal(cached.tokens[0].holderCount,12);
   assert.equal((await get('/api/market/history?mint=bad')).status,400);
   const history=await get(`/api/market/history?mint=${mint}&hours=999`);assert.equal(history.status,200);const body=await history.json();assert.equal(body.hours,168);assert.equal(body.snapshots.length,1);
+  const intelligence=await get(`/api/market/intelligence?mint=${mint}`);assert.equal(intelligence.status,200);const intelligenceBody=await intelligence.json();assert.equal(intelligenceBody.evidence.recognizedSwaps,2);assert.equal(intelligenceBody.walletProfiles[0].wallet,'smart-wallet');
   assert.equal((await fetch(`http://127.0.0.1:${appPort}/api/market/ingest`,{method:'POST'})).status,401);
   assert.equal((await get('/api/market/watchlist?mints=bad')).status,400);
   assert.equal((await get('/api/push/subscription')).status,401);
@@ -45,7 +50,7 @@ try {
   const favorites=await (await get(`/api/market/watchlist?mints=${mint}`)).json();assert.equal(favorites.tokens[0].marketObservedAt,at);
   const other='EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
   const fallback=await (await get(`/api/market/watchlist?mints=${other}`)).json();assert.equal(fallback.tokens[0].mint,other);assert.equal(fallback.tokens[0].marketObservedAt,at);
-  assert.equal(databaseCalls,5,'Cache reads must not run collection');
+  assert.equal(databaseCalls,7,'Cache and intelligence reads must not run collection');
   assert.match(market.headers.get('vercel-cdn-cache-control')??'',/s-maxage=120/);
   assert.match(history.headers.get('vercel-cdn-cache-control')??'',/s-maxage=300/);
   const price=await get(`/api/tokens/${mint}/price`);assert.equal(price.status,200);assert.equal((await price.json()).priceUsd,1);
@@ -54,5 +59,5 @@ try {
   missingMarket=true;assert.equal((await get('/api/market')).status,202);
   const worker=await get("/api/market/status");assert.equal(worker.status,200);assert.match(worker.headers.get("vercel-cdn-cache-control")??"",/s-maxage=120/);
   assert.equal(mutations,0,'Cache endpoints must never mutate DB or start ingestion');
-  console.log('API smoke passed: cached GET, bounded history, ingest auth, Map/List and section routes.');
+  console.log('API smoke passed: cached GET, Intelligence Core v4, bounded history, ingest auth, Map/List and section routes.');
 } finally {app.kill('SIGTERM'); await new Promise(resolve=>db.close(resolve));}
