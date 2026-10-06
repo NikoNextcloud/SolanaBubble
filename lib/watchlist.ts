@@ -48,7 +48,7 @@ export function evaluatePersonalAlerts(state:WatchState,tokens:WatchToken[],now=
       const key=definition.key;if(entry.smartRules?.[key]!==true)continue;
       const at=t.marketObservedAt;
       if(!at||!Number.isFinite(Date.parse(at))||now-Date.parse(at)>10*60_000||Date.parse(at)>now+60_000)continue;
-      let crossed=false,value=1,threshold=1,message=definition.label;
+      let crossed=false,value=1,threshold=1,message:string=definition.label;
       if(key==='strongSetup'){value=t.opportunityScore??0;threshold=80;crossed=value>=80&&(t.signalConfidenceScore??0)>=70&&(t.manipulationRiskScore??t.riskScore??50)<65;message='Strong Buy setup: Opportunity, confidence and risk are aligned';}
       else if(key==='bullishDivergence'){value=t.signalConfidenceScore??0;threshold=60;crossed=t.divergenceSignal==='bullish'&&value>=60;message='Bullish divergence confirmed by signal confidence';}
       else if(key==='bearishDivergence'){value=t.signalConfidenceScore??0;threshold=60;crossed=t.divergenceSignal==='bearish'&&value>=60;message='Bearish divergence detected';}
