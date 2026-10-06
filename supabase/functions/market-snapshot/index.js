@@ -561,7 +561,7 @@ export function computeSignalEngineV3(t) {
     if (finite(priceMove) && priceMove >= 3 && ((finite(flow) && flow < 0) || (finite(holders) && holders < 0))) {
         divergenceSignal = 'bearish';
         if (finite(flow) && flow < 0)
-            divergenceReasons.push('Price up while capital flow is negative');
+            divergenceReasons.push('Price up; capital flow negative');
         if (finite(holders) && holders < 0)
             divergenceReasons.push('Price up while holder growth is negative');
     }
@@ -570,11 +570,11 @@ export function computeSignalEngineV3(t) {
         divergenceReasons.push('Price down while capital flow stays positive');
     }
     const risk = t.manipulationRiskScore ?? t.riskScore ?? 50, opportunity = t.opportunityScore ?? 50;
-    const signalThesis = divergenceSignal === 'bearish' ? 'Caution: price strength lacks flow or holder confirmation.' :
-        divergenceSignal === 'bullish' ? 'Constructive divergence: capital enters into price weakness.' :
-            risk >= 70 ? 'High-risk setup: manipulation risk outweighs upside evidence.' :
-                opportunity >= 75 && confidenceScore >= 65 && risk < 55 ? 'Bullish setup: opportunity, flow and evidence align.' :
-                    'Neutral setup: evidence is mixed or incomplete.';
+    const signalThesis = divergenceSignal === 'bearish' ? 'Caution: price lacks flow/holder confirmation.' :
+        divergenceSignal === 'bullish' ? 'Constructive divergence: capital enters weakness.' :
+            risk >= 70 ? 'High-risk: manipulation risk outweighs upside.' :
+                opportunity >= 75 && confidenceScore >= 65 && risk < 55 ? 'Bullish: opportunity, flow and evidence align.' :
+                    'Neutral: evidence is mixed/incomplete.';
     return { confidenceScore, signalConfidenceLabel, trendPersistenceScore, trendPersistenceLabel, divergenceSignal, divergenceReasons, signalThesis };
 }
 export function computeOpportunityScore(t) {
