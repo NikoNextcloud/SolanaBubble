@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import type { Intelligence, SignalAlert } from "@/lib/market/signals";
 import WorkerStatus from "./WorkerStatus";
 import TokenSignalCard from "./TokenSignalCard";
-import MoversPanel from "./MoversPanel";
 import AlertsPanel from "./AlertsPanel";
 import MarketSidebarCharts from "./MarketSidebarCharts";
 import DataQuality from "./DataQuality";
