@@ -412,6 +412,9 @@ try {
   await page.waitFor("Boolean(document.querySelector('.market-tools-drawer.is-open'))");
   await page.evaluate("document.querySelector('.mobile-tools-toggle')?.click()");
 
+  await page.waitFor("document.querySelectorAll('.intelligence-alerts button').length > 0");
+  assert.ok(await page.evaluate("document.querySelectorAll('.intelligence-alerts button').length > 0"), "smart alerts must surface in the existing Alerts panel");
+
   const bubble = await page.evaluate(`(() => {
     const el = document.querySelector('.market-token-bubble[aria-label^="BTEST:"]');
     const rect = el?.getBoundingClientRect();
@@ -448,7 +451,6 @@ try {
   assert.match(await page.evaluate("document.querySelector('.opportunity-score')?.textContent || ''"), /Opportunity/);
   assert.match(await page.evaluate("document.querySelector('.signal-dimensions')?.textContent || ''"), /Momentum/);
   assert.match(await page.evaluate("document.querySelector('.signal-dimensions')?.textContent || ''"), /Capital Flow/);
-  assert.ok(await page.evaluate("document.querySelectorAll('.intelligence-alerts button').length > 0"), "smart alerts must surface in the existing Alerts panel");
   await page.evaluate("document.querySelector('.market-back')?.click()");
   await page.waitFor("!document.querySelector('.reference-market-side.is-mobile-open')");
   await page.screenshot("/tmp/solanabubble-mobile.png");
