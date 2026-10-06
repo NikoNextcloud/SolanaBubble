@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import {decisionTerminalFixture} from "./fixtures/decision-terminal-browser.mjs";
+import {installDecisionFixture,checkWalletCometProfile,checkDecisionTerminal} from "./fixtures/decision-terminal-browser-check.mjs";
 
 const CHROME = process.env.CHROME_DEBUG_URL || "http://127.0.0.1:9222";
 const APP = process.env.BROWSER_SMOKE_URL || "http://127.0.0.1:3000";
@@ -277,16 +278,7 @@ try {
   await page.evaluate(`localStorage.setItem("solanabubble:market-snapshot:free", ${JSON.stringify(JSON.stringify(snapshot))})`);
   await page.navigate();
   await page.waitFor("document.querySelectorAll('.market-token-bubble').length >= 2");
-  await page.evaluate(`(() => {
-    const originalFetch = window.fetch.bind(window);
-    const fixture = ${JSON.stringify(intelligenceFixture)};
-    window.fetch = (input, init) => {
-      if (String(input).includes("/api/market/intelligence")) {
-        return Promise.resolve(new Response(JSON.stringify(fixture), {status:200,headers:{"content-type":"application/json"}}));
-      }
-      return originalFetch(input, init);
-    };
-  })()`);
+  await installDecisionFixture(page,intelligenceFixture);
 
 
   const mobileInitial = await page.evaluate(`(() => {
@@ -340,10 +332,7 @@ try {
   assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-whale').length > 0"), "observed whale traffic must have a distinct comet style");
   assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-smart').length > 0"), "constructive Smart Money wallets must have a distinct comet style");
   assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-coordinated').length > 0"), "coordinated wallet clusters must have a distinct comet style");
-  await page.evaluate("document.querySelector('.targeted-comet-smart .targeted-comet-body')?.dispatchEvent(new MouseEvent('click',{bubbles:true}))");
-  await page.waitFor("Boolean(document.querySelector('.targeted-comet-detail'))");
-  assert.match(await page.evaluate("document.querySelector('.targeted-comet-detail')?.textContent || ''"), /Smart|Constructive|Wallet net|Wallet score/);
-  await page.evaluate("document.querySelector('.targeted-comet-detail .detail-close')?.dispatchEvent(new MouseEvent('click',{bubbles:true}))");
+  await checkWalletCometProfile(page);
 
   await sleep(3400);
   const cometCycleAfter = await page.evaluate("Number(document.querySelector('.targeted-comet-layer')?.getAttribute('data-comet-cycle') || 0)");
@@ -470,10 +459,7 @@ try {
   assert.equal(detailsOpen, true, "mobile token details must open only from the explicit Details action");
   assert.match(await page.evaluate("document.querySelector('.signal-summary-grid')?.textContent || ''"), /Opportunity/);
   assert.match(await page.evaluate("document.querySelector('.signal-summary-grid')?.textContent || ''"), /Capital Flow/);
-  await page.waitFor("document.querySelector('[aria-label=\"Decision Terminal v5\"]')?.textContent?.includes('STRONG BUY')");
-  assert.match(await page.evaluate("document.querySelector('[aria-label=\"Decision Terminal v5\"]')?.textContent || ''"), /Why now|Strong setup/);
-  assert.ok(await page.evaluate("Boolean(document.querySelector('[aria-label=\"Time Machine replay\"]'))"),"Decision Terminal must expose Time Machine replay");
-  assert.ok(await page.evaluate("Boolean(document.querySelector('input[aria-label=\"Time Machine position\"]'))"),"Time Machine must expose a replay slider");
+  await checkDecisionTerminal(page);
 
   assert.ok(await page.evaluate("Boolean(document.querySelector('.token-sparkline'))"),"selected token must keep the trend chart");
   assert.ok(await page.evaluate("Boolean(document.querySelector('.token-flow-chart'))"),"selected token must show compact buy/sell flow chart");
