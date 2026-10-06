@@ -3,7 +3,7 @@
 import FavoriteButton from "./FavoriteButton";
 import TrafficCard from "./TrafficCard";
 import TokenSparkline from "./TokenSparkline";
-import TokenIntelligenceV4 from "./TokenIntelligenceV4";
+import DecisionTerminalV5 from "./DecisionTerminalV5";
 import TokenFlowChart from "./TokenFlowChart";
 import type { WatchToken } from "@/lib/watchlist";
 
@@ -43,13 +43,9 @@ export default function TokenSignalCard({ token }: { token: WatchToken }) {
       <div><span>Momentum</span><strong>{number(token.momentumScore," / 100")}</strong></div>
     </div>
 
+    <DecisionTerminalV5 mint={token.mint}/>
     <TokenSparkline token={token}/>
     <TokenFlowChart token={token}/>
-
-    <div className={"signal-thesis "+(token.divergenceSignal==="bearish"?"sell":token.divergenceSignal==="bullish"?"buy":"")}>
-      <b>{token.divergenceSignal&&token.divergenceSignal!=="none"?(token.divergenceSignal==="bullish"?"Bullish":"Bearish")+" divergence":"Signal thesis"}</b>
-      <p>{token.signalThesis||"Neutral: evidence is mixed/incomplete."}</p>
-    </div>
 
     {token.liquidityWarning&&<p className="signal-warning" role="alert">⚠ Liquidity disappearing: {number(token.liquidityChangePct,"%")}</p>}
 
@@ -70,7 +66,6 @@ export default function TokenSignalCard({ token }: { token: WatchToken }) {
       <dl className="market-token-stats signal-primary-stats">
         {primaryRows.map(([label,value,cls])=><div key={label}><dt>{label}</dt><dd className={cls||""}>{value}</dd></div>)}
       </dl>
-      <TokenIntelligenceV4 mint={token.mint}/>
       <TrafficCard sample={token.trafficSample}/>
       {(token.riskFactors?.length??0)>0&&<details className="risk-factor-list">
         <summary>Why Risk is {riskLabel}</summary>
