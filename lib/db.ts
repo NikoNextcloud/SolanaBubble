@@ -1,4 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
-// Само server-side (service role).
-export const admin = () =>
-  createClient((process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL)!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+
+export const admin = () => {
+  const url=process.env.SUPABASE_URL||process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key=process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if(!url||!key)throw new Error("Supabase server configuration missing");
+  return createClient(url,key,{
+    auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false},
+  });
+};
