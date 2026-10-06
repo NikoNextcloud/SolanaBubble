@@ -20,7 +20,7 @@ import MarketCometLayer from "./MarketCometLayer";
 import {useLiveMarketEvents} from "./useLiveMarketEvents";
 import {useSolanaLiveSwaps,type LivePoolTarget} from "./useSolanaLiveSwaps";
 import type {LiveMarketEvent} from "@/lib/market/live-events";
-import {classifyMarketRegime} from "@/lib/market/intelligence-core";
+import {classifyMarketRegime,deriveSmartAlerts} from "@/lib/market/intelligence-core";
 
 type MarketToken = Intelligence & {
   marketObservedAt?:string|null;
@@ -388,6 +388,15 @@ export default function MarketMap() {
   }, [tokens, totals]);
 
   const marketRegime = useMemo(() => classifyMarketRegime(tokens), [tokens]);
+  const smartAlerts = useMemo(() => deriveSmartAlerts(tokens, updated ?? new Date().toISOString()), [tokens, updated]);
+  const visibleAlerts = useMemo(() => {
+    const byKey=new Map<string,SignalAlert>();
+    for(const alert of [...smartAlerts,...alerts]){
+      const key=`${alert.mint}:${alert.kind}`;
+      if(!byKey.has(key))byKey.set(key,alert);
+    }
+    return [...byKey.values()].slice(0,80);
+  },[smartAlerts,alerts]);
 
   useEffect(() => {
     const el = wrap.current;
@@ -1157,7 +1166,7 @@ export default function MarketMap() {
               })}
             </div>}
             <MoversPanel tokens={tokens} onSelect={t => setSelected(t)} limit={5} />
-            <AlertsPanel alerts={alerts} onSelect={mint => { const t = tokens.find(t => t.mint === mint); if (t) setSelected(t); else router.push(`/token/${mint}`); }} />
+            <AlertsPanel alerts={visibleAlerts} onSelect={mint => { const t = tokens.find(t => t.mint === mint); if (t) setSelected(t); else router.push(`/token/${mint}`); }} />
             {hotPath.length > 0 && <div className="market-hot-path-list reference-side-card">
               <strong>Traffic Flow</strong>
               {hotPath.slice(0, 4).map((step, i) => {
