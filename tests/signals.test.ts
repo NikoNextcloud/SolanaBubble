@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { collapseAlertHistory, computeOpportunityScore, computeSignalDimensions, deriveSignals, evaluateAlerts, prioritizeAlerts, rankMovers, suppressRepeatedAlerts, type SignalAlert, type SignalToken } from '../lib/market/signals';
+import { collapseAlertHistory, computeOpportunityScore, computeSignalDimensions, computeSignalEngineV3, deriveSignals, evaluateAlerts, prioritizeAlerts, rankMovers, suppressRepeatedAlerts, type SignalAlert, type SignalToken } from '../lib/market/signals';
 const at = '2026-10-01T12:05:00Z', before = '2026-10-01T12:00:00Z';
 const token: SignalToken = {mint:'mint',pairAddress:'pair',hypeScore:55,volume1h:2000,liquidityUsd:6000,buys1h:80,sells1h:20};
 const prev: SignalToken = {...token,hypeScore:45,volume1h:1000,liquidityUsd:10000,volumeVelocity:100};
@@ -61,4 +61,52 @@ test('Signal Engine v2 dimensions are bounded and react to better flow/liquidity
  assert.ok(strong.capitalFlowScore>weak.capitalFlowScore);
  assert.ok(strong.liquidityHealthScore>weak.liquidityHealthScore);
  assert.ok(strong.manipulationRiskScore<weak.manipulationRiskScore);
+});
+
+
+test('Signal Engine v3 scores confidence, persistence and bearish divergence from observed evidence',()=>{
+ const intelligence=computeSignalEngineV3({
+   ...token,
+   opportunityScore:82,
+   capitalFlowScore:38,
+   holderQualityScore:44,
+   manipulationRiskScore:32,
+   hypeVelocity:2,
+   liquidityChangePct:5,
+   trafficEvidence:'usable',
+   observedNetFlowUsd15m:-9000,
+   holderGrowthPct:-2,
+   priceChange1h:8,
+   top10SupplyPct:25,
+   riskScore:25,
+   windows:{
+     '5':{baselineAt:before,observedAt:at,elapsedMinutes:5,priceChangePct:4,hypeDelta:3,volumeChangePct:12},
+     '15':{baselineAt:before,observedAt:at,elapsedMinutes:15,priceChangePct:7,hypeDelta:5,volumeChangePct:18},
+     '60':{baselineAt:before,observedAt:at,elapsedMinutes:60,priceChangePct:8,hypeDelta:6,volumeChangePct:25},
+   },
+ });
+ assert.ok(intelligence.confidenceScore>=75);
+ assert.equal(intelligence.signalConfidenceLabel,'High');
+ assert.ok(intelligence.trendPersistenceScore>=60);
+ assert.equal(intelligence.divergenceSignal,'bearish');
+ assert.ok(intelligence.divergenceReasons.length>=1);
+ assert.match(intelligence.signalThesis,/Caution/);
+});
+
+test('Signal Engine v3 identifies constructive pullback divergence',()=>{
+ const intelligence=computeSignalEngineV3({
+   ...token,
+   opportunityScore:70,
+   capitalFlowScore:72,
+   holderQualityScore:68,
+   manipulationRiskScore:25,
+   observedNetFlowUsd15m:12000,
+   holderGrowthPct:2,
+   priceChange1h:-6,
+   trafficEvidence:'usable',
+   riskScore:20,
+   liquidityChangePct:3,
+ });
+ assert.equal(intelligence.divergenceSignal,'bullish');
+ assert.match(intelligence.signalThesis,/Constructive divergence/);
 });
