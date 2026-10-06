@@ -27,7 +27,7 @@ export function evaluateSmartPersonalAlerts(state:SmartWatchState,tokens:WatchTo
  const next={smartRules:state.smartRules,smartAlerts:[...state.smartAlerts],smartSeen:{...state.smartSeen},smartActive:{...state.smartActive}};let changed=false;
  for(const [mint,rules] of Object.entries(state.smartRules)){
   const t=tokens.find(t=>t.mint===mint);if(!t)continue;const at=t.marketObservedAt;if(!at||!Number.isFinite(Date.parse(at))||now-Date.parse(at)>10*60_000||Date.parse(at)>now+60_000)continue;
-  for(const d of smartRuleDefinitions){if(rules[d.key]!==true)continue;const key=d.key;let crossed=false,value=1,message=d.label;
+  for(const d of smartRuleDefinitions){if(rules[d.key]!==true)continue;const key=d.key;let crossed=false,value=1,message:string=d.label;
    if(key==='strongSetup'){value=t.opportunityScore??0;crossed=value>=80&&(t.signalConfidenceScore??0)>=70&&(t.manipulationRiskScore??t.riskScore??50)<65;message='Strong Buy setup: Opportunity, confidence and risk are aligned';}
    else if(key==='bullishDivergence'){value=t.signalConfidenceScore??0;crossed=t.divergenceSignal==='bullish'&&value>=60;message='Bullish divergence confirmed by signal confidence';}
    else if(key==='bearishDivergence'){value=t.signalConfidenceScore??0;crossed=t.divergenceSignal==='bearish'&&value>=60;message='Bearish divergence detected';}
