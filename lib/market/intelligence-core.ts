@@ -3,7 +3,7 @@ import type {TrafficSummary} from './traffic/summary';
 export type WalletSwap={wallet:string;side:'buy'|'sell';usd_value:number|null;block_at:string;evidence?:'direct'|'routed';program?:string|null;signature?:string|null};
 export type WalletProfile={wallet:string;score:number;label:'Smart'|'Constructive'|'Neutral'|'Risky'|'Bot-like';swaps:number;buys:number;sells:number;buyUsd:number|null;sellUsd:number|null;netUsd:number|null;avgTradeUsd:number|null;repeatEntries:number;quickFlips:number;directSharePct:number;firstSeenAt:string|null;lastSeenAt:string|null;reasons:string[]};
 export type SignalObservation={observed_at:string;payload:{mint?:string;symbol?:string|null;priceUsd?:number|null;opportunityScore?:number|null;signalConfidenceScore?:number|null;manipulationRiskScore?:number|null;capitalFlowScore?:number|null;holderQualityScore?:number|null;divergenceSignal?:'bullish'|'bearish'|'none'|null;whaleExit?:number|null;liquidityWarning?:boolean|null}};
-export type ValidationWindow={minutes:number;samples:number;wins:number;winRate:number|null;avgReturnPct:number|null;medianReturnPct:number|null};
+export type ValidationWindow={minutes:number;samples:number;wins:number;winRate:number|null;calibratedWinRate:number|null;confidence:number;avgReturnPct:number|null;medianReturnPct:number|null;downsideMedianPct:number|null};
 export type ValidationSummary={samples:number;qualifiedSamples:number;windows:Record<string,ValidationWindow>;calibrationLabel:'insufficient'|'weak'|'developing'|'validated';note:string};
 export type CoordinatedCluster={id:string;side:'buy'|'sell';wallets:string[];swaps:number;totalUsd:number|null;directSharePct:number;startAt:string;endAt:string;score:number;confidence:'low'|'medium'|'high'};
 export type AdaptiveOpportunity={baseScore:number;score:number;delta:number;confidence:number;historyAdjustment:number;smartMoneyAdjustment:number;coordinationAdjustment:number;riskAdjustment:number;reasons:string[]};
@@ -90,15 +90,30 @@ export function detectCoordinatedWallets(rows:WalletSwap[],windowSeconds=90):Coo
 
 export function validateSignals(rows:SignalObservation[]):ValidationSummary{
  const sorted=[...rows].filter(r=>Number.isFinite(Date.parse(r.observed_at))&&finite(r.payload?.priceUsd)&&r.payload.priceUsd!>0).sort((a,b)=>Date.parse(a.observed_at)-Date.parse(b.observed_at));
+ const times=sorted.map(r=>Date.parse(r.observed_at));
  const qualified=sorted.filter(r=>{const p=r.payload;return (p.opportunityScore??0)>=70&&(p.signalConfidenceScore??0)>=55&&(p.manipulationRiskScore??50)<70});
+ const lowerBound=(target:number)=>{let lo=0,hi=times.length;while(lo<hi){const mid=(lo+hi)>>1;if(times[mid]<target)lo=mid+1;else hi=mid}return lo};
  const windows:Record<string,ValidationWindow>={};
  for(const minutes of [15,60,360]){
   const returns:number[]=[];
-  for(const row of qualified){const target=Date.parse(row.observed_at)+minutes*60000,tolerance=Math.max(6,minutes*.25)*60000;const future=sorted.find(x=>Date.parse(x.observed_at)>=target&&Date.parse(x.observed_at)<=target+tolerance);if(!future)continue;const base=row.payload.priceUsd!,next=future.payload.priceUsd!;if(base>0&&finite(next))returns.push((next-base)/base*100)}
-  const wins=returns.filter(v=>v>0).length;windows[String(minutes)]={minutes,samples:returns.length,wins,winRate:returns.length?wins/returns.length*100:null,avgReturnPct:returns.length?returns.reduce((a,b)=>a+b,0)/returns.length:null,medianReturnPct:median(returns)};
+  for(const row of qualified){
+   const target=Date.parse(row.observed_at)+minutes*60000,tolerance=Math.max(6,minutes*.25)*60000,index=lowerBound(target),future=sorted[index];
+   if(!future||times[index]>target+tolerance)continue;
+   const base=row.payload.priceUsd!,next=future.payload.priceUsd!;
+   if(base>0&&finite(next))returns.push((next-base)/base*100);
+  }
+  const wins=returns.filter(v=>v>0).length,losses=returns.filter(v=>v<0),samples=returns.length;
+  const raw=samples?wins/samples*100:null;
+  const calibrated=samples?(wins+2)/(samples+4)*100:null;
+  const confidence=Math.round(clamp(samples/24*100));
+  windows[String(minutes)]={
+   minutes,samples,wins,winRate:raw,calibratedWinRate:calibrated,confidence,
+   avgReturnPct:samples?returns.reduce((a,b)=>a+b,0)/samples:null,
+   medianReturnPct:median(returns),downsideMedianPct:median(losses)
+  };
  }
  const samples=Math.max(...Object.values(windows).map(w=>w.samples),0),calibrationLabel:ValidationSummary['calibrationLabel']=samples>=24?'validated':samples>=10?'developing':samples>=4?'weak':'insufficient';
- return {samples,qualifiedSamples:qualified.length,windows,calibrationLabel,note:'Historical calibration only. Positive return is measured from high-opportunity/high-confidence snapshots; it is not a prediction or guarantee.'};
+ return {samples,qualifiedSamples:qualified.length,windows,calibrationLabel,note:'Historical calibration uses sample-shrunk win rates and bounded forward windows. It is evidence, not a prediction or guarantee.'};
 }
 
 export function computeAdaptiveOpportunity(baseScore:number|null|undefined,validation:ValidationSummary,smartMoney:ReturnType<typeof smartMoneySummary>,clusters:CoordinatedCluster[],current?:SignalObservation['payload']):AdaptiveOpportunity{
@@ -107,9 +122,10 @@ export function computeAdaptiveOpportunity(baseScore:number|null|undefined,valid
  const windowWeights:Record<string,number>={'15':.25,'60':.5,'360':.25};
  let edgeSum=0,edgeWeight=0;
  for(const [key,w] of Object.entries(windowWeights)){
-  const row=validation.windows[key];if(!row||row.samples<2||row.winRate==null)continue;
-  const edge=(row.winRate-50)*.12+clamp(row.avgReturnPct??0,-12,12)*.45;
-  const sampleWeight=Math.min(1,row.samples/12),weight=w*sampleWeight;
+  const row=validation.windows[key];if(!row||row.samples<2||row.calibratedWinRate==null)continue;
+  const downsidePenalty=Math.abs(Math.min(0,row.downsideMedianPct??0))*.18;
+  const edge=(row.calibratedWinRate-50)*.12+clamp(row.medianReturnPct??row.avgReturnPct??0,-12,12)*.45-downsidePenalty;
+  const sampleWeight=Math.min(1,row.confidence/80),weight=w*sampleWeight;
   edgeSum+=edge*weight;edgeWeight+=weight;
  }
  const historyAdjustment=edgeWeight?Math.round(clamp(edgeSum/edgeWeight*calibrationWeight,-12,12)):0;
