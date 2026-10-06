@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { admin } from "@/lib/db";
 import { normalizeWatchState } from "@/lib/watchlist";
+import { normalizeSmartWatchState } from "@/lib/watchlist-smart";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export async function GET(req: Request) {
     if (!data) return NextResponse.json({ found: false }, { status: 404, headers });
     return NextResponse.json({
       found: true,
-      state: normalizeWatchState(data.payload),
+      state: { ...normalizeWatchState(data.payload), ...normalizeSmartWatchState(data.payload) },
       updatedAt: data.updated_at,
     }, { headers });
   } catch {
@@ -48,7 +49,7 @@ export async function PUT(req: Request) {
     return NextResponse.json({ error: "invalid_watchlist_state" }, { status: 400, headers });
   }
 
-  const state = normalizeWatchState(body);
+  const state = { ...normalizeWatchState(body), ...normalizeSmartWatchState(body) };
   const now = new Date();
   const expires = new Date(now.getTime() + 365 * 24 * 60 * 60_000);
   try {
