@@ -32,7 +32,7 @@ function nearestBefore(points:ReplayPoint[],target:number){
 export function buildWalletNetwork(mint:string,profiles:WalletProfile[],clusters:CoordinatedCluster[]):WalletNetwork{
  const selected=profiles.slice(0,10),ids=new Set(selected.map(p=>p.wallet));
  const nodes=[{id:mint,label:'TOKEN',kind:'token' as const,score:null,netUsd:null},...selected.map(p=>({id:p.wallet,label:p.wallet.length>10?p.wallet.slice(0,4)+'…'+p.wallet.slice(-4):p.wallet,kind:'wallet' as const,score:p.score,netUsd:p.netUsd}))];
- const links=selected.map(p=>({source:p.wallet,target:mint,kind:(p.netUsd??0)>=0?'accumulation' as const:'distribution' as const,weight:Math.max(1,Math.min(100,p.score))}));
+ const links:WalletNetwork['links']=selected.map(p=>({source:p.wallet,target:mint,kind:(p.netUsd??0)>=0?'accumulation':'distribution',weight:Math.max(1,Math.min(100,p.score))}));
  for(const cluster of clusters.slice(0,5)){
   const members=cluster.wallets.filter(w=>ids.has(w));
   for(let i=1;i<members.length;i++)links.push({source:members[i-1],target:members[i],kind:'coordinated',weight:cluster.score});
