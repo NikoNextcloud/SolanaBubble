@@ -1,7 +1,7 @@
 import {NextResponse} from 'next/server';
 import {admin} from '@/lib/db';
 import {publicObservationHeaders} from '@/lib/http-cache';
-import {buildWalletProfiles,smartMoneySummary,validateSignals,type SignalObservation,type WalletSwap} from '@/lib/market/intelligence-core';
+import {buildWalletProfiles,computeAdaptiveOpportunity,detectCoordinatedWallets,smartMoneySummary,validateSignals,type SignalObservation,type WalletSwap} from '@/lib/market/intelligence-core';
 
 export const dynamic='force-dynamic';
 export const maxDuration=15;
@@ -25,15 +25,21 @@ export async function GET(req:Request){
    if((page.data?.length??0)<size)break;
   }
 
-  const profiles=buildWalletProfiles((traffic.data??[]) as WalletSwap[]);
+  const trafficRows=(traffic.data??[]) as WalletSwap[];
+  const profiles=buildWalletProfiles(trafficRows);
   const smartMoney=smartMoneySummary(profiles);
+  const coordinatedClusters=detectCoordinatedWallets(trafficRows);
   const validation=validateSignals(snapshots as SignalObservation[]);
+  const current=snapshots.at(-1)?.payload??{};
+  const adaptiveOpportunity=computeAdaptiveOpportunity(current.opportunityScore,validation,smartMoney,coordinatedClusters,current);
   return NextResponse.json({
    mint,
    observedAt:new Date().toISOString(),
    trafficWindowHours:2,
    walletProfiles:profiles.slice(0,12),
    smartMoney,
+   coordinatedClusters:coordinatedClusters.slice(0,8),
+   adaptiveOpportunity,
    validation,
    evidence:{
     recognizedSwaps:traffic.data?.length??0,

@@ -160,6 +160,9 @@ const snapshot = {
       holderGrowthPct: 4.1,
       holderObservedAt: new Date().toISOString(),
       opportunityScore: 81,
+      signalConfidenceScore: 82,
+      manipulationRiskScore: 28,
+      divergenceSignal: "bullish",
       opportunityCoverage: "7/8 signal families observed",
       opportunityFactors: [{ label: "Hype", points: 14, evidence: "Hype 72/100" }],
       trafficSample: {
@@ -186,7 +189,7 @@ const snapshot = {
         },
         recentBuys: Array.from({ length: 18 }, (_, i) => ({
           signature: `browser-buy-${i}`,
-          wallet: `7xGBrowserWallet${String(i).padStart(2, "0")}4b`,
+          wallet: `7xGBrowserSmart${String(i % 4).padStart(2, "0")}4b`,
           usdValue: 700 + i * 125,
           quoteMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
           quoteAmount: 700 + i * 125,
@@ -320,6 +323,8 @@ try {
   assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-out').length > 0"), "SELL comets must fly away from token planets");
   assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-routed').length > 0"), "routed traffic must remain visually distinct");
   assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-whale').length > 0"), "observed whale traffic must have a distinct comet style");
+  assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-smart').length > 0"), "constructive Smart Money wallets must have a distinct comet style");
+  assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-coordinated').length > 0"), "coordinated wallet clusters must have a distinct comet style");
   await sleep(3400);
   const cometCycleAfter = await page.evaluate("Number(document.querySelector('.targeted-comet-layer')?.getAttribute('data-comet-cycle') || 0)");
   assert.ok(cometCycleAfter > cometCycleBefore, "comets must restart continuously instead of flying only once");
@@ -406,6 +411,9 @@ try {
   await page.evaluate("document.querySelector('.mobile-tools-toggle')?.click()");
   await page.waitFor("Boolean(document.querySelector('.market-tools-drawer.is-open'))");
   await page.evaluate("document.querySelector('.mobile-tools-toggle')?.click()");
+
+  await page.waitFor("document.querySelectorAll('.intelligence-alerts button').length > 0");
+  assert.ok(await page.evaluate("document.querySelectorAll('.intelligence-alerts button').length > 0"), "smart alerts must surface in the existing Alerts panel");
 
   const bubble = await page.evaluate(`(() => {
     const el = document.querySelector('.market-token-bubble[aria-label^="BTEST:"]');
@@ -552,7 +560,7 @@ try {
   assert.equal(desktopQuickInside, true, "desktop quick actions must stay within the map");
 
   await page.screenshot("/tmp/solanabubble-desktop.png");
-  console.log("Browser smoke passed: continuous BUY/SELL 10 mobile / 15 desktop comets, routed/whale styles, Opportunity Score, single-click FoMo/GmGn and double-click Holder Map.");
+  console.log("Browser smoke passed: continuous BUY/SELL 10 mobile / 15 desktop comets, routed/whale/smart/coordinated styles, smart alerts, Opportunity Score, single-click FoMo/GmGn and double-click Holder Map.");
 } finally {
   page.ws.close();
 }

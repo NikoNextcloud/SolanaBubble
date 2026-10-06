@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {buildWalletProfiles,classifyMarketRegime,smartMoneySummary,validateSignals} from '../lib/market/intelligence-core';
+import {buildWalletProfiles,classifyMarketRegime,computeAdaptiveOpportunity,deriveSmartAlerts,detectCoordinatedWallets,smartMoneySummary,validateSignals} from '../lib/market/intelligence-core';
 
 const at=Date.parse('2026-10-06T12:00:00Z');
 const iso=(minutes:number)=>new Date(at+minutes*60000).toISOString();
@@ -48,4 +48,56 @@ test('market regime distinguishes risk-on, mania and distribution states',()=>{
  assert.equal(classifyMarketRegime(Array.from({length:5},()=>({priceChange1h:6,hypeScore:84,capitalFlowScore:76,manipulationRiskScore:25}))).key,'mania');
  assert.equal(classifyMarketRegime(Array.from({length:5},()=>({priceChange1h:3,hypeScore:55,capitalFlowScore:72,manipulationRiskScore:30}))).key,'risk-on');
  assert.equal(classifyMarketRegime(Array.from({length:5},()=>({priceChange1h:-6,hypeScore:40,capitalFlowScore:30,manipulationRiskScore:78}))).key,'distribution');
+});
+
+
+test('coordinated wallet detection requires multiple distinct wallets in a tight window',()=>{
+ const rows=[
+  {wallet:'a',side:'buy' as const,usd_value:1000,block_at:iso(-3),evidence:'direct' as const},
+  {wallet:'b',side:'buy' as const,usd_value:1200,block_at:iso(-2.5),evidence:'direct' as const},
+  {wallet:'c',side:'buy' as const,usd_value:900,block_at:iso(-2),evidence:'direct' as const},
+  {wallet:'solo',side:'sell' as const,usd_value:400,block_at:iso(-1),evidence:'direct' as const},
+ ];
+ const clusters=detectCoordinatedWallets(rows,90);
+ assert.equal(clusters.length,1);
+ assert.equal(clusters[0].side,'buy');
+ assert.equal(clusters[0].wallets.length,3);
+ assert.ok(clusters[0].score>=58);
+});
+
+test('adaptive opportunity uses validated outcomes, smart flow and coordination without exceeding bounds',()=>{
+ const validation=validateSignals([
+  {observed_at:iso(-360),payload:{priceUsd:1,opportunityScore:80,signalConfidenceScore:80,manipulationRiskScore:20}},
+  {observed_at:iso(-345),payload:{priceUsd:1.1}},
+  {observed_at:iso(-300),payload:{priceUsd:1.2}},
+  {observed_at:iso(-240),payload:{priceUsd:1,opportunityScore:82,signalConfidenceScore:80,manipulationRiskScore:20}},
+  {observed_at:iso(-225),payload:{priceUsd:1.15}},
+  {observed_at:iso(-180),payload:{priceUsd:1.25}},
+ ]);
+ const profiles=buildWalletProfiles([
+  {wallet:'smart',side:'buy',usd_value:3000,block_at:iso(-20),evidence:'direct'},
+  {wallet:'smart',side:'buy',usd_value:3500,block_at:iso(-10),evidence:'direct'},
+  {wallet:'smart',side:'buy',usd_value:4000,block_at:iso(-5),evidence:'direct'},
+ ]);
+ const smart=smartMoneySummary(profiles);
+ const clusters=detectCoordinatedWallets([
+  {wallet:'a',side:'buy',usd_value:1000,block_at:iso(-3),evidence:'direct'},
+  {wallet:'b',side:'buy',usd_value:1000,block_at:iso(-2.5),evidence:'direct'},
+  {wallet:'c',side:'buy',usd_value:1000,block_at:iso(-2),evidence:'direct'},
+ ]);
+ const adaptive=computeAdaptiveOpportunity(78,validation,smart,clusters,{manipulationRiskScore:20,signalConfidenceScore:80});
+ assert.ok(adaptive.score>=78&&adaptive.score<=100);
+ assert.ok(adaptive.confidence>=30&&adaptive.confidence<=100);
+ assert.ok(adaptive.delta>=0);
+});
+
+test('smart alerts surface coordinated selling and high-confidence opportunity',()=>{
+ const sample:any={recentBuys:[],recentSells:[
+  {signature:'s1',wallet:'a',usdValue:1000,quoteMint:'q',quoteAmount:1,blockAt:iso(-1),pool:'p',evidence:'direct',program:'x',whale:false,walletPctSupply:null},
+  {signature:'s2',wallet:'b',usdValue:1200,quoteMint:'q',quoteAmount:1,blockAt:iso(-.7),pool:'p',evidence:'direct',program:'x',whale:false,walletPctSupply:null},
+  {signature:'s3',wallet:'c',usdValue:900,quoteMint:'q',quoteAmount:1,blockAt:iso(-.4),pool:'p',evidence:'direct',program:'x',whale:false,walletPctSupply:null},
+ ]};
+ const alerts=deriveSmartAlerts([{mint:'m',symbol:'M',opportunityScore:84,signalConfidenceScore:82,manipulationRiskScore:30,trafficSample:sample}],iso(0));
+ assert.ok(alerts.some(a=>a.kind==='smart-opportunity'));
+ assert.ok(alerts.some(a=>a.kind==='coordinated-selling'));
 });

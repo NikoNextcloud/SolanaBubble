@@ -40,7 +40,7 @@ try {
   const cached=await market.json();assert.equal(cached.cached,true);assert.equal(cached.stale,false);assert.equal(cached.tokens[0].holderCount,12);
   assert.equal((await get('/api/market/history?mint=bad')).status,400);
   const history=await get(`/api/market/history?mint=${mint}&hours=999`);assert.equal(history.status,200);const body=await history.json();assert.equal(body.hours,168);assert.equal(body.snapshots.length,1);
-  const intelligence=await get(`/api/market/intelligence?mint=${mint}`);assert.equal(intelligence.status,200);const intelligenceBody=await intelligence.json();assert.equal(intelligenceBody.evidence.recognizedSwaps,2);assert.equal(intelligenceBody.walletProfiles[0].wallet,'smart-wallet');
+  const intelligence=await get(`/api/market/intelligence?mint=${mint}`);assert.equal(intelligence.status,200);const intelligenceBody=await intelligence.json();assert.equal(intelligenceBody.evidence.recognizedSwaps,2);assert.equal(intelligenceBody.walletProfiles[0].wallet,'smart-wallet');assert.equal(typeof intelligenceBody.adaptiveOpportunity.score,'number');assert.ok(Array.isArray(intelligenceBody.coordinatedClusters));
   assert.equal((await fetch(`http://127.0.0.1:${appPort}/api/market/ingest`,{method:'POST'})).status,401);
   assert.equal((await get('/api/market/watchlist?mints=bad')).status,400);
   assert.equal((await get('/api/push/subscription')).status,401);
