@@ -99,7 +99,7 @@ export function useWatchlist(){
     }
   },[]);
 
-  const toggle=useCallback((token:WatchToken)=>update(s=>({...s,entries:s.entries.some(e=>e.mint===token.mint)?s.entries.filter(e=>e.mint!==token.mint):[...s.entries,{mint:token.mint,symbol:token.symbol,name:token.name,rules:{}}].slice(0,50),seen:Object.fromEntries(Object.entries(s.seen).filter(([k])=>!k.startsWith(`${token.mint}:`))),active:Object.fromEntries(Object.entries(s.active).filter(([k])=>!k.startsWith(`${token.mint}:`)))})),[update]);
+  const toggle=useCallback((token:WatchToken)=>update(s=>({...s,entries:s.entries.some(e=>e.mint===token.mint)?s.entries.filter(e=>e.mint!==token.mint):[...s.entries,{mint:token.mint,symbol:token.symbol,name:token.name,rules:{},smartRules:{}}].slice(0,50),seen:Object.fromEntries(Object.entries(s.seen).filter(([k])=>!k.startsWith(`${token.mint}:`))),active:Object.fromEntries(Object.entries(s.active).filter(([k])=>!k.startsWith(`${token.mint}:`)))})),[update]);
   const evaluate=useCallback((tokens:WatchToken[])=>update(s=>evaluatePersonalAlerts(s,tokens)),[update]);
 
   const replaceSyncKey=useCallback(async(raw:string)=>{
