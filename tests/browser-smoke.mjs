@@ -265,6 +265,35 @@ const snapshot = {
   ],
 };
 
+
+const intelligenceFixture = {
+  observedAt: new Date().toISOString(),
+  walletProfiles: [
+    {wallet:"7xGBrowserSmart004b",score:86,label:"Smart",swaps:5,buys:5,sells:0,buyUsd:7200,sellUsd:0,netUsd:7200,avgTradeUsd:1440,repeatEntries:4,quickFlips:0,directSharePct:100,firstSeenAt:new Date(Date.now()-3600000).toISOString(),lastSeenAt:new Date().toISOString(),reasons:["4 repeat entries in retained traffic"]},
+    {wallet:"7xGBrowserSmart014b",score:74,label:"Constructive",swaps:4,buys:4,sells:0,buyUsd:4200,sellUsd:0,netUsd:4200,avgTradeUsd:1050,repeatEntries:3,quickFlips:0,directSharePct:75,firstSeenAt:new Date(Date.now()-3600000).toISOString(),lastSeenAt:new Date().toISOString(),reasons:["3 repeat entries in retained traffic"]},
+  ],
+  smartMoney:{wallets:[],smartWalletCount:2,entering:2,exiting:0,netUsd:11400,confidence:78},
+  coordinatedClusters:[{id:"buy:test",side:"buy",wallets:["7xGBrowserSmart004b","7xGBrowserSmart014b","7xGBrowserSmart024b"],swaps:6,totalUsd:9000,directSharePct:90,startAt:new Date(Date.now()-60000).toISOString(),endAt:new Date().toISOString(),score:84,confidence:"high"}],
+  adaptiveOpportunity:{baseScore:81,score:89,delta:8,confidence:82,historyAdjustment:3,smartMoneyAdjustment:4,coordinationAdjustment:1,riskAdjustment:0,reasons:["Validated history +3","Smart Money +4"]},
+  validation:{samples:18,qualifiedSamples:18,calibrationLabel:"developing",note:"browser fixture",windows:{
+    "15":{minutes:15,samples:18,wins:13,winRate:72,avgReturnPct:3.6,medianReturnPct:2.8},
+    "60":{minutes:60,samples:14,wins:10,winRate:71,avgReturnPct:6.4,medianReturnPct:5.2},
+    "360":{minutes:360,samples:8,wins:5,winRate:62.5,avgReturnPct:9.1,medianReturnPct:7.4},
+  }},
+  decision:{verdict:"STRONG BUY",score:89,confidence:84,whyNow:["Smart Money net inflow +$11.4K","Capital Flow accelerated +14 over ~1h","Similar qualified signals: 71% positive at 1h (14 samples)"],risks:["Manipulation risk 28/100"],brief:"Strong setup with 84% evidence confidence.",freshness:{ageMinutes:0.2,status:"LIVE"},trend:{pricePct:8.2,opportunityDelta:9,capitalFlowDelta:14}},
+  replay:Array.from({length:12},(_,i)=>({at:new Date(Date.now()-(11-i)*300000).toISOString(),price:.001+i*.000025,opportunity:68+i*2,confidence:70+i,capitalFlow:52+i*2,holderQuality:61+i,hype:60+i,risk:30-i*.2})),
+  walletNetwork:{nodes:[
+    {id:TEST_MINT,label:"TOKEN",kind:"token",score:null,netUsd:null},
+    {id:"7xGBrowserSmart004b",label:"7xGB…004b",kind:"wallet",score:86,netUsd:7200},
+    {id:"7xGBrowserSmart014b",label:"7xGB…014b",kind:"wallet",score:74,netUsd:4200}
+  ],links:[
+    {source:"7xGBrowserSmart004b",target:TEST_MINT,kind:"accumulation",weight:86},
+    {source:"7xGBrowserSmart014b",target:TEST_MINT,kind:"accumulation",weight:74},
+    {source:"7xGBrowserSmart004b",target:"7xGBrowserSmart014b",kind:"coordinated",weight:84}
+  ]},
+  evidence:{recognizedSwaps:24,historicalSnapshots:144,note:"browser fixture"}
+};
+
 const page = await openCdpPage();
 
 try {
@@ -273,6 +302,17 @@ try {
   await page.evaluate(`localStorage.setItem("solanabubble:market-snapshot:free", ${JSON.stringify(JSON.stringify(snapshot))})`);
   await page.navigate();
   await page.waitFor("document.querySelectorAll('.market-token-bubble').length >= 2");
+  await page.evaluate(`(() => {
+    const originalFetch = window.fetch.bind(window);
+    const fixture = ${JSON.stringify(intelligenceFixture)};
+    window.fetch = (input, init) => {
+      if (String(input).includes("/api/market/intelligence")) {
+        return Promise.resolve(new Response(JSON.stringify(fixture), {status:200,headers:{"content-type":"application/json"}}));
+      }
+      return originalFetch(input, init);
+    };
+  })()`);
+
 
   const mobileInitial = await page.evaluate(`(() => {
     const nav = document.querySelector(".alpha-sidebar");
@@ -325,6 +365,11 @@ try {
   assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-whale').length > 0"), "observed whale traffic must have a distinct comet style");
   assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-smart').length > 0"), "constructive Smart Money wallets must have a distinct comet style");
   assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-coordinated').length > 0"), "coordinated wallet clusters must have a distinct comet style");
+  await page.evaluate("document.querySelector('.targeted-comet-smart .targeted-comet-body')?.dispatchEvent(new MouseEvent('click',{bubbles:true}))");
+  await page.waitFor("Boolean(document.querySelector('.targeted-comet-detail'))");
+  assert.match(await page.evaluate("document.querySelector('.targeted-comet-detail')?.textContent || ''"), /Smart|Constructive|Wallet net|Wallet score/);
+  await page.evaluate("document.querySelector('.targeted-comet-detail .detail-close')?.dispatchEvent(new MouseEvent('click',{bubbles:true}))");
+
   await sleep(3400);
   const cometCycleAfter = await page.evaluate("Number(document.querySelector('.targeted-comet-layer')?.getAttribute('data-comet-cycle') || 0)");
   assert.ok(cometCycleAfter > cometCycleBefore, "comets must restart continuously instead of flying only once");
@@ -450,6 +495,11 @@ try {
   assert.equal(detailsOpen, true, "mobile token details must open only from the explicit Details action");
   assert.match(await page.evaluate("document.querySelector('.signal-summary-grid')?.textContent || ''"), /Opportunity/);
   assert.match(await page.evaluate("document.querySelector('.signal-summary-grid')?.textContent || ''"), /Capital Flow/);
+  await page.waitFor("document.querySelector('[aria-label=\"Decision Terminal v5\"]')?.textContent?.includes('STRONG BUY')");
+  assert.match(await page.evaluate("document.querySelector('[aria-label=\"Decision Terminal v5\"]')?.textContent || ''"), /Why now|Strong setup/);
+  assert.ok(await page.evaluate("Boolean(document.querySelector('[aria-label=\"Time Machine replay\"]'))"),"Decision Terminal must expose Time Machine replay");
+  assert.ok(await page.evaluate("Boolean(document.querySelector('input[aria-label=\"Time Machine position\"]'))"),"Time Machine must expose a replay slider");
+
   assert.ok(await page.evaluate("Boolean(document.querySelector('.token-sparkline'))"),"selected token must keep the trend chart");
   assert.ok(await page.evaluate("Boolean(document.querySelector('.token-flow-chart'))"),"selected token must show compact buy/sell flow chart");
   assert.equal(await page.evaluate("document.querySelector('.compact-advanced-details')?.hasAttribute('open')"),false,"advanced token details must be collapsed by default");
@@ -562,7 +612,7 @@ try {
   assert.equal(desktopQuickInside, true, "desktop quick actions must stay within the map");
 
   await page.screenshot("/tmp/solanabubble-desktop.png");
-  console.log("Browser smoke passed: compact three-chart market rail, compact token charts, continuous smart/coordinated comets, single-click FoMo/GmGn and double-click Holder Map.");
+  console.log("Browser smoke passed: Decision Terminal v5, Time Machine, wallet comet profiles, compact rail, continuous smart/coordinated comets, single-click FoMo/GmGn and double-click Holder Map.");
 } finally {
   page.ws.close();
 }
