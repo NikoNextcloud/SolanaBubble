@@ -334,7 +334,7 @@ export default function MarketCometLayer({
       <text x="12" y="18" className="detail-title">{selected.direction==="in"?"BUY →":"SELL ←"} {selected.target.symbol||selected.target.name||selected.target.mint.slice(0,6)}</text>
       <text x="12" y="36">{selected.coordinated?"Coordinated · ":selected.smartWallet?"Smart Money · ":selected.whale?"Whale · ":""}{selected.wallet?shortWallet(selected.wallet):"Aggregate activity"} · {selected.amountLabel}</text>
       <text x="12" y="52">{selected.walletScore!=null?`${selected.walletLabel??"Wallet"} ${selected.walletScore}/100 · `:""}{selected.evidence==="direct"?"Verified direct":selected.evidence==="routed"?"Jupiter routed":"Activity estimate"}</text>
-      <text x="12" y="68">{selected.walletNetUsd!=null?`Wallet net ${selected.walletNetUsd>=0?"+":"−"}${Math.abs(selected.walletNetUsd).toLocaleString(undefined,{maximumFractionDigits:0})} · ${selected.walletSwaps??0} swaps`:(selected.program??"No retained wallet profile")}</text>
+      <text x="12" y="68">{selected.walletNetUsd!=null?`Wallet net ${selected.walletNetUsd>=0?"+":"−"}$${Math.abs(selected.walletNetUsd).toLocaleString(undefined,{maximumFractionDigits:0})} · ${selected.walletSwaps??0} swaps`:(selected.program??"No retained wallet profile")}</text>
       <text x="12" y="84">{selected.walletReason?selected.walletReason.slice(0,36):(selected.signature?`${selected.signature.slice(0,18)}…`:"No transaction signature")}</text>
       <text x="12" y="100">{selected.signature?`${selected.signature.slice(0,18)}…`:""}</text>
       <text x="216" y="18" className="detail-close" role="button" tabIndex={0} onClick={()=>setSelected(null)}>×</text>
