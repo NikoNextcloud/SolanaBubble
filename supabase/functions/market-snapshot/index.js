@@ -3,8 +3,7 @@ import process from 'node:process';
 import { Buffer } from 'node:buffer';
 import { timingSafeEqual } from 'node:crypto';
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
-// Само server-side (service role).
-export const admin = () => createClient((process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL), process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+export const admin = () => createClient((process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL), process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 export class SolanaRpcError extends Error {
     kind;
     status;

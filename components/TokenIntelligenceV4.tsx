@@ -49,7 +49,7 @@ export default function TokenIntelligenceV4({mint}:{mint:string}){
   <details className="signal-disclosure signal-comparisons" open={v.calibrationLabel==="validated"}>
    <summary><span>Signal Validation · {v.calibrationLabel}</span><b>{v.samples} samples</b></summary>
    <dl className="market-token-stats">
-    {(["15","60","360"] as const).map(key=>{const w=v.windows[key];return <div key={key}><dt>{key==="60"?"1h":key==="360"?"6h":"15m"} outcome</dt><dd>{w?.samples? `${w.winRate?.toFixed(0)}% positive · ${pct(w.avgReturnPct)} avg`:"—"}</dd></div>})}
+    {(["15","60","360"] as const).map(key=>{const w=v.windows[key];return <div key={key}><dt>{key==="60"?"1h":key==="360"?"6h":"15m"} outcome</dt><dd>{w?.samples? `${(w.calibratedWinRate??w.winRate)?.toFixed(0)}% calibrated · ${pct(w.medianReturnPct)} median`:"—"}</dd></div>})}
    </dl>
    <p className="signal-note">{v.note}</p>
   </details>

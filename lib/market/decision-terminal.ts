@@ -49,13 +49,21 @@ export function computeDecisionTerminal(args:{
  const capitalFlow=finite(current?.capitalFlowScore)?current.capitalFlowScore:50;
  const holderQuality=finite(current?.holderQualityScore)?current.holderQualityScore:50;
  const sellCluster=clusters.find(c=>c.side==='sell'&&c.confidence!=='low'),buyCluster=clusters.find(c=>c.side==='buy'&&c.confidence!=='low');
+ const last=replay.at(-1)??null,observedAt=last?.at??null;
+ const age=observedAt?Math.max(0,(now-Date.parse(observedAt))/60000):null;
+ const status=age==null||!Number.isFinite(age)?'UNKNOWN':age<=1.5?'LIVE':age<=5?'FRESH':age<=15?'DELAYED':'STALE';
+ const freshForAction=status==='LIVE'||status==='FRESH',usableForWatch=freshForAction||status==='DELAYED';
+
  const exitRisk=risk>=78||(sellCluster?.score??0)>=78||(adaptive.score<=38&&capitalFlow<42)||current?.liquidityWarning===true;
- const strongBuy=!exitRisk&&adaptive.score>=82&&adaptive.confidence>=65&&signalConfidence>=65&&risk<65&&current?.divergenceSignal!=='bearish';
- const watch=!exitRisk&&!strongBuy&&adaptive.score>=66&&adaptive.confidence>=50&&risk<72;
+ const strongBuy=!exitRisk&&freshForAction&&adaptive.score>=82&&adaptive.confidence>=65&&signalConfidence>=65&&risk<65&&current?.divergenceSignal!=='bearish';
+ const watch=!exitRisk&&!strongBuy&&usableForWatch&&adaptive.score>=66&&adaptive.confidence>=50&&risk<72;
  const verdict:DecisionVerdict=exitRisk?'EXIT RISK':strongBuy?'STRONG BUY':watch?'WATCH':'NEUTRAL';
 
- const sampleBoost=Math.min(18,validation.samples*1.5),evidenceBoost=smartMoney.confidence*.18;
- const confidence=Math.round(clamp(adaptive.confidence*.5+signalConfidence*.28+sampleBoost+evidenceBoost));
+ const oneHour=validation.windows['60'];
+ const validationConfidence=oneHour?.confidence??0;
+ const sampleBoost=Math.min(16,validationConfidence*.16),evidenceBoost=smartMoney.confidence*.16;
+ const freshnessMultiplier=status==='LIVE'?1:status==='FRESH'?.94:status==='DELAYED'?.78:status==='STALE'?.5:.6;
+ const confidence=Math.round(clamp((adaptive.confidence*.5+signalConfidence*.28+sampleBoost+evidenceBoost)*freshnessMultiplier));
  const whyNow:string[]=[],risks:string[]=[];
  if(adaptive.delta>=4)whyNow.push(`Adaptive score improved +${adaptive.delta} vs base`);
  if(smartMoney.netUsd!=null&&smartMoney.netUsd>1000)whyNow.push(`Smart Money net inflow ${money(smartMoney.netUsd)}`);
@@ -64,8 +72,7 @@ export function computeDecisionTerminal(args:{
  if(current?.divergenceSignal==='bullish')whyNow.push('Bullish divergence: flow is stronger than price action');
  if(capitalFlow>=68)whyNow.push(`Capital Flow is strong at ${Math.round(capitalFlow)}/100`);
  if(holderQuality>=65)whyNow.push(`Holder Quality is supportive at ${Math.round(holderQuality)}/100`);
- const oneHour=validation.windows['60'];
- if(oneHour?.samples>=4&&oneHour.winRate!=null)whyNow.push(`Similar qualified signals: ${oneHour.winRate.toFixed(0)}% positive at 1h (${oneHour.samples} samples)`);
+ if(oneHour?.samples>=4&&oneHour.calibratedWinRate!=null)whyNow.push(`Similar signals: ${oneHour.calibratedWinRate.toFixed(0)}% calibrated positive at 1h (${oneHour.samples} samples)`);
 
  if(risk>=65)risks.push(`Manipulation risk ${Math.round(risk)}/100`);
  if(sellCluster)risks.push(`${sellCluster.wallets.length}-wallet coordinated selling cluster`);
@@ -73,16 +80,15 @@ export function computeDecisionTerminal(args:{
  if(current?.divergenceSignal==='bearish')risks.push('Bearish divergence: price strength lacks flow confirmation');
  if(current?.liquidityWarning)risks.push('Liquidity deterioration is active');
  if(finite(current?.whaleExit)&&current.whaleExit>0)risks.push(`Whale exits observed: ${Math.round(current.whaleExit)}`);
+ if(status==='STALE'||status==='UNKNOWN')risks.push('Decision confidence reduced because market evidence is stale');
 
- const last=replay.at(-1)??null,oneHourAgo=last?nearestBefore(replay,Date.parse(last.at)-60*60000):null;
+ const oneHourAgo=last?nearestBefore(replay,Date.parse(last.at)-60*60000):null;
  const pricePct=last&&oneHourAgo&&finite(last.price)&&finite(oneHourAgo.price)&&oneHourAgo.price>0?(last.price-oneHourAgo.price)/oneHourAgo.price*100:null;
  const opportunityDelta=last&&oneHourAgo&&finite(last.opportunity)&&finite(oneHourAgo.opportunity)?last.opportunity-oneHourAgo.opportunity:null;
  const capitalFlowDelta=last&&oneHourAgo&&finite(last.capitalFlow)&&finite(oneHourAgo.capitalFlow)?last.capitalFlow-oneHourAgo.capitalFlow:null;
  if(pricePct!=null&&Math.abs(pricePct)>=2)whyNow.push(`Price moved ${pct(pricePct)} over ~1h`);
  if(capitalFlowDelta!=null&&capitalFlowDelta>=8)whyNow.push(`Capital Flow accelerated +${capitalFlowDelta.toFixed(0)} over ~1h`);
 
- const observedAt=last?.at??null,age=observedAt?Math.max(0,(now-Date.parse(observedAt))/60000):null;
- const status=age==null||!Number.isFinite(age)?'UNKNOWN':age<=1.5?'LIVE':age<=5?'FRESH':age<=15?'DELAYED':'STALE';
  const topWhy=whyNow.slice(0,4),topRisks=risks.slice(0,4);
  const brief=verdict==='STRONG BUY'?
   `Strong setup with ${confidence}% evidence confidence. ${topWhy.slice(0,2).join('. ')||'Multiple positive signal families are aligned'}.`:verdict==='EXIT RISK'?

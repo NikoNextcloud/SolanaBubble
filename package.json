@@ -13,7 +13,8 @@
     "worker:bundle": "node scripts/build-worker.mjs",
     "test:api": "node tests/api-smoke.mjs",
     "worker:check": "node scripts/build-worker.mjs --check",
-    "check:budgets": "node scripts/check-budgets.mjs"
+    "check:budgets": "node scripts/check-budgets.mjs",
+    "security:audit": "npm audit --audit-level=moderate"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
@@ -32,5 +33,9 @@
   },
   "engines": {
     "node": "22.x"
+  },
+  "overrides": {
+    "postcss": "8.5.23",
+    "source-map-js": "1.2.2"
   }
 }

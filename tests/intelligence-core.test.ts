@@ -42,6 +42,18 @@ test('signal validation measures forward returns only for qualified snapshots',(
  assert.equal(result.windows['15'].samples,2);
  assert.equal(result.windows['15'].wins,1);
  assert.equal(result.windows['15'].winRate,50);
+ assert.equal(result.windows['15'].calibratedWinRate,50);
+ assert.ok(result.windows['15'].confidence<20);
+});
+
+test('validation shrinks tiny perfect samples toward neutral instead of overclaiming accuracy',()=>{
+ const result=validateSignals([
+  {observed_at:iso(-30),payload:{priceUsd:1,opportunityScore:90,signalConfidenceScore:90,manipulationRiskScore:10}},
+  {observed_at:iso(-15),payload:{priceUsd:1.2}},
+ ]);
+ assert.equal(result.windows['15'].winRate,100);
+ assert.equal(result.windows['15'].calibratedWinRate,60);
+ assert.ok(result.windows['15'].confidence<10);
 });
 
 test('market regime distinguishes risk-on, mania and distribution states',()=>{

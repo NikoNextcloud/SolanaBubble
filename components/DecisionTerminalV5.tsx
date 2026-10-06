@@ -13,6 +13,17 @@ const finite=(v:number|null|undefined):v is number=>typeof v==="number"&&Number.
 const usd=(v:number|null)=>v==null?"—":(v>=0?"+":"−")+"$"+Math.abs(v).toLocaleString(undefined,{maximumFractionDigits:0});
 const fmt=(v:number|null,suffix="")=>v==null||!Number.isFinite(v)?"—":v.toLocaleString(undefined,{maximumFractionDigits:2})+suffix;
 const short=(v:string)=>v.length>12?v.slice(0,5)+"…"+v.slice(-4):v;
+const intelligenceCache=new Map<string,{at:number;data:Payload}>();
+const intelligenceInflight=new Map<string,Promise<Payload>>();
+async function loadIntelligence(mint:string){
+ const cached=intelligenceCache.get(mint);if(cached&&Date.now()-cached.at<45_000)return cached.data;
+ const active=intelligenceInflight.get(mint);if(active)return active;
+ const request=fetch("/api/market/intelligence?mint="+encodeURIComponent(mint))
+  .then(async r=>{if(!r.ok)throw new Error("intelligence");return r.json() as Promise<Payload>})
+  .then(data=>{intelligenceCache.set(mint,{at:Date.now(),data});return data})
+  .finally(()=>intelligenceInflight.delete(mint));
+ intelligenceInflight.set(mint,request);return request;
+}
 
 function normalizedPoints(points:ReplayPoint[],key:"price"|"opportunity"){
  const values=points.map(p=>p[key]).filter(finite);if(!values.length)return "";
@@ -33,13 +44,13 @@ function WalletNetworkView({network}:{network:WalletNetwork}){
 
 export default function DecisionTerminalV5({mint}:{mint:string}){
  const [data,setData]=useState<Payload|null>(null),[loading,setLoading]=useState(true),[index,setIndex]=useState(0);
- useEffect(()=>{let stopped=false;setLoading(true);fetch("/api/market/intelligence?mint="+encodeURIComponent(mint),{cache:"no-store"}).then(r=>r.ok?r.json():Promise.reject()).then(j=>{if(stopped)return;setData(j);setIndex(Math.max(0,(j.replay?.length??1)-1))}).catch(()=>{if(!stopped)setData(null)}).finally(()=>{if(!stopped)setLoading(false)});return()=>{stopped=true}},[mint]);
+ useEffect(()=>{let stopped=false;setLoading(true);loadIntelligence(mint).then(j=>{if(stopped)return;setData(j);setIndex(Math.max(0,(j.replay?.length??1)-1))}).catch(()=>{if(!stopped)setData(null)}).finally(()=>{if(!stopped)setLoading(false)});return()=>{stopped=true}},[mint]);
  const replay=data?.replay??[],point=replay[index]??replay.at(-1)??null;
  const priceLine=useMemo(()=>normalizedPoints(replay,"price"),[replay]),oppLine=useMemo(()=>normalizedPoints(replay,"opportunity"),[replay]);
  if(loading)return <section className="opportunity-score" aria-label="Decision Terminal v5"><div><span>Decision Terminal v5</span><strong>Loading…</strong></div></section>;
  if(!data)return <section className="opportunity-score" aria-label="Decision Terminal v5"><div><span>Decision Terminal v5</span><strong>Insufficient data</strong></div><small>Waiting for retained market intelligence.</small></section>;
  const d=data.decision,verdictClass=d.verdict==="STRONG BUY"?"buy":d.verdict==="EXIT RISK"?"sell":"";
- const jump=(hours:number)=>{if(!replay.length)return;const target=Date.now()-hours*3600000;let best=0;for(let i=0;i<replay.length;i++)if(Date.parse(replay[i].at)<=target)best=i;setIndex(best)};
+ const jump=(hours:number)=>{if(!replay.length)return;const latest=Date.parse(replay.at(-1)!.at),target=latest-hours*3600000;let best=0;for(let i=0;i<replay.length;i++)if(Date.parse(replay[i].at)<=target)best=i;setIndex(best)};
  return <section className="decision-terminal-v5" aria-label="Decision Terminal v5">
   <div className="opportunity-score">
    <div><span>Decision Terminal v5</span><strong className={verdictClass}>{d.verdict}</strong></div>
@@ -69,7 +80,7 @@ export default function DecisionTerminalV5({mint}:{mint:string}){
   <details className="signal-disclosure">
    <summary>Backtest & wallet network</summary>
    <dl className="market-token-stats">
-    {(["15","60","360"] as const).map(k=>{const w=data.validation.windows[k];return <div key={k}><dt>{k==="15"?"15m":k==="60"?"1h":"6h"} validation</dt><dd>{w?.samples?Math.round(w.winRate??0)+"% positive · "+fmt(w.avgReturnPct,"% avg"):"—"}</dd></div>})}
+    {(["15","60","360"] as const).map(k=>{const w=data.validation.windows[k];return <div key={k}><dt>{k==="15"?"15m":k==="60"?"1h":"6h"} validation</dt><dd>{w?.samples?Math.round(w.calibratedWinRate??w.winRate??0)+"% calibrated · "+fmt(w.medianReturnPct,"% median")+" · "+w.confidence+"% confidence":"—"}</dd></div>})}
    </dl>
    <WalletNetworkView network={data.walletNetwork}/>
    <small className="signal-note">{data.evidence.recognizedSwaps} recognized swaps · {data.evidence.historicalSnapshots} snapshots. Historical outcomes are calibration evidence, not a guarantee.</small>

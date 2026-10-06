@@ -1,4 +1,11 @@
 name: CI
+permissions:
+  contents: read
+
+env:
+  CI: true
+  NEXT_TELEMETRY_DISABLED: 1
+
 on:
   push:
     branches: [main]
@@ -7,12 +14,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run security:audit
       - run: npm run typecheck
       - run: npm test
       - run: npm run worker:check
@@ -65,7 +75,7 @@ jobs:
           CHROME_DEBUG_URL="http://127.0.0.1:${CHROME_PORT}" node tests/browser-smoke.mjs
       - name: Upload browser smoke screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: browser-smoke-screenshots
           path: |

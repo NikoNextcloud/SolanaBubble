@@ -6,9 +6,9 @@ import type {AdaptiveOpportunity,ValidationSummary,WalletProfile,CoordinatedClus
 const at=Date.parse('2026-10-06T12:00:00Z');
 const iso=(minutes:number)=>new Date(at+minutes*60000).toISOString();
 const validation:ValidationSummary={samples:12,qualifiedSamples:12,calibrationLabel:'developing',note:'test',windows:{
- '15':{minutes:15,samples:12,wins:8,winRate:66.7,avgReturnPct:3.2,medianReturnPct:2.5},
- '60':{minutes:60,samples:10,wins:7,winRate:70,avgReturnPct:6.1,medianReturnPct:4.9},
- '360':{minutes:360,samples:5,wins:3,winRate:60,avgReturnPct:8,medianReturnPct:6},
+ '15':{minutes:15,samples:12,wins:8,winRate:66.7,calibratedWinRate:62.5,confidence:50,avgReturnPct:3.2,medianReturnPct:2.5,downsideMedianPct:-1.2},
+ '60':{minutes:60,samples:10,wins:7,winRate:70,calibratedWinRate:64.3,confidence:42,avgReturnPct:6.1,medianReturnPct:4.9,downsideMedianPct:-2},
+ '360':{minutes:360,samples:5,wins:3,winRate:60,calibratedWinRate:55.6,confidence:21,avgReturnPct:8,medianReturnPct:6,downsideMedianPct:-3},
 }};
 const adaptive:AdaptiveOpportunity={baseScore:78,score:86,delta:8,confidence:76,historyAdjustment:4,smartMoneyAdjustment:3,coordinationAdjustment:1,riskAdjustment:0,reasons:['Validated history +4']};
 
@@ -45,4 +45,19 @@ test('replay is bounded and wallet network keeps token and coordinated wallet li
  const network=buildWalletNetwork('mint',profiles,[cluster]);
  assert.equal(network.nodes[0].kind,'token');
  assert.ok(network.links.some(l=>l.kind==='coordinated'));
+});
+
+
+test('Decision Terminal refuses a strong-buy verdict on stale evidence',()=>{
+ const replay=buildReplaySeries([
+  {observed_at:iso(-90),payload:{priceUsd:1,opportunityScore:86,capitalFlowScore:76,hypeScore:75,manipulationRiskScore:30}},
+ ]);
+ const result=computeDecisionTerminal({
+  current:{signalConfidenceScore:90,manipulationRiskScore:20,capitalFlowScore:80,holderQualityScore:80,divergenceSignal:'bullish'},
+  adaptive:{...adaptive,score:92,confidence:90},validation,
+  smartMoney:{smartWalletCount:3,entering:3,exiting:0,netUsd:12000,confidence:85},clusters:[],replay,now:at
+ });
+ assert.notEqual(result.verdict,'STRONG BUY');
+ assert.equal(result.freshness.status,'STALE');
+ assert.ok(result.confidence<80);
 });

@@ -32,7 +32,12 @@ try {
   for(let i=0;i<100;i++) {try{if((await fetch(`http://127.0.0.1:${appPort}`)).ok){ready=true;break;}}catch{} await new Promise(r=>setTimeout(r,100));}
   assert.ok(ready,`App startup failed: ${logs}`);
   const get=path=>fetch(`http://127.0.0.1:${appPort}${path}`);
-  const home=await (await get('/')).text();
+  const homeResponse=await get('/');
+  assert.equal(homeResponse.headers.get('x-content-type-options'),'nosniff');
+  assert.equal(homeResponse.headers.get('x-frame-options'),'DENY');
+  assert.match(homeResponse.headers.get('referrer-policy')??'',/strict-origin-when-cross-origin/);
+  assert.equal(homeResponse.headers.get('x-powered-by'),null);
+  const home=await homeResponse.text();
   assert.match(home,/Token map/);assert.match(home,/Как да четеш балоните/);assert.match(home,/Анимации/);assert.match(home,/▦ Map/);assert.match(home,/☷ List/);assert.doesNotMatch(home,/>Galaxy</);
   const holderHtml=await (await get(`/token/${mint}`)).text();assert.match(holderHtml,/Какво се промени/);assert.match(holderHtml,/Брой показани holders/);assert.match(holderHtml,/Няма достатъчно наблюдавани сделки/);assert.doesNotMatch(holderHtml,/>Positive</);
   for(const section of ['movers','alerts','watchlist']) assert.equal((await get(`/market/${section}`)).status,200);
@@ -40,7 +45,7 @@ try {
   const cached=await market.json();assert.equal(cached.cached,true);assert.equal(cached.stale,false);assert.equal(cached.tokens[0].holderCount,12);
   assert.equal((await get('/api/market/history?mint=bad')).status,400);
   const history=await get(`/api/market/history?mint=${mint}&hours=999`);assert.equal(history.status,200);const body=await history.json();assert.equal(body.hours,168);assert.equal(body.snapshots.length,1);
-  const intelligence=await get(`/api/market/intelligence?mint=${mint}`);assert.equal(intelligence.status,200);const intelligenceBody=await intelligence.json();assert.equal(intelligenceBody.evidence.recognizedSwaps,2);assert.equal(intelligenceBody.walletProfiles[0].wallet,'smart-wallet');assert.equal(typeof intelligenceBody.adaptiveOpportunity.score,'number');assert.ok(Array.isArray(intelligenceBody.coordinatedClusters));assert.equal(typeof intelligenceBody.decision.verdict,'string');assert.equal(typeof intelligenceBody.decision.confidence,'number');assert.equal(intelligenceBody.replay.length,1);assert.ok(intelligenceBody.walletNetwork.nodes.length>=2);
+  const intelligence=await get(`/api/market/intelligence?mint=${mint}`);assert.equal(intelligence.status,200);assert.match(intelligence.headers.get('server-timing')??'',/db;dur=.*compute;dur=.*total;dur=/);const intelligenceBody=await intelligence.json();assert.equal(intelligenceBody.evidence.recognizedSwaps,2);assert.equal(intelligenceBody.walletProfiles[0].wallet,'smart-wallet');assert.equal(typeof intelligenceBody.adaptiveOpportunity.score,'number');assert.ok(Array.isArray(intelligenceBody.coordinatedClusters));assert.equal(typeof intelligenceBody.decision.verdict,'string');assert.equal(typeof intelligenceBody.decision.confidence,'number');assert.equal(intelligenceBody.replay.length,1);assert.ok(intelligenceBody.walletNetwork.nodes.length>=2);
   assert.equal((await fetch(`http://127.0.0.1:${appPort}/api/market/ingest`,{method:'POST'})).status,401);
   assert.equal((await get('/api/market/watchlist?mints=bad')).status,400);
   assert.equal((await get('/api/push/subscription')).status,401);
