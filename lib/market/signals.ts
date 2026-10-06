@@ -136,18 +136,18 @@ export function computeSignalEngineV3(t: SignalToken) {
   let divergenceSignal:'bullish'|'bearish'|'none'='none';
   if(finite(priceMove)&&priceMove>=3&&((finite(flow)&&flow<0)||(finite(holders)&&holders<0))){
     divergenceSignal='bearish';
-    if(finite(flow)&&flow<0)divergenceReasons.push('Price is rising while observed capital flow is negative');
-    if(finite(holders)&&holders<0)divergenceReasons.push('Price is rising while holder growth is negative');
+    if(finite(flow)&&flow<0)divergenceReasons.push('Price up while capital flow is negative');
+    if(finite(holders)&&holders<0)divergenceReasons.push('Price up while holder growth is negative');
   }else if(finite(priceMove)&&priceMove<=-3&&finite(flow)&&flow>0&&(!finite(holders)||holders>=0)){
     divergenceSignal='bullish';
-    divergenceReasons.push('Price is falling while observed capital flow remains positive');
+    divergenceReasons.push('Price down while capital flow stays positive');
   }
   const risk=t.manipulationRiskScore??t.riskScore??50,opportunity=t.opportunityScore??50;
-  const signalThesis=divergenceSignal==='bearish'?'Caution: price strength is not confirmed by underlying flow or holder behavior.':
-    divergenceSignal==='bullish'?'Constructive divergence: capital is entering despite short-term price weakness.':
-    risk>=70?'High-risk setup: manipulation and concentration signals outweigh upside evidence.':
-    opportunity>=75&&confidenceScore>=65&&risk<55?'Bullish setup: opportunity, capital flow and evidence quality are aligned.':
-    'Neutral setup: evidence is mixed or still incomplete.';
+  const signalThesis=divergenceSignal==='bearish'?'Caution: price strength lacks flow or holder confirmation.':
+    divergenceSignal==='bullish'?'Constructive divergence: capital enters into price weakness.':
+    risk>=70?'High-risk setup: manipulation risk outweighs upside evidence.':
+    opportunity>=75&&confidenceScore>=65&&risk<55?'Bullish setup: opportunity, flow and evidence align.':
+    'Neutral setup: evidence is mixed or incomplete.';
   return {confidenceScore,signalConfidenceLabel,trendPersistenceScore,trendPersistenceLabel,divergenceSignal,divergenceReasons,signalThesis};
 }
 
