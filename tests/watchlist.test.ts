@@ -54,3 +54,25 @@ test('Opportunity Score can trigger and rearm a personal threshold',()=>{
   const again=evaluatePersonalAlerts(low,[{...high,marketObservedAt:'2026-10-02T07:02:00Z'}],now+120000);
   assert.equal(again.alerts.filter(a=>a.key==='opportunityScore').length,2);
 });
+
+
+test('smart personal rules fire for strong setup and rearm after the condition clears',()=>{
+  const smart={...emptyWatchState(),entries:[{mint,rules:{},smartRules:{strongSetup:true}}]};
+  const high={...token,opportunityScore:86,signalConfidenceScore:82,manipulationRiskScore:28};
+  const first=evaluatePersonalAlerts(smart,[high],now);
+  assert.equal(first.alerts[0]?.key,'strongSetup');
+  assert.match(first.alerts[0]?.message??'',/Strong Buy/);
+  const low=evaluatePersonalAlerts(first,[{...high,opportunityScore:60,marketObservedAt:'2026-10-02T07:01:00Z'}],now+60000);
+  const again=evaluatePersonalAlerts(low,[{...high,marketObservedAt:'2026-10-02T07:02:00Z'}],now+120000);
+  assert.equal(again.alerts.filter(a=>a.key==='strongSetup').length,2);
+});
+
+test('smart divergence liquidity and whale rules remain evidence gated',()=>{
+  const smart={...emptyWatchState(),entries:[{mint,rules:{},smartRules:{bullishDivergence:true,bearishDivergence:true,liquidityDanger:true,whaleExit:true}}]};
+  const observed={...token,signalConfidenceScore:72,divergenceSignal:'bullish' as const,liquidityWarning:true,liquidityChangePct:-18,whaleExit:2};
+  const first=evaluatePersonalAlerts(smart,[observed],now);
+  assert.ok(first.alerts.some(a=>a.key==='bullishDivergence'));
+  assert.ok(first.alerts.some(a=>a.key==='liquidityDanger'));
+  assert.ok(first.alerts.some(a=>a.key==='whaleExit'));
+  assert.ok(!first.alerts.some(a=>a.key==='bearishDivergence'));
+});
