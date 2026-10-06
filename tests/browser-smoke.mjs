@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import {decisionTerminalFixture} from "./fixtures/decision-terminal-browser.mjs";
+import {installDecisionFixture,checkWalletCometProfile,checkDecisionTerminal} from "./fixtures/decision-terminal-browser-check.mjs";
 
 const CHROME = process.env.CHROME_DEBUG_URL || "http://127.0.0.1:9222";
 const APP = process.env.BROWSER_SMOKE_URL || "http://127.0.0.1:3000";
@@ -265,6 +267,9 @@ const snapshot = {
   ],
 };
 
+
+const intelligenceFixture = decisionTerminalFixture(TEST_MINT);
+
 const page = await openCdpPage();
 
 try {
@@ -273,6 +278,8 @@ try {
   await page.evaluate(`localStorage.setItem("solanabubble:market-snapshot:free", ${JSON.stringify(JSON.stringify(snapshot))})`);
   await page.navigate();
   await page.waitFor("document.querySelectorAll('.market-token-bubble').length >= 2");
+  await installDecisionFixture(page,intelligenceFixture);
+
 
   const mobileInitial = await page.evaluate(`(() => {
     const nav = document.querySelector(".alpha-sidebar");
@@ -325,6 +332,8 @@ try {
   assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-whale').length > 0"), "observed whale traffic must have a distinct comet style");
   assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-smart').length > 0"), "constructive Smart Money wallets must have a distinct comet style");
   assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-coordinated').length > 0"), "coordinated wallet clusters must have a distinct comet style");
+  await checkWalletCometProfile(page);
+
   await sleep(3400);
   const cometCycleAfter = await page.evaluate("Number(document.querySelector('.targeted-comet-layer')?.getAttribute('data-comet-cycle') || 0)");
   assert.ok(cometCycleAfter > cometCycleBefore, "comets must restart continuously instead of flying only once");
@@ -450,6 +459,8 @@ try {
   assert.equal(detailsOpen, true, "mobile token details must open only from the explicit Details action");
   assert.match(await page.evaluate("document.querySelector('.signal-summary-grid')?.textContent || ''"), /Opportunity/);
   assert.match(await page.evaluate("document.querySelector('.signal-summary-grid')?.textContent || ''"), /Capital Flow/);
+  await checkDecisionTerminal(page);
+
   assert.ok(await page.evaluate("Boolean(document.querySelector('.token-sparkline'))"),"selected token must keep the trend chart");
   assert.ok(await page.evaluate("Boolean(document.querySelector('.token-flow-chart'))"),"selected token must show compact buy/sell flow chart");
   assert.equal(await page.evaluate("document.querySelector('.compact-advanced-details')?.hasAttribute('open')"),false,"advanced token details must be collapsed by default");
@@ -562,7 +573,7 @@ try {
   assert.equal(desktopQuickInside, true, "desktop quick actions must stay within the map");
 
   await page.screenshot("/tmp/solanabubble-desktop.png");
-  console.log("Browser smoke passed: compact three-chart market rail, compact token charts, continuous smart/coordinated comets, single-click FoMo/GmGn and double-click Holder Map.");
+  console.log("Browser smoke passed: Decision Terminal v5, Time Machine, wallet comet profiles, compact rail, continuous smart/coordinated comets, single-click FoMo/GmGn and double-click Holder Map.");
 } finally {
   page.ws.close();
 }

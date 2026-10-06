@@ -2,6 +2,7 @@ import {NextResponse} from 'next/server';
 import {admin} from '@/lib/db';
 import {publicObservationHeaders} from '@/lib/http-cache';
 import {buildWalletProfiles,computeAdaptiveOpportunity,detectCoordinatedWallets,smartMoneySummary,validateSignals,type SignalObservation,type WalletSwap} from '@/lib/market/intelligence-core';
+import {buildReplaySeries,buildWalletNetwork,computeDecisionTerminal} from '@/lib/market/decision-terminal';
 
 export const dynamic='force-dynamic';
 export const maxDuration=15;
@@ -32,6 +33,9 @@ export async function GET(req:Request){
   const validation=validateSignals(snapshots as SignalObservation[]);
   const current=snapshots.at(-1)?.payload??{};
   const adaptiveOpportunity=computeAdaptiveOpportunity(current.opportunityScore,validation,smartMoney,coordinatedClusters,current);
+  const replay=buildReplaySeries(snapshots);
+  const decision=computeDecisionTerminal({current,adaptive:adaptiveOpportunity,validation,smartMoney,clusters:coordinatedClusters,replay});
+  const walletNetwork=buildWalletNetwork(mint,profiles,coordinatedClusters);
   return NextResponse.json({
    mint,
    observedAt:new Date().toISOString(),
@@ -40,6 +44,9 @@ export async function GET(req:Request){
    smartMoney,
    coordinatedClusters:coordinatedClusters.slice(0,8),
    adaptiveOpportunity,
+   decision,
+   replay,
+   walletNetwork,
    validation,
    evidence:{
     recognizedSwaps:traffic.data?.length??0,

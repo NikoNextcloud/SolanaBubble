@@ -54,3 +54,5 @@ test('Opportunity Score can trigger and rearm a personal threshold',()=>{
   const again=evaluatePersonalAlerts(low,[{...high,marketObservedAt:'2026-10-02T07:02:00Z'}],now+120000);
   assert.equal(again.alerts.filter(a=>a.key==='opportunityScore').length,2);
 });
+
+

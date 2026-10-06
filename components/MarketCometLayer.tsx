@@ -38,6 +38,10 @@ type Comet = {
   whale: boolean;
   smartWallet: boolean;
   walletScore: number | null;
+  walletLabel: string | null;
+  walletNetUsd: number | null;
+  walletSwaps: number | null;
+  walletReason: string | null;
   coordinated: boolean;
   amountLabel: string;
   strength: number;
@@ -202,12 +206,12 @@ export default function MarketCometLayer({
     const candidates:Comet[]=[];
     const seen=new Set<string>();
     const now=Date.now();
-    const walletIntel=new Map<string,{score:number;smart:boolean;coordinated:boolean}>();
+    const walletIntel=new Map<string,{score:number;label:string;netUsd:number|null;swaps:number;reason:string|null;smart:boolean;coordinated:boolean}>();
     for(const node of nodes){
       const rows=trafficSampleRows(node.trafficSample);
       const profiles=buildWalletProfiles(rows,now);
       const coordinated=new Set(detectCoordinatedWallets(rows).filter(c=>c.confidence!=="low").flatMap(c=>c.wallets));
-      for(const p of profiles)walletIntel.set(`${node.mint}:${p.wallet}`,{score:p.score,smart:p.score>=64&&p.label!=="Bot-like",coordinated:coordinated.has(p.wallet)});
+      for(const p of profiles)walletIntel.set(`${node.mint}:${p.wallet}`,{score:p.score,label:p.label,netUsd:p.netUsd,swaps:p.swaps,reason:p.reasons[0]??null,smart:p.score>=64&&p.label!=="Bot-like",coordinated:coordinated.has(p.wallet)});
     }
 
     const addSwap=(node:TargetNode,swap:TrafficRecentSwap|LiveMarketEvent,source:"live"|"snapshot",side:"buy"|"sell")=>{
@@ -232,7 +236,7 @@ export default function MarketCometLayer({
       const index=candidates.length;
       candidates.push({
         key:stable,target:node,label,wallet,signature,program:swap.program,source,direction,evidence,whale,
-        smartWallet,walletScore:intel?.score??null,coordinated,
+        smartWallet,walletScore:intel?.score??null,walletLabel:intel?.label??null,walletNetUsd:intel?.netUsd??null,walletSwaps:intel?.swaps??null,walletReason:intel?.reason??null,coordinated,
         amountLabel:amount,strength,headRadius:4+strength*2+(smartWallet?.5:0),
         delay:(index%Math.max(1,maxComets))*.14,
         duration:1.85+(hash(stable)%85)/100,
@@ -261,7 +265,7 @@ export default function MarketCometLayer({
         const index=candidates.length;
         candidates.push({
           key:stable,target:node,label:`${node.symbol||event.symbol||node.mint.slice(0,5)} · ${direction==="in"?"+":"−"}${Math.abs(event.deltaTrades)} tx`,
-          wallet:null,signature:null,program:null,source:"activity",direction,evidence:"aggregate",whale:false,smartWallet:false,walletScore:null,coordinated:false,
+          wallet:null,signature:null,program:null,source:"activity",direction,evidence:"aggregate",whale:false,smartWallet:false,walletScore:null,walletLabel:null,walletNetUsd:null,walletSwaps:null,walletReason:null,coordinated:false,
           amountLabel:`${direction==="in"?"+":"−"}${Math.abs(event.deltaTrades)} tx`,strength:.22,headRadius:4.2,
           delay:(index%Math.max(1,maxComets))*.16,duration:2.25+(hash(stable)%65)/100,
           path:createPath(node,stable,index,direction),
@@ -326,12 +330,14 @@ export default function MarketCometLayer({
     />)}
 
     {selected&&<g className="targeted-comet-detail" transform={`translate(${Math.max(18,selected.target.x-100)} ${Math.max(34,selected.target.y-selected.target.r-108)})`} onClick={e=>e.stopPropagation()}>
-      <rect width="212" height="86" rx="7"/>
+      <rect width="232" height="112" rx="7"/>
       <text x="12" y="18" className="detail-title">{selected.direction==="in"?"BUY →":"SELL ←"} {selected.target.symbol||selected.target.name||selected.target.mint.slice(0,6)}</text>
       <text x="12" y="36">{selected.coordinated?"Coordinated · ":selected.smartWallet?"Smart Money · ":selected.whale?"Whale · ":""}{selected.wallet?shortWallet(selected.wallet):"Aggregate activity"} · {selected.amountLabel}</text>
-      <text x="12" y="52">{selected.walletScore!=null?`Wallet score ${selected.walletScore}/100 · `:""}{selected.evidence==="direct"?"Verified direct":selected.evidence==="routed"?"Jupiter routed":"Activity estimate"}{selected.program?` · ${selected.program}`:""}</text>
-      <text x="12" y="68">{selected.signature?`${selected.signature.slice(0,10)}…`:"No transaction signature"}</text>
-      <text x="196" y="18" className="detail-close" role="button" tabIndex={0} onClick={()=>setSelected(null)}>×</text>
+      <text x="12" y="52">{selected.walletScore!=null?`${selected.walletLabel??"Wallet"} ${selected.walletScore}/100 · `:""}{selected.evidence==="direct"?"Verified direct":selected.evidence==="routed"?"Jupiter routed":"Activity estimate"}</text>
+      <text x="12" y="68">{selected.walletNetUsd!=null?`Wallet net ${selected.walletNetUsd>=0?"+":"−"}$${Math.abs(selected.walletNetUsd).toLocaleString(undefined,{maximumFractionDigits:0})} · ${selected.walletSwaps??0} swaps`:(selected.program??"No retained wallet profile")}</text>
+      <text x="12" y="84">{selected.walletReason?selected.walletReason.slice(0,36):(selected.signature?`${selected.signature.slice(0,18)}…`:"No transaction signature")}</text>
+      <text x="12" y="100">{selected.signature?`${selected.signature.slice(0,18)}…`:""}</text>
+      <text x="216" y="18" className="detail-close" role="button" tabIndex={0} onClick={()=>setSelected(null)}>×</text>
     </g>}
   </g>;
 }

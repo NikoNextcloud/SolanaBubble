@@ -5,7 +5,7 @@ import { admin } from "@/lib/db";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 
-type PushJob={syncHash:string;alert:{id:string;mint:string;symbol?:string|null;key:string;value:number;threshold:number;at:string}};
+type PushJob={syncHash:string;alert:{id:string;mint:string;symbol?:string|null;key:string;value:number;threshold:number;at:string;message?:string}};
 
 export async function POST(req:Request){
   const expected=process.env.PUSH_DISPATCH_SECRET;
@@ -23,7 +23,8 @@ export async function POST(req:Request){
     const {data,error}=await db.from("push_subscriptions").select("endpoint,p256dh,auth").eq("sync_hash",job.syncHash).limit(20);
     if(error){failed++;continue;}
     const title=`${job.alert.symbol||job.alert.mint.slice(0,6)} · ${job.alert.key.replaceAll("-"," ")}`;
-    const payload=JSON.stringify({title,body:`Signal ${Number(job.alert.value).toFixed(2)} crossed ${job.alert.threshold}`,url:`/token/${job.alert.mint}`,tag:job.alert.id});
+    const body=job.alert.message||`Signal ${Number(job.alert.value).toFixed(2)} crossed ${job.alert.threshold}`;
+    const payload=JSON.stringify({title,body,url:`/token/${job.alert.mint}`,tag:job.alert.id});
     for(const sub of data??[]){
       try{
         await webpush.sendNotification({endpoint:sub.endpoint,keys:{p256dh:sub.p256dh,auth:sub.auth}},payload,{TTL:300,urgency:"high"});
