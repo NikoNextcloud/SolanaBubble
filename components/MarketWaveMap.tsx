@@ -43,13 +43,18 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
  const metrics=useMemo(()=>new Map<string,WaveMetrics>(tokens.map(t=>[t.mint,waveMetrics(t,events,now)])),[tokens,events,now]);
  const maxVisible=safeWidth<700
    ? Math.max(4,Math.min(6,Math.floor((safeHeight-180)/94)))
-   : 12;
+   : mapView.k<.58?30
+     : mapView.k<.68?24
+       : mapView.k<.78?18
+         : mapView.k>1.55?8
+           : 12;
  const visibleTokens=useMemo(()=>selectWaveTokens(tokens,events,metrics,selectedMint,maxVisible,clock),[tokens,events,metrics,selectedMint,maxVisible,clock]);
  const visibleTokenByMint=useMemo(()=>new Map(visibleTokens.map(t=>[t.mint,t])),[visibleTokens]);
  const layout=useMemo(()=>waveMapLayout(visibleTokens,metrics,safeWidth,safeHeight),[visibleTokens,metrics,safeWidth,safeHeight]);
  const layoutByMint=useMemo(()=>new Map(layout.map(p=>[p.mint,p])),[layout]);
  const layoutIndex=useMemo(()=>new Map(layout.map((p,i)=>[p.mint,i])),[layout]);
- const scaleX=safeWidth-88,flowStart=safeWidth<700?280:Math.min(330,Math.max(300,safeWidth*.30)),top=92,bottom=safeHeight-78,usable=Math.max(1,bottom-top);
+ const denseFocus=safeWidth>=700&&visibleTokens.length>12;
+ const scaleX=safeWidth-88,flowStart=safeWidth<700?280:denseFocus?Math.min(370,Math.max(330,safeWidth*.34)):Math.min(330,Math.max(300,safeWidth*.30)),top=92,bottom=safeHeight-78,usable=Math.max(1,bottom-top);
  const scaleY=(score:number)=>top+(100-Math.max(-100,Math.min(100,score)))/200*usable;
 
  const walletIntel=useMemo(()=>{
@@ -114,7 +119,7 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
  const hiddenCount=Math.max(0,tokens.length-visibleTokens.length);
 
  return <div className={[styles.root,!animated?styles.paused:""].filter(Boolean).join(" ")}>
-  <svg className={"market-pan-surface "+styles.svg} data-lod={lod} data-capital-flow-only={capitalFlowOnly?"true":"false"} data-active-pulses={particles.length} data-visible-tokens={visibleTokens.length} viewBox={"0 0 "+safeWidth+" "+safeHeight} preserveAspectRatio="none" onWheel={onWheel} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} role="img" aria-label="Live Solana trade impulses toward token strength scale">
+  <svg className={"market-pan-surface "+styles.svg} data-lod={lod} data-focus-capacity={maxVisible} data-zoom={mapView.k.toFixed(2)} data-capital-flow-only={capitalFlowOnly?"true":"false"} data-active-pulses={particles.length} data-visible-tokens={visibleTokens.length} viewBox={"0 0 "+safeWidth+" "+safeHeight} preserveAspectRatio="none" onWheel={onWheel} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} role="img" aria-label="Live Solana trade impulses toward token strength scale">
    <defs>
     <radialGradient id="waveCoinBuy" cx="34%" cy="27%" r="78%"><stop offset="0%" stopColor="#dffff1"/><stop offset="48%" stopColor="#42c989"/><stop offset="100%" stopColor="#184836"/></radialGradient>
     <radialGradient id="waveCoinSell" cx="34%" cy="27%" r="78%"><stop offset="0%" stopColor="#ffe7ea"/><stop offset="48%" stopColor="#df5d69"/><stop offset="100%" stopColor="#56242d"/></radialGradient>
@@ -142,17 +147,20 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
       const fill=point.strength>8?"url(#waveCoinBuy)":point.strength<-8?"url(#waveCoinSell)":"url(#waveCoinFlat)";
       const label=(token.symbol||token.name||token.mint.slice(0,6)).slice(0,12);
       const hype=Math.max(0,Math.min(100,Number(token.hypeScore??0)));
-      const hypeClass=hype>=85?styles.coinHypeHot:hype>=65?styles.coinHypeWarm:"";
+      const hypeClass=hype>=92?styles.coinHypeExtreme:hype>=85?styles.coinHypeHot:hype>=65?styles.coinHypeWarm:"";
       return <g key={token.mint} className="market-node-group" data-flow-rank={index+1}>
        <g className={styles.token} role="button" tabIndex={0} aria-label={(token.symbol||token.name||token.mint)+": strength "+point.strength} onPointerDown={e=>e.stopPropagation()} onClick={e=>{if(e.detail>=2)handleTokenDoubleClick(token);else handleTokenClick(token)}} onDoubleClick={()=>handleTokenDoubleClick(token)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onSelect(token);onQuickAction(token.mint)}}}>
-        {hype>=60&&<circle cx={point.x} cy={point.y} r={point.r+12} className={[styles.hypeAura,hype>=85?styles.hypeAuraHot:styles.hypeAuraWarm,"token-hype-aura"].join(" ")} style={{animationDuration:(2.7-hype*.018)+"s"}}/>}
+        {hype>=60&&<circle cx={point.x} cy={point.y} r={point.r+12} className={[styles.hypeAura,hype>=92?styles.hypeAuraExtreme:hype>=85?styles.hypeAuraHot:styles.hypeAuraWarm,"token-hype-aura"].join(" ")} style={{animationDuration:(2.75-hype*.018)+"s"}}/>}
+        {hype>=85&&<circle cx={point.x} cy={point.y} r={point.r+18} className={[styles.hypeAura,styles.hypeAuraSecondary,hype>=92?styles.hypeAuraExtreme:styles.hypeAuraHot,"token-hype-aura-secondary"].join(" ")} style={{animationDuration:(3.15-hype*.017)+"s"}}/>}
         <circle cx={point.x} cy={point.y} r={point.r+8} className={[styles.pulseHalo,haloClass,"token-pulse-halo"].join(" ")}/>
         <circle cx={point.x} cy={point.y} r={point.r+8} className={[styles.pulseHalo,styles.pulseHaloSecondary,haloClass,"token-pulse-halo"].join(" ")}/>
         <circle cx={point.x} cy={point.y} r={point.r} fill={fill} aria-label={(token.symbol||token.name||token.mint)+": strength "+point.strength} className={["market-token-bubble",styles.coin,flowClass,hypeClass,selected?styles.coinSelected:""].filter(Boolean).join(" ")}><title>{(token.symbol||token.name||token.mint)+" · Hype "+Math.round(hype)+" · strength "+point.strength+" · "+m.buys+" buys / "+m.sells+" sells"}</title></circle>
         {token.imageUrl&&<><clipPath id={"wave-clip-"+token.mint}><circle cx={point.x} cy={point.y} r={Math.max(9,point.r-4)}/></clipPath><image href={token.imageUrl} x={point.x-point.r+4} y={point.y-point.r+4} width={(point.r-4)*2} height={(point.r-4)*2} preserveAspectRatio="xMidYMid slice" clipPath={"url(#wave-clip-"+token.mint+")"} className={styles.icon}/></>}
-        <text x={point.x+point.r+14} y={point.y-8} className={styles.symbol}>{label}</text>
-        <text x={point.x+point.r+14} y={point.y+6} className={styles.meta}>B {m.buys} · S {m.sells}</text>
-        <text x={point.x+point.r+14} y={point.y+21} className={[styles.strength,point.strength>0?styles.buyText:point.strength<0?styles.sellText:styles.neutralText].join(" ")}>Strength {point.strength>0?"+":""}{point.strength}</text>
+        {denseFocus?<text x={point.x} y={point.y+point.r+13} textAnchor="middle" className={styles.symbolDense}>{label}</text>:<>
+          <text x={point.x+point.r+14} y={point.y-8} className={styles.symbol}>{label}</text>
+          <text x={point.x+point.r+14} y={point.y+6} className={styles.meta}>B {m.buys} · S {m.sells}</text>
+          <text x={point.x+point.r+14} y={point.y+21} className={[styles.strength,point.strength>0?styles.buyText:point.strength<0?styles.sellText:styles.neutralText].join(" ")}>Strength {point.strength>0?"+":""}{point.strength}</text>
+        </>}
        </g>
       </g>;
     })}
@@ -223,11 +231,11 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
    </g>
   </svg>
 
-  <div className={styles.focusInfo}><b>{visibleTokens.length} focus tokens</b>{hiddenCount>0?<span> · {hiddenCount} more available in List</span>:null}<small>live trades are automatically prioritized</small></div>
+  <div className={styles.focusInfo}><b>{visibleTokens.length} focus tokens</b><span> · {Math.round(mapView.k*100)}% zoom</span>{hiddenCount>0?<span> · {hiddenCount} more in List</span>:null}<small>{lod==="far"?"zoom out reveals more market coverage":lod==="near"?"detail mode prioritizes the strongest tokens":"live trades are automatically prioritized"}</small></div>
   {quick&&quickToken&&quickLayout&&<div className={styles.quick+" token-quick-actions token-quick-actions-overlay"} style={{left:quickLayout.left,top:quickLayout.top,width:quickLayout.width}} onPointerDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()} onDoubleClick={e=>e.stopPropagation()}>
     <a href={fomoTokenUrl(quickToken.mint)} target="_blank" rel="noreferrer">FoMo ↗</a><a href={gmgnTokenUrl(quickToken.mint)} target="_blank" rel="noreferrer">GmGn ↗</a><button className="quick-detail-action" onClick={()=>onDetails(quickToken)}>Details</button><button className="quick-holder-action" onClick={()=>onOpen(quickToken)}>Holders</button>
   </div>}
   {activeParticle&&<div className={styles.detail+" targeted-comet-detail"}><button className="detail-close" onClick={()=>setActiveParticleId(null)} aria-label="Close wallet profile">×</button><strong>{activeParticleProfile?.label??(activeParticle.whale?"Whale":"Wallet")} · {activeParticle.side.toUpperCase()}</strong><span>{activeParticle.wallet.slice(0,6)}…{activeParticle.wallet.slice(-5)}</span><small>{activeParticleProfile?`Wallet score ${activeParticleProfile.score}/100 · Wallet net ${activeParticleProfile.netUsd==null?"—":Math.round(activeParticleProfile.netUsd).toLocaleString()+" USD"}`:"Wallet score unavailable"}{activeParticleCoordinated?" · Coordinated":""}</small></div>}
-  <div className={styles.status}><b>LIVE</b> · smoother layered flow · Hype tokens glow harder · white wave = higher-confidence opportunity setup, not a guarantee</div>
+  <div className={styles.status}><b>LIVE</b> · zoom out reveals up to 30 focus tokens · smooth flow curves · Hype 85+ gets a stronger beacon · white wave = opportunity setup, not a guarantee</div>
  </div>;
 }
