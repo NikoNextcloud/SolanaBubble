@@ -140,7 +140,7 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
           const previous=trail[index];
           const dx=current.x-previous.x;
           const c1x=previous.x+dx*.36,c2x=previous.x+dx*.72;
-          const d={`M${previous.x.toFixed(1)},${previous.y.toFixed(1)} C${c1x.toFixed(1)},${previous.y.toFixed(1)} ${c2x.toFixed(1)},${current.y.toFixed(1)} ${current.x.toFixed(1)},${current.y.toFixed(1)}`};
+          const d=`M${previous.x.toFixed(1)},${previous.y.toFixed(1)} C${c1x.toFixed(1)},${previous.y.toFixed(1)} ${c2x.toFixed(1)},${current.y.toFixed(1)} ${current.x.toFixed(1)},${current.y.toFixed(1)}`;
           return <path key={"seg-"+current.signature} d={d} className={[styles.flowSegment,current.side==="buy"?styles.flowSegmentBuy:styles.flowSegmentSell,"flow-trace-segment","flow-trace-"+current.side].join(" ")}/>;
         })}
         {trail.slice(1).map((trade,index)=>{
