@@ -17,7 +17,6 @@ export async function checkFlowTrajectoryUi(page) {
       pulseHaloCount: document.querySelectorAll(".token-pulse-halo").length,
       eventOnly: document.querySelector(".targeted-comet-layer")?.getAttribute("data-event-only"),
       realSwapTrace: document.querySelector(".flow-history-layer")?.getAttribute("data-real-swaps-only"),
-      traceSegments: document.querySelectorAll(".flow-trace-segment").length,
       traceBuyDots: document.querySelectorAll(".flow-trade-buy").length,
       traceSellDots: document.querySelectorAll(".flow-trade-sell").length,
       strengthTickCount: document.querySelectorAll(".wave-strength-tick").length,
@@ -41,7 +40,6 @@ export async function checkFlowTrajectoryUi(page) {
   assert.equal(ui.cometCount, 0, "retained traffic must not replay as fake live impulses");
   assert.equal(ui.eventOnly, "true", "fresh impulse layer must be event-only");
   assert.equal(ui.realSwapTrace, "true", "trajectory history must be built from real swaps only");
-  assert.ok(ui.traceSegments >= 4, "retained real swaps must form a visible order-flow trajectory");
   assert.ok(ui.traceBuyDots >= 1, "real BUY swaps must render green trajectory dots");
   assert.ok(ui.traceSellDots >= 1, "real SELL swaps must render red trajectory dots");
   assert.ok(ui.pulseHaloCount >= 2, "token circles must keep the pulsing halo");
@@ -55,7 +53,7 @@ export async function checkFlowTrajectoryUi(page) {
   assert.equal(ui.livingHeadCount, ui.visibleTokenCount, "every visible focus token must have a moving head marker");
   assert.equal(ui.waveMotion, "continuous", "living-wave layer must use continuous motion");
   assert.ok(ui.animationStates.every((row) => row.name !== "none" && row.state === "running"), "all focus-token waves must be actively animated");
-  assert.ok(ui.movingParticleCount >= 2, "real BUY/SELL trades must travel along the living waves");
+  assert.ok(ui.movingParticleCount >= 4, "retained real BUY/SELL samples must travel along the living waves");
   const offsetBefore = ui.animationStates[0]?.offset;
   await new Promise((resolve) => setTimeout(resolve, 360));
   const offsetAfter = await page.evaluate("getComputedStyle(document.querySelector('.living-wave-path')).strokeDashoffset");
