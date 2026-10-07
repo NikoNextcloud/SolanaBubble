@@ -32,14 +32,33 @@ export default function WorkspaceShell({
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [openingMint, setOpeningMint] = useState<string | null>(null);
   const [wishlist, setWishlist] = useState<SearchToken[]>([]);
+  const [showOnboarding,setShowOnboarding]=useState(false);
   const searchBox = useRef<HTMLDivElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("solanabubble:wishlist") || "[]");
       if (Array.isArray(saved)) setWishlist(saved.slice(0, 20));
+      setShowOnboarding(localStorage.getItem("solanabubble:onboarding:v1")!=="done");
     } catch {}
   }, []);
+
+  useEffect(()=>{
+    const hotkey=(event:KeyboardEvent)=>{
+      const target=event.target as HTMLElement|null;
+      const typing=target?.tagName==="INPUT"||target?.tagName==="TEXTAREA"||target?.isContentEditable;
+      if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="k"){
+        event.preventDefault();setMobileSearchOpen(true);window.setTimeout(()=>searchInput.current?.focus(),0);return;
+      }
+      if(event.key==="/"&&!typing){
+        event.preventDefault();setMobileSearchOpen(true);window.setTimeout(()=>searchInput.current?.focus(),0);return;
+      }
+      if(event.key==="Escape"&&showOnboarding)setShowOnboarding(false);
+    };
+    window.addEventListener("keydown",hotkey);
+    return()=>window.removeEventListener("keydown",hotkey);
+  },[showOnboarding]);
 
   useEffect(() => {
     const match = pathname.match(/^\/token\/([1-9A-HJ-NP-Za-km-z]{32,44})$/);
@@ -130,6 +149,19 @@ export default function WorkspaceShell({
     router.push(`/token/${token.mint}`);
   }
 
+  function openNotifications(){
+    if(pathname==="/")window.dispatchEvent(new Event("solanabubble:open-alerts"));
+    else{
+      try{localStorage.setItem("solanabubble:open-alerts","1");}catch{}
+      router.push("/");
+    }
+  }
+
+  function finishOnboarding(){
+    try{localStorage.setItem("solanabubble:onboarding:v1","done");}catch{}
+    setShowOnboarding(false);
+  }
+
   function submitDirect() {
     const q = query.trim();
     if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(q)) {
@@ -191,6 +223,7 @@ export default function WorkspaceShell({
         <div className="alpha-network lovable-sidebar-user">
           <span className="lovable-user-avatar">SB</span>
           <span className="lovable-user-copy"><strong>SolanaBubble</strong><small>Live workspace</small></span>
+          <button type="button" className="workspace-help-button" onClick={()=>setShowOnboarding(true)} title="Quick guide" aria-label="Open quick guide">?</button>
           <span className="lovable-live-dot" title="Live data connected" />
         </div>
       </aside>
@@ -204,6 +237,7 @@ export default function WorkspaceShell({
             <div className="alpha-search-input-wrap">
               <span>⌕</span>
               <input
+                ref={searchInput}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onFocus={() => query.trim().length >= 2 && setOpen(true)}
@@ -254,12 +288,24 @@ export default function WorkspaceShell({
                 setMobileSearchOpen((value) => !value);
               }}
             >{mobileSearchOpen ? "×" : "⌕"}</button>
-            <button type="button" title="Notifications">♧</button>
+            <button type="button" title="Notifications" aria-label="Open alerts" onClick={openNotifications}>♧</button>
             <span className="lovable-top-avatar">SB</span>
           </div>
         </header>
         <div className="alpha-shell-content">{children}</div>
       </section>
+      {showOnboarding&&<div className="terminal-onboarding-backdrop" role="dialog" aria-modal="true" aria-label="SolanaBubble quick start">
+        <section className="terminal-onboarding">
+          <div className="terminal-onboarding-head"><div><span>QUICK START</span><h2>Read the market in seconds</h2></div><button type="button" onClick={finishOnboarding} aria-label="Close guide">×</button></div>
+          <div className="terminal-onboarding-grid">
+            <article><b>01</b><strong>Living waves</strong><p>Every focus token has a moving wave. Higher hype and real trade activity make it faster and more turbulent.</p></article>
+            <article><b>02</b><strong>BUY / SELL particles</strong><p>Green dots are observed BUY swaps; red dots are observed SELL swaps. They travel along that token's wave.</p></article>
+            <article><b>03</b><strong>Strength</strong><p>+100 means strong buy pressure, 0 balance, −100 strong sell pressure. Coverage remains sampled and is shown in Data Reliability.</p></article>
+            <article><b>04</b><strong>Actions</strong><p>Single click opens token actions, double click opens Holder Map. Use ⌘/Ctrl+K or / to search from anywhere.</p></article>
+          </div>
+          <div className="terminal-onboarding-footer"><small>No synthetic BUY/SELL trades are generated. Missing coverage is shown as partial/degraded instead of being guessed.</small><button type="button" onClick={finishOnboarding}>Enter terminal →</button></div>
+        </section>
+      </div>}
     </main>
   );
 }
