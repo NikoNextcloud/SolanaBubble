@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {tokenStrength,waveAmplitude,waveMapLayout,waveMetrics,wavePath} from '../lib/market/wave-map';
+import {activeWaveEvents,tokenStrength,waveAmplitude,waveMapLayout,waveMetrics,wavePath} from '../lib/market/wave-map';
 
 test('wave amplitude grows with stronger order flow',()=>{
   assert.ok(waveAmplitude(80,100)>waveAmplitude(20,100));
@@ -46,4 +46,25 @@ test('wave layout keeps every token in the left region and strength endpoint on 
   assert.equal(layout.length,12);
   assert.ok(layout.every(p=>p.x<340));
   assert.ok(layout.every(p=>p.endY>=70&&p.endY<=546));
+});
+
+
+test('active wave events expire and retained history cannot create impulses',()=>{
+  const now=Date.parse('2026-10-07T10:00:00Z');
+  const mint='11111111111111111111111111111111';
+  const events:any[]=[
+    {mint,signature:'fresh',wallet:'a',side:'buy',usd_value:120,evidence:'direct',whale:false,block_at:'2026-10-07T09:59:58Z'},
+    {mint,signature:'old',wallet:'b',side:'sell',usd_value:80,evidence:'direct',whale:false,block_at:'2026-10-07T09:59:50Z'},
+  ];
+  const active=activeWaveEvents(events,new Set([mint]),now,2800,10);
+  assert.deepEqual(active.map(e=>e.signature),['fresh']);
+  assert.equal(activeWaveEvents([],new Set([mint]),now,2800,10).length,0);
+});
+
+test('small mobile token sets use one clear column',()=>{
+  const tokens=Array.from({length:8},(_,i)=>({mint:String(i).padStart(32,'2'),hypeScore:60}));
+  const metrics=new Map(tokens.map(t=>[t.mint,{buys:1,sells:1,buyUsd:null,sellUsd:null,strength:0,buyIntensity:1,sellIntensity:1,liveCount:0,lastEventAt:null}]));
+  const layout=waveMapLayout(tokens,metrics,520,700);
+  assert.equal(new Set(layout.map(p=>p.x)).size,1);
+  assert.ok(layout.every(p=>p.r>=14));
 });
