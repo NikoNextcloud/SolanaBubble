@@ -1,22 +1,35 @@
 # Production checklist
 
+## Data & security
 - [ ] Supabase project is connected and all migrations are applied
-- [ ] `SUPABASE_SERVICE_ROLE_KEY` is server-side only
-- [ ] `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are configured
-- [ ] Optional `SOLANA_RPC_URL` is configured if you want a dedicated RPC provider
-- [ ] Optional `SOLSCAN_API_KEY` is configured for enrichment
-- [ ] `ADMIN_SECRET` is configured
-- [ ] Market overview loads from DexScreener
-- [ ] Public RPC health is visible in /admin
-- [ ] Holder refresh works for a tracked mint
-- [ ] Live refresh pauses when the browser tab is hidden
-- [ ] Database purge removes rows but keeps schema/migrations intact
+- [ ] `SUPABASE_SERVICE_ROLE_KEY`, worker credentials, `ADMIN_SECRET` and push secrets are server-side only
+- [ ] `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and optional VAPID public key are configured
+- [ ] Traffic and holder RPC failover chains are configured or their public fallbacks are intentionally accepted
+- [ ] `market-snapshot` Edge Function matches `npm run worker:bundle` and the scheduled worker is returning recent success
+- [ ] Public `/api/market/status` reports worker freshness, sampled traffic coverage and observed-at live event coverage without exposing credentials
+- [ ] Admin Production Health shows runtime SHA, database usage, worker failures and live arrival latency
+- [ ] Missing/sparse/degraded coverage is labelled; no UI treats missing evidence as zero activity
 
-- [ ] Market snapshot migrations, service-only permissions and ingestion lease verified
-- [ ] `market-snapshot` Edge Function regenerated from shared sources and deployed
-- [ ] Five-minute Supabase cron job active and recent invocation returned HTTP 200
-- [ ] Historical snapshots and alert rows accumulate without opening the UI
-- [ ] Missing/stale holder data displayed as unknown, with sampling coverage
-- [ ] `npm test`, `npm run build`, `npm run test:api` pass
-- [ ] Map/List drag and zoom visually verified in a browser
-- [ ] Vercel production deployment is explicitly requested by the user; otherwise do not deploy
+## Product
+- [ ] First-run quick guide appears once and can be reopened from the sidebar
+- [ ] Global search works with Ctrl/Cmd+K and `/`
+- [ ] Map/List, 12-token desktop focus layout, mobile focus cap, pan/zoom and fullscreen are verified
+- [ ] Every focus token has a living wave; hype/activity change turbulence
+- [ ] Real BUY/SELL samples travel as green/red particles; fresh observed-at events receive the event-only impulse
+- [ ] FoMo/GmGn single click, Holder Map double click and Details navigation work
+- [ ] Watchlist local persistence, private-key sync, personal thresholds and optional Web Push work
+- [ ] Alerts inbox supports type/severity filtering, unread state and mark-all-read
+- [ ] Decision Terminal, Smart Money / Wallet Intelligence, Capital Flow and Time Machine/Backtesting remain reachable
+
+## Release gate
+- [ ] `npm run security:audit`
+- [ ] `npm run typecheck`
+- [ ] `npm test`
+- [ ] `npm run worker:check`
+- [ ] `npm run check:budgets`
+- [ ] `npm run build`
+- [ ] `npm run test:api`
+- [ ] Chromium mobile + desktop browser smoke
+- [ ] Production deployment created only after explicit user authorization
+- [ ] Production alias returns HTTP 200 and runtime error check is clean
+- [ ] Deployment lock restored: `commandForIgnoringBuildStep = "exit 0"`, `previewDeploymentsDisabled = true`, `vercel.json -> git.deploymentEnabled = false`
