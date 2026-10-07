@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import {decisionTerminalFixture} from "./fixtures/decision-terminal-browser.mjs";
-import {installDecisionFixture,checkWalletCometProfile,checkDecisionTerminal} from "./fixtures/decision-terminal-browser-check.mjs";
+import {installDecisionFixture,checkDecisionTerminal} from "./fixtures/decision-terminal-browser-check.mjs";
 
 const CHROME = process.env.CHROME_DEBUG_URL || "http://127.0.0.1:9222";
 const APP = process.env.BROWSER_SMOKE_URL || "http://127.0.0.1:3000";
@@ -317,41 +317,23 @@ try {
       cometCount: document.querySelectorAll(".targeted-comet").length,
       buyWaveCount: document.querySelectorAll(".wave-buy-path").length,
       sellWaveCount: document.querySelectorAll(".wave-sell-path").length,
+      pulseHaloCount: document.querySelectorAll(".token-pulse-halo").length,
+      eventOnly: document.querySelector(".targeted-comet-layer")?.getAttribute("data-event-only"),
       strengthTickCount: document.querySelectorAll(".wave-strength-tick").length,
     };
   })()`);
   assert.match(coordinateUi.axisTitle, /COINS/);
   assert.match(coordinateUi.axisTitle, /LIVE ORDER FLOW/);
   assert.match(coordinateUi.axisTitle, /STRENGTH/);
-  assert.ok(coordinateUi.buyWaveCount > 0, "BUY activity must render green wave paths");
-  assert.ok(coordinateUi.sellWaveCount > 0, "SELL activity must render red wave paths");
+  assert.equal(coordinateUi.buyWaveCount, 0, "idle market must not render BUY impulses");
+  assert.equal(coordinateUi.sellWaveCount, 0, "idle market must not render SELL impulses");
+  assert.equal(coordinateUi.cometCount, 0, "retained traffic must not replay as fake live impulses");
+  assert.equal(coordinateUi.eventOnly, "true", "trade layer must be event-only");
+  assert.ok(coordinateUi.pulseHaloCount >= 2, "token circles must keep the pulsing halo");
   assert.equal(coordinateUi.strengthTickCount, 9, "strength ticks required");
   assert.equal(coordinateUi.fullscreenButton, true, "map must expose a fullscreen control");
   assert.equal(coordinateUi.fullscreenVisible, true, "fullscreen control must be visibly reachable");
   assert.equal(coordinateUi.fullscreenInsideMap, true, "fullscreen control must stay inside the map");
-  assert.equal(coordinateUi.cometCount, 10, "mobile map must cap targeted capital comets at 10");
-  const cometCycleBefore = await page.evaluate("Number(document.querySelector('.targeted-comet-layer')?.getAttribute('data-comet-cycle') || 0)");
-  assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-in').length > 0"), "BUY wave particles required");
-  assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-out').length > 0"), "SELL wave particles required");
-  assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-routed').length > 0"), "routed traffic must remain visually distinct");
-  assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-whale').length > 0"), "observed whale traffic must have a distinct comet style");
-  assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-smart').length > 0"), "constructive Smart Money wallets must have a distinct comet style");
-  assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-coordinated').length > 0"), "coordinated wallet clusters must have a distinct comet style");
-  await checkWalletCometProfile(page);
-
-  await sleep(3400);
-  const cometCycleAfter = await page.evaluate("Number(document.querySelector('.targeted-comet-layer')?.getAttribute('data-comet-cycle') || 0)");
-  assert.ok(cometCycleAfter > cometCycleBefore, "comets must restart continuously instead of flying only once");
-  await sleep(700);
-  const replayVisible = await page.evaluate(`(() => {
-    const bodies = [...document.querySelectorAll('.targeted-comet-body')];
-    return bodies.some((el) => {
-      const opacity = Number(getComputedStyle(el).opacity || 0);
-      const matrix = el.getCTM?.();
-      return opacity > 0.05 && matrix && (Math.abs(matrix.e) > 0.5 || Math.abs(matrix.f) > 0.5);
-    });
-  })()`);
-  assert.equal(replayVisible, true, "a comet must be visibly moving again after the second animation cycle");
   assert.match(await page.evaluate("document.querySelector('.market-live-latency')?.textContent || ''"), /Live|Delayed|Snapshot/);
   assert.equal(await page.evaluate("document.querySelector('.market-pan-surface')?.getAttribute('data-lod')"), "mid");
   await page.evaluate("document.querySelector('.capital-flow-toggle')?.click()");
@@ -561,7 +543,7 @@ try {
   assert.equal(desktop.mobileSearchHidden, true, "mobile search toggle must stay hidden on desktop");
   assert.ok(desktop.docWidth <= desktop.width + 1, "desktop layout must not overflow horizontally");
   const desktopCometCount = await page.evaluate("document.querySelectorAll('.targeted-comet').length");
-  assert.equal(desktopCometCount, 15, "desktop map must cap targeted capital comets at 15");
+  assert.equal(desktopCometCount, 0, "desktop idle state must not replay retained trades");
 
   const desktopBubble = await page.evaluate(`(() => {
     const el = document.querySelector('.market-token-bubble[aria-label^="BTEST:"]');
@@ -579,7 +561,7 @@ try {
   assert.equal(desktopQuickInside, true, "desktop quick actions must stay within the map");
 
   await page.screenshot("/tmp/solanabubble-desktop.png");
-  console.log("Browser smoke passed: live wave map + v5 flows.");
+  console.log("Browser smoke passed: event-only trade impulses + pulsing token circles + v5 flows.");
 } finally {
   page.ws.close();
 }
