@@ -38,7 +38,7 @@ try {
   assert.match(homeResponse.headers.get('referrer-policy')??'',/strict-origin-when-cross-origin/);
   assert.equal(homeResponse.headers.get('x-powered-by'),null);
   const home=await homeResponse.text();
-  assert.match(home,/Token map/);assert.match(home,/Как да четеш вълните/);assert.match(home,/Анимации/);assert.match(home,/▦ Map/);assert.match(home,/☷ List/);assert.doesNotMatch(home,/>Galaxy</);
+  assert.match(home,/Token map/);assert.match(home,/Как да четеш импулсите/);assert.match(home,/Анимации/);assert.match(home,/▦ Map/);assert.match(home,/☷ List/);assert.doesNotMatch(home,/>Galaxy</);
   const holderHtml=await (await get(`/token/${mint}`)).text();assert.match(holderHtml,/Какво се промени/);assert.match(holderHtml,/Брой показани holders/);assert.match(holderHtml,/Няма достатъчно наблюдавани сделки/);assert.doesNotMatch(holderHtml,/>Positive</);
   for(const section of ['movers','alerts','watchlist']) assert.equal((await get(`/market/${section}`)).status,200);
   const market=await get('/api/market'); assert.equal(market.status,200);

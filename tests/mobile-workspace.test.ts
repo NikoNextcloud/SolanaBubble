@@ -26,7 +26,7 @@ test("mobile market exposes filters and selected token details", () => {
   assert.match(wave, /quick-detail-action/);
   assert.match(theme, /is-token-selected\.is-mobile-open/);
   assert.match(theme, /safe-area-inset-bottom/);
-  assert.match(wave, /LIVE ORDER FLOW/);
+  assert.match(wave, /LIVE TRADES/);
   assert.match(wave, /STRENGTH/);
   assert.match(market, /MarketWaveMap/);
   assert.match(market, /market-fullscreen-button/);
@@ -39,9 +39,10 @@ test("large holder maps use worker physics and hybrid canvas rendering", () => {
   assert.match(worker, /forceSimulation/);
 });
 
-test("live wave particles continuously replay and support dual realtime transports", () => {
-  assert.match(wave, /setInterval\(\(\)=>setCycle/);
-  assert.match(wave, /targeted-comet-/);
+test("live wave particles are event-only and support dual realtime transports", () => {
+  assert.doesNotMatch(wave, /setCycle/);
+  assert.match(wave, /activeWaveEvents/);
+  assert.match(wave, /data-event-only="true"/);
   assert.match(wave, /particle\.side==="buy"/);
   assert.match(wave, /particle\.side==="sell"/);
   assert.match(liveWs, /logsSubscribe/);
@@ -49,7 +50,7 @@ test("live wave particles continuously replay and support dual realtime transpor
   assert.match(liveRealtime, /postgres_changes/);
 });
 
-test("Wave Core preserves LOD, capital-flow mode, continuous trade particles and server live ingestion",()=>{
+test("Wave Core preserves LOD, capital-flow mode, pulsing tokens and server live ingestion",()=>{
   const market=readFileSync(new URL("../components/MarketMap.tsx",import.meta.url),"utf8");
   const wave=readFileSync(new URL("../components/MarketWaveMap.tsx",import.meta.url),"utf8");
   const helius=readFileSync(new URL("../app/api/webhooks/helius/route.ts",import.meta.url),"utf8");
@@ -57,6 +58,8 @@ test("Wave Core preserves LOD, capital-flow mode, continuous trade particles and
   assert.match(market,/capital-flow-toggle/);
   assert.match(market,/market-live-latency/);
   assert.match(wave,/animateMotion/);
+  assert.match(wave,/token-pulse-halo/);
+  assert.doesNotMatch(wave,/recentBuys\.map/);
   assert.match(helius,/HELIUS_WEBHOOK_SECRET/);
   assert.match(helius,/live_market_events/);
 });

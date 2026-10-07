@@ -727,7 +727,7 @@ export default function MarketMap() {
 
       <section className="market-workspace reference-market-workspace">
         <div className="market-map" ref={wrap}>
-          {viewMode === "map" && <div className="lovable-map-hint">Клик: FoMo/GmGn · Двоен клик: Holders · Монетите са вляво · BUY зелено · SELL червено · Вълните сочат Strength вдясно · Drag · Scroll zoom</div>}
+          {viewMode === "map" && <div className="lovable-map-hint">Клик: FoMo/GmGn · Двоен клик: Holders · Кръговете пулсират · BUY/SELL импулс се показва само при нова сделка · Drag · Scroll zoom</div>}
           {watch.ready && (viewMode === "list" ? !filteredTokens.length : !renderedNodes.length) && tokens.length > 0 && <div className="pause-banner">No tokens match your saved filters. Reset filters or add favorites.</div>}
           {streamLive === false && <div className="pause-banner">
             {autoPaused ? "Автоматична пауза след 2 мин. без активност" : "Live режимът е на пауза"} · данните са от кеша
@@ -782,8 +782,8 @@ export default function MarketMap() {
             <button className="market-fullscreen-button" onClick={toggleMapFullscreen} aria-label={isMapFullscreen ? "Exit fullscreen map" : "Fullscreen map"} title={isMapFullscreen ? "Изход от цял екран" : "Карта на цял екран"}>{isMapFullscreen ? "⤡" : "⤢"}</button>
           </div>}
           <details className="market-legend map-signal-legend">
-            <summary>Как да четеш вълните</summary>
-            <div><span><i className="market-buy-dot"/>Зелена вълна = BUY</span><span><i className="market-sell-dot"/>Червена вълна = SELL</span><span>По-силна активност = по-голяма кривина</span><span>Strength: +100 силен buy pressure · 0 баланс · −100 силен sell pressure</span><span className="comet-trust-legend"><i className="direct"/>Движеща точка = реална/запазена сделка <i className="routed"/>Cyan = routed</span><small>Основата е retained 5m traffic sample, допълнен с по-нови live Solana сделки. Scale измерва order-flow balance, не прогноза за цена.</small></div>
+            <summary>Как да четеш импулсите</summary>
+            <div><span><i className="market-buy-dot"/>Зелен импулс = нов BUY</span><span><i className="market-sell-dot"/>Червен импулс = нов SELL</span><span>Без нова сделка няма линия или replay</span><span>Strength: +100 силен buy pressure · 0 баланс · −100 силен sell pressure</span><span className="comet-trust-legend"><i className="direct"/>Движеща точка = live Solana сделка <i className="routed"/>Cyan = routed</span><small>Кръговете пулсират само като визуален маркер. Trade импулсите идват единствено от свежи live events и изчезват след кратката анимация.</small></div>
           </details>
         </div>
 
