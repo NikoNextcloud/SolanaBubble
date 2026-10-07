@@ -41,8 +41,9 @@ test("large holder maps use worker physics and hybrid canvas rendering", () => {
 
 test("live wave particles continuously replay and support dual realtime transports", () => {
   assert.match(wave, /setInterval\(\(\)=>setCycle/);
-  assert.match(wave, /targeted-comet-in/);
-  assert.match(wave, /targeted-comet-out/);
+  assert.match(wave, /targeted-comet-/);
+  assert.match(wave, /particle\.side==="buy"/);
+  assert.match(wave, /particle\.side==="sell"/);
   assert.match(liveWs, /logsSubscribe/);
   assert.match(liveWs, /getTransaction/);
   assert.match(liveRealtime, /postgres_changes/);
