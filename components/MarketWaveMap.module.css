@@ -21,14 +21,14 @@
 .strength{font-size:9px;font-weight:800;paint-order:stroke;stroke:#111820;stroke-width:3px}
 .buyText{fill:#6ce2a2}.sellText{fill:#f17b83}.neutralText{fill:#bac3cc}
 .endpoint{stroke:#111820;stroke-width:1.5}
-.event{pointer-events:none}
+.event{pointer-events:auto;cursor:pointer}
 .eventDot{fill:#fff;stroke-width:1.6;filter:drop-shadow(0 0 5px currentColor)}
 .eventBuy{color:#68e6a3;stroke:#68e6a3}.eventSell{color:#ff7881;stroke:#ff7881}
 .eventWhale .eventDot{r:4px;stroke-width:2.2}.eventSmart .eventDot{filter:drop-shadow(0 0 5px #b9ff7a) drop-shadow(0 0 10px #8fdc5a)}.eventCoordinated .eventDot{filter:drop-shadow(0 0 5px #efafff) drop-shadow(0 0 10px #d76aff)}
 .quick{position:absolute;z-index:8;display:flex;align-items:center;gap:5px;padding:5px;border:1px solid #46515c;border-radius:7px;background:rgba(23,30,37,.96);box-shadow:0 8px 28px rgba(0,0,0,.32)}
 .quick a,.quick button{border:1px solid #3d4852;border-radius:5px;background:#28313a;color:#e8edf1;padding:6px 8px;font:700 9px/1 Arial;text-decoration:none;white-space:nowrap;cursor:pointer}
 .quick a:hover,.quick button:hover{border-color:#6f7d89;background:#303b45}
-.status{position:absolute;left:12px;bottom:10px;z-index:5;padding:5px 7px;border:1px solid #39434c;border-radius:5px;background:rgba(16,22,27,.82);color:#88949f;font-size:8px}
+.detail{position:absolute;right:82px;bottom:10px;z-index:9;display:grid;gap:3px;min-width:210px;padding:9px 30px 9px 10px;border:1px solid #495661;border-radius:7px;background:rgba(18,24,30,.96);box-shadow:0 10px 30px rgba(0,0,0,.35);color:#dce3e8}.detail strong{font-size:10px}.detail span,.detail small{font-size:8px;color:#98a4ae}.detail button{position:absolute;right:6px;top:5px;border:0;background:none;color:#9aa5af;cursor:pointer;font-size:15px}.status{position:absolute;left:12px;bottom:10px;z-index:5;padding:5px 7px;border:1px solid #39434c;border-radius:5px;background:rgba(16,22,27,.82);color:#88949f;font-size:8px}
 .status b{color:#d9e0e5}.paused .activeWave{animation-play-state:paused}
 @keyframes waveStream{to{stroke-dashoffset:-118}}
 @media(max-width:700px){.axis{font-size:8px}.symbol{font-size:9px}.meta{display:none}.quick{gap:3px;padding:4px}.quick a,.quick button{padding:6px;font-size:8px}}
