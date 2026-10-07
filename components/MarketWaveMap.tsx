@@ -24,7 +24,11 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
  const safeWidth=Math.max(520,width||900),safeHeight=Math.max(420,height||560);
  const [clock,setClock]=useState(()=>Date.now());
  const [activeParticleId,setActiveParticleId]=useState<string|null>(null);
- useEffect(()=>{\n   const started=Date.now();setClock(started);\n   const timers=events.map(event=>Date.parse(event.block_at)+2800-started).filter(delay=>Number.isFinite(delay)&&delay>0&&delay<3000).map(delay=>window.setTimeout(()=>setClock(Date.now()),delay+40));\n   return()=>timers.forEach(id=>window.clearTimeout(id));\n },[events]);
+ useEffect(()=>{
+   const started=Date.now();setClock(started);
+   const timers=events.map(event=>Date.parse(event.block_at)+2800-started).filter(delay=>Number.isFinite(delay)&&delay>0&&delay<3000).map(delay=>window.setTimeout(()=>setClock(Date.now()),delay+40));
+   return()=>timers.forEach(id=>window.clearTimeout(id));
+ },[events]);
  const tokenByMint=useMemo(()=>new Map(tokens.map(t=>[t.mint,t])),[tokens]);
  const metrics=useMemo(()=>new Map<string,WaveMetrics>(tokens.map(t=>[t.mint,waveMetrics(t,events,now)])),[tokens,events,now]);
  const layout=useMemo(()=>waveMapLayout(tokens,metrics,safeWidth,safeHeight),[tokens,metrics,safeWidth,safeHeight]);
