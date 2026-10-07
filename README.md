@@ -2,6 +2,10 @@
 
 Live Solana market and holder visualization built with Next.js, Supabase, Solana Public RPC, DexScreener and optional Solscan enrichment.
 
+## v1 product completion
+
+The production terminal includes first-run onboarding, global keyboard search, a persistent alerts inbox, public live-data reliability telemetry, sampled coverage disclosure, 12 desktop focus tokens with hype/activity-driven living waves, real BUY/SELL particles, Holder Map, Watchlist sync, Smart Alerts, Decision Terminal, Smart Money / Wallet Intelligence, Capital Flow, Time Machine / Backtesting and production health tooling. Reliability panels deliberately distinguish quiet markets from missing/sparse data; fresh event timing is based on `observed_at`, not delayed block time.
+
 ## Data flow
 
 ```
