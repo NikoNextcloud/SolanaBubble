@@ -1,0 +1,35 @@
+.root{position:absolute;inset:0;overflow:hidden;background:radial-gradient(circle at 44% 46%,#222c35 0,#161d24 48%,#0e1318 100%)}
+.svg{position:absolute;inset:0;width:100%;height:100%;touch-action:none;user-select:none}
+.grid{stroke:#73808d;stroke-opacity:.12;stroke-width:1}
+.zero{stroke:#aeb8c2;stroke-opacity:.3;stroke-dasharray:4 6}
+.scale{stroke:#798692;stroke-opacity:.55;stroke-width:1.25}
+.axis{fill:#8d99a5;font-size:9px;letter-spacing:.08em;font-weight:700}
+.tick{fill:#7d8994;font-size:9px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.tickBuy{fill:#65d99a}.tickSell{fill:#ef6f78}
+.wave{fill:none;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+.buyBase{stroke:#58d696;stroke-width:1.35;opacity:.32}
+.sellBase{stroke:#ef6873;stroke-width:1.35;opacity:.32}
+.activeWave{stroke-width:2.1;opacity:.86;stroke-dasharray:22 96;animation:waveStream 2.8s linear infinite}
+.buyActive{stroke:#73efad}.sellActive{stroke:#ff7a84}
+.token{cursor:pointer;outline:none}
+.token:focus-visible .coin{stroke:#fff;stroke-width:2.5}
+.coin{fill:#202830;stroke:#768390;stroke-width:1.4;filter:drop-shadow(0 0 7px rgba(101,217,154,.14))}
+.coinBuy{stroke:#60dc9b}.coinSell{stroke:#ed717a}.coinSelected{stroke:#fff;stroke-width:2.5}
+.icon{pointer-events:none}
+.symbol{fill:#eff4f7;font-size:10px;font-weight:800;paint-order:stroke;stroke:#111820;stroke-width:3px}
+.meta{fill:#8e9aa5;font-size:8px;paint-order:stroke;stroke:#111820;stroke-width:3px}
+.strength{font-size:9px;font-weight:800;paint-order:stroke;stroke:#111820;stroke-width:3px}
+.buyText{fill:#6ce2a2}.sellText{fill:#f17b83}.neutralText{fill:#bac3cc}
+.endpoint{stroke:#111820;stroke-width:1.5}
+.event{pointer-events:none}
+.eventDot{fill:#fff;stroke-width:1.6;filter:drop-shadow(0 0 5px currentColor)}
+.eventBuy{color:#68e6a3;stroke:#68e6a3}.eventSell{color:#ff7881;stroke:#ff7881}
+.eventWhale .eventDot{r:4px;stroke-width:2.2}.eventSmart .eventDot{filter:drop-shadow(0 0 5px #b9ff7a) drop-shadow(0 0 10px #8fdc5a)}.eventCoordinated .eventDot{filter:drop-shadow(0 0 5px #efafff) drop-shadow(0 0 10px #d76aff)}
+.quick{position:absolute;z-index:8;display:flex;align-items:center;gap:5px;padding:5px;border:1px solid #46515c;border-radius:7px;background:rgba(23,30,37,.96);box-shadow:0 8px 28px rgba(0,0,0,.32)}
+.quick a,.quick button{border:1px solid #3d4852;border-radius:5px;background:#28313a;color:#e8edf1;padding:6px 8px;font:700 9px/1 Arial;text-decoration:none;white-space:nowrap;cursor:pointer}
+.quick a:hover,.quick button:hover{border-color:#6f7d89;background:#303b45}
+.status{position:absolute;left:12px;bottom:10px;z-index:5;padding:5px 7px;border:1px solid #39434c;border-radius:5px;background:rgba(16,22,27,.82);color:#88949f;font-size:8px}
+.status b{color:#d9e0e5}.paused .activeWave{animation-play-state:paused}
+@keyframes waveStream{to{stroke-dashoffset:-118}}
+@media(max-width:700px){.axis{font-size:8px}.symbol{font-size:9px}.meta{display:none}.quick{gap:3px;padding:4px}.quick a,.quick button{padding:6px;font-size:8px}}
+@media(prefers-reduced-motion:reduce){.activeWave{animation:none}.event{display:none}}
