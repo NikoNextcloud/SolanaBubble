@@ -217,7 +217,7 @@ export default function MarketMap() {
     setSignalNow(Date.now());const timer=setInterval(()=>setSignalNow(Date.now()),30000);
     return()=>{media.removeEventListener('change',sync);clearInterval(timer);};
   },[]);
-  const animateSignals=streamLive&&pulsesEnabled&&!reducedMotion;
+  const animateSignals=streamLive&&pulsesEnabled;
   function togglePulses(){setPulsesEnabled(v=>{try{localStorage.setItem('solanabubble:map-pulses',v?'off':'on');}catch{}return !v;});}
 
   const liveTargets=useMemo<LivePoolTarget[]>(()=>{
@@ -688,7 +688,7 @@ export default function MarketMap() {
             onClick={() => setAutoGraph((v) => !v)}
             title="Автоматично разгръща токени със surge или buy pressure, най-много веднъж на 45 секунди."
           >{autoGraph ? "✦ Auto graph" : "○ Auto graph"}</button>
-          <button type="button" aria-pressed={pulsesEnabled&&!reducedMotion} disabled={reducedMotion} onClick={togglePulses} title={reducedMotion?'Reduced motion е включен в системата.':'Спира визуалните ефекти; обновяването на данните остава активно.'}>◌ Анимации: {pulsesEnabled&&!reducedMotion?'Вкл':'Изкл'}</button>
+          <button type="button" aria-pressed={pulsesEnabled} onClick={togglePulses} title={reducedMotion?'Reduced motion: импулсите остават видими, но CSS движението е ограничено.':'Спира визуалните ефекти; обновяването на данните остава активно.'}>◌ Анимации: {pulsesEnabled?'Вкл':'Изкл'}</button>
           <button type="button" onClick={resetMarketView}>↺ Нулирай изгледа</button>
         </div>
       </div>
