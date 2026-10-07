@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {activeWaveEvents,buildFlowTrail,livingWaveDynamics,livingWavePath,selectWaveTokens,tokenStrength,waveAmplitude,waveMapLayout,waveMetrics,wavePath} from '../lib/market/wave-map';
+import {activeWaveEvents,buildFlowTrail,livingWaveDynamics,livingWavePath,opportunityWaveSignal,selectWaveTokens,tokenStrength,waveAmplitude,waveMapLayout,waveMetrics,wavePath} from '../lib/market/wave-map';
 
 test('wave amplitude grows with stronger order flow',()=>{
   assert.ok(waveAmplitude(80,100)>waveAmplitude(20,100));
@@ -104,4 +104,13 @@ test('focus selection caps visual density and prioritizes selected and fresh-liv
   assert.equal(selected.length,6);
   assert.ok(selected.some(t=>t.mint==='mint-1'));
   assert.ok(selected.some(t=>t.mint==='mint-2'));
+});
+
+
+test('opportunity wave stays conservative',()=>{
+  const signal=opportunityWaveSignal({mint:'11111111111111111111111111111111',opportunityScore:86,signalConfidenceScore:82,manipulationRiskScore:28,capitalFlowScore:72,momentumScore:69,divergenceSignal:'bullish'});
+  assert.equal(signal.active,true);
+  assert.equal(signal.strength,'strong');
+  const risky=opportunityWaveSignal({mint:'22222222222222222222222222222222',opportunityScore:92,signalConfidenceScore:90,manipulationRiskScore:78,capitalFlowScore:80,momentumScore:76});
+  assert.equal(risky.active,false);
 });

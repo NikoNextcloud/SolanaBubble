@@ -26,6 +26,10 @@ export async function checkFlowTrajectoryUi(page) {
       livingHeadCount: document.querySelectorAll(".living-wave-head").length,
       waveMotion: document.querySelector(".living-wave-layer")?.getAttribute("data-wave-motion"),
       movingParticleCount: document.querySelectorAll(".moving-flow-particle animateMotion").length,
+      opportunityWaveCount: document.querySelectorAll(".opportunity-wave-path").length,
+      strongOpportunityCount: document.querySelectorAll('.opportunity-wave-group[data-strength="strong"]').length,
+      hypeAuraCount: document.querySelectorAll(".token-hype-aura").length,
+      opportunityAnimations: [...document.querySelectorAll(".opportunity-wave-path")].map((el) => getComputedStyle(el).animationPlayState),
       animationStates: [...document.querySelectorAll(".living-wave-path")].map((el) => {
         const style = getComputedStyle(el);
         return { name: style.animationName, state: style.animationPlayState, offset: style.strokeDashoffset };
@@ -54,6 +58,10 @@ export async function checkFlowTrajectoryUi(page) {
   assert.equal(ui.waveMotion, "continuous", "living-wave layer must use continuous motion");
   assert.ok(ui.animationStates.every((row) => row.name !== "none" && row.state === "running"), "all focus-token waves must be actively animated");
   assert.ok(ui.movingParticleCount >= 4, "retained real BUY/SELL samples must travel along the living waves");
+  assert.ok(ui.opportunityWaveCount >= 1, "qualified token must render a white opportunity wave");
+  assert.ok(ui.strongOpportunityCount >= 1, "high-confidence low-risk fixture must render a strong opportunity wave");
+  assert.ok(ui.hypeAuraCount >= 1, "high-hype token must render a stronger hype aura");
+  assert.ok(ui.opportunityAnimations.every((state) => state === "running"), "opportunity waves must stay animated");
   const offsetBefore = ui.animationStates[0]?.offset;
   await new Promise((resolve) => setTimeout(resolve, 360));
   const offsetAfter = await page.evaluate("getComputedStyle(document.querySelector('.living-wave-path')).strokeDashoffset");
