@@ -5,7 +5,15 @@ import {createClient,type RealtimeChannel} from "@supabase/supabase-js";
 import type {LiveMarketEvent} from "@/lib/market/live-events";
 
 const KEEP=80;
-const recent=(event:LiveMarketEvent)=>Date.now()-Date.parse(event.block_at)<20*60_000;
+const seenAt=(event:LiveMarketEvent)=>{
+  const observed=Date.parse(event.observed_at);
+  if(Number.isFinite(observed))return observed;
+  return Date.parse(event.block_at);
+};
+const recent=(event:LiveMarketEvent)=>{
+  const at=seenAt(event),age=Date.now()-at;
+  return Number.isFinite(at)&&age>=0&&age<20*60_000;
+};
 
 export function useLiveMarketEvents(enabled=true){
   const [events,setEvents]=useState<LiveMarketEvent[]>([]);
@@ -22,12 +30,20 @@ export function useLiveMarketEvents(enabled=true){
     let channel:RealtimeChannel|null=null;
     const client=createClient(url,anon,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false},realtime:{params:{eventsPerSecond:20}}});
     const push=(row:LiveMarketEvent)=>{
-      if(!active||!row?.signature||!recent(row))return;
-      const key=`${row.mint}:${row.signature}:${row.wallet}`;
+      if(!active||!row?.signature)return;
+      const normalized={...row,observed_at:row.observed_at||new Date().toISOString()};
+      if(!recent(normalized))return;
+      const key=`${normalized.mint}:${normalized.signature}:${normalized.wallet}`;
       if(seen.current.has(key))return;
       seen.current.add(key);
-      setEvents(current=>[row,...current.filter(item=>`${item.mint}:${item.signature}:${item.wallet}`!==key)].slice(0,KEEP));
+      setEvents(current=>[normalized,...current.filter(item=>`${item.mint}:${item.signature}:${item.wallet}`!==key)].slice(0,KEEP));
     };
+    const smokeEvent=(event:Event)=>{
+      if(process.env.NEXT_PUBLIC_BROWSER_SMOKE!=="1")return;
+      const row=(event as CustomEvent<LiveMarketEvent>).detail;
+      if(row)push(row);
+    };
+    if(process.env.NEXT_PUBLIC_BROWSER_SMOKE==="1")window.addEventListener("solanabubble:browser-smoke-live-event",smokeEvent);
 
     setStatus("connecting");
     client.from("live_market_events")
@@ -39,8 +55,8 @@ export function useLiveMarketEvents(enabled=true){
         if(!active)return;
         if(error){setStatus("error");return;}
         const rows=(data??[]) as LiveMarketEvent[];
+        // Retained rows seed de-duplication only. They must never replay as live impulses.
         for(const row of rows)seen.current.add(`${row.mint}:${row.signature}:${row.wallet}`);
-        setEvents(rows.filter(recent));
       });
 
     channel=client.channel("market-capital-flow")
@@ -58,6 +74,7 @@ export function useLiveMarketEvents(enabled=true){
     return()=>{
       active=false;
       window.clearInterval(trim);
+      if(process.env.NEXT_PUBLIC_BROWSER_SMOKE==="1")window.removeEventListener("solanabubble:browser-smoke-live-event",smokeEvent);
       if(channel)void client.removeChannel(channel);
     };
   },[enabled]);
