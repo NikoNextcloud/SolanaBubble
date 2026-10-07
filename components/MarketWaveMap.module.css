@@ -26,6 +26,12 @@
 .flowDotLive{stroke:#fff;stroke-width:1.6;animation:flowDotPop 1.05s ease-out infinite}
 .flowHead{fill:#0b0f14;stroke-width:2;vector-effect:non-scaling-stroke;filter:drop-shadow(0 0 8px currentColor);pointer-events:none}
 .flowHeadBuy{stroke:#35df86;color:#35df86}.flowHeadSell{stroke:#ff5f6b;color:#ff5f6b}
+.livingWave{fill:none;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;opacity:.56;stroke-dasharray:10 8;animation:livingWaveDrift 1.15s linear infinite;pointer-events:none}
+.livingWaveBuy{stroke:#35df86;filter:drop-shadow(0 0 3px rgba(53,223,134,.42))}
+.livingWaveSell{stroke:#ff5f6b;filter:drop-shadow(0 0 3px rgba(255,95,107,.42))}
+.livingWaveNeutral{stroke:#9aa6b2;opacity:.34}
+.livingHead{fill:#0b0f14;stroke-width:2;vector-effect:non-scaling-stroke;filter:drop-shadow(0 0 8px currentColor);pointer-events:none}
+.livingHeadBuy{stroke:#35df86;color:#35df86}.livingHeadSell{stroke:#ff5f6b;color:#ff5f6b}.livingHeadNeutral{stroke:#9aa6b2;color:#9aa6b2}
 .event{pointer-events:auto;cursor:pointer}
 .eventWave{fill:none;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;stroke-dasharray:42 128;animation:eventImpulse 4.05s linear 1 forwards;filter:drop-shadow(0 0 5px currentColor)}
 .eventWaveBuy{stroke:#35df86;color:#35df86}.eventWaveSell{stroke:#ff5f6b;color:#ff5f6b}
@@ -38,9 +44,10 @@
 .quick a:hover,.quick button:hover{border-color:#6f7d89;background:#303b45}
 .detail{position:absolute;right:82px;bottom:10px;z-index:9;display:grid;gap:3px;min-width:210px;padding:9px 30px 9px 10px;border:1px solid #495661;border-radius:7px;background:rgba(18,24,30,.96);box-shadow:0 10px 30px rgba(0,0,0,.35);color:#dce3e8}.detail strong{font-size:10px}.detail span,.detail small{font-size:8px;color:#98a4ae}.detail button{position:absolute;right:6px;top:5px;border:0;background:none;color:#9aa5af;cursor:pointer;font-size:15px}
 .status{position:absolute;left:16px;bottom:10px;z-index:5;padding:5px 8px;border:1px solid #343f49;border-radius:5px;background:rgba(12,17,22,.86);color:#7f8b96;font-size:8px}.status b{color:#5ee39e}
-.paused .pulseHalo{animation-play-state:paused}.paused .eventWave{display:none}
+.paused .pulseHalo,.paused .livingWave{animation-play-state:paused}.paused .eventWave{display:none}
 @keyframes coinPulse{0%{opacity:.44;transform:scale(.86)}58%{opacity:.17;transform:scale(1.14)}100%{opacity:0;transform:scale(1.3)}}
 @keyframes eventImpulse{0%{opacity:0;stroke-dashoffset:120}8%{opacity:1}78%{opacity:.92}100%{opacity:0;stroke-dashoffset:-220}}
 @keyframes flowDotPop{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.7;transform:scale(1.4)}}
+@keyframes livingWaveDrift{to{stroke-dashoffset:-36}}
 @media(max-width:700px){.axis{font-size:8px}.symbol{font-size:9px}.meta,.strength{font-size:7px}.quick{gap:3px;padding:4px}.quick a,.quick button{padding:6px;font-size:8px}.status{max-width:78%;line-height:1.35}.focusInfo{left:12px;top:42px;max-width:72%;flex-wrap:wrap}}
-@media(prefers-reduced-motion:reduce){.pulseHalo{animation:none;opacity:.22}.eventWave{animation:none;opacity:.95}.eventDot{opacity:.95}.flowDotLive{animation:none}}
+@media(prefers-reduced-motion:reduce){.pulseHalo{animation:none;opacity:.22}.livingWave{animation:none;stroke-dasharray:none}.eventWave{animation:none;opacity:.95}.eventDot{opacity:.95}.flowDotLive{animation:none}}

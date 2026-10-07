@@ -23,6 +23,9 @@ export async function checkFlowTrajectoryUi(page) {
       strengthTickCount: document.querySelectorAll(".wave-strength-tick").length,
       visibleTokenCount: Number(document.querySelector(".market-pan-surface")?.getAttribute("data-visible-tokens") || 0),
       focusInfo: document.querySelector("[class*=focusInfo]")?.textContent || "",
+      livingWaveCount: document.querySelectorAll(".living-wave-path").length,
+      livingHeadCount: document.querySelectorAll(".living-wave-head").length,
+      wavePhase: document.querySelector(".living-wave-layer")?.getAttribute("data-wave-phase"),
     };
   })()`);
   assert.match(ui.axisTitle, /TOKENS/);
@@ -43,4 +46,10 @@ export async function checkFlowTrajectoryUi(page) {
   assert.equal(ui.fullscreenButton, true, "map must expose a fullscreen control");
   assert.equal(ui.fullscreenVisible, true, "fullscreen control must be visibly reachable");
   assert.equal(ui.fullscreenInsideMap, true, "fullscreen control must stay inside the map");
+  assert.equal(ui.livingWaveCount, ui.visibleTokenCount, "every visible focus token must have its own living wave");
+  assert.equal(ui.livingHeadCount, ui.visibleTokenCount, "every visible focus token must have a moving head marker");
+  const phaseBefore = ui.wavePhase;
+  await new Promise((resolve) => setTimeout(resolve, 360));
+  const phaseAfter = await page.evaluate("document.querySelector('.living-wave-layer')?.getAttribute('data-wave-phase')");
+  assert.notEqual(phaseAfter, phaseBefore, "living waves must continuously advance, not remain static");
 }
