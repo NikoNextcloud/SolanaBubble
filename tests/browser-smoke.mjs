@@ -323,7 +323,7 @@ try {
     };
   })()`);
   assert.match(coordinateUi.axisTitle, /COINS/);
-  assert.match(coordinateUi.axisTitle, /LIVE ORDER FLOW/);
+  assert.match(coordinateUi.axisTitle, /LIVE TRADES/);
   assert.match(coordinateUi.axisTitle, /STRENGTH/);
   assert.equal(coordinateUi.buyWaveCount, 0, "idle market must not render BUY impulses");
   assert.equal(coordinateUi.sellWaveCount, 0, "idle market must not render SELL impulses");
