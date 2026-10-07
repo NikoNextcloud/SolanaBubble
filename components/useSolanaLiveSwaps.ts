@@ -75,7 +75,7 @@ export function useSolanaLiveSwaps(targets:LivePoolTarget[],enabled=true){
       try{ws=new WebSocket(WS_URL);}catch{scheduleReconnect();return;}
       ws.onopen=()=>{
         retry=0;setStatus("live");
-        targets.slice(0,4).forEach((target,index)=>{
+        targets.slice(0,8).forEach((target,index)=>{
           const id=index+1;requestTargets.set(id,target);
           ws?.send(JSON.stringify({jsonrpc:"2.0",id,method:"logsSubscribe",params:[{mentions:[target.pool]},{commitment:"confirmed"}]}));
         });
