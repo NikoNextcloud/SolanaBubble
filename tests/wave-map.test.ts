@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {activeWaveEvents,buildFlowTrail,selectWaveTokens,tokenStrength,waveAmplitude,waveMapLayout,waveMetrics,wavePath} from '../lib/market/wave-map';
+import {activeWaveEvents,buildFlowTrail,livingWaveDynamics,livingWavePath,selectWaveTokens,tokenStrength,waveAmplitude,waveMapLayout,waveMetrics,wavePath} from '../lib/market/wave-map';
 
 test('wave amplitude grows with stronger order flow',()=>{
   assert.ok(waveAmplitude(80,100)>waveAmplitude(20,100));
@@ -39,11 +39,11 @@ test('wave metrics augment retained sample only with newer live events',()=>{
   assert.ok(result.strength>0);
 });
 
-test('desktop wave layout uses two readable token columns without overlap',()=>{
-  const tokens=Array.from({length:8},(_,i)=>({mint:String(i).padStart(32,'1'),hypeScore:50}));
+test('desktop wave layout fits twelve tokens in two readable columns without overlap',()=>{
+  const tokens=Array.from({length:12},(_,i)=>({mint:String(i).padStart(32,'1'),hypeScore:50}));
   const metrics=new Map(tokens.map((t,i)=>[t.mint,{buys:1,sells:1,buyUsd:null,sellUsd:null,strength:i%2?50:-50,buyIntensity:2,sellIntensity:2,liveCount:0,lastEventAt:null}]));
   const layout=waveMapLayout(tokens,metrics,1000,820);
-  assert.equal(layout.length,8);
+  assert.equal(layout.length,12);
   assert.equal(new Set(layout.map(p=>p.x)).size,2);
   assert.ok(layout.every(p=>p.x<260));
   assert.ok(layout.every(p=>p.endY>=92&&p.endY<=742));
@@ -51,6 +51,19 @@ test('desktop wave layout uses two readable token columns without overlap',()=>{
     const column=layout.filter(p=>p.x===x).sort((a,b)=>a.y-b.y);
     for(let i=1;i<column.length;i++)assert.ok(column[i].y-column[i-1].y>=80);
   }
+});
+
+test('higher hype and activity make the living wave faster and more nervous',()=>{
+  const calm=livingWaveDynamics(12,1,1);
+  const hot=livingWaveDynamics(92,18,12);
+  assert.ok(hot.amplitude>calm.amplitude);
+  assert.ok(hot.frequency>calm.frequency);
+  assert.ok(hot.duration<calm.duration);
+  const calmPath=livingWavePath(100,200,600,180,calm,0);
+  const hotPath=livingWavePath(100,200,600,180,hot,0);
+  assert.notEqual(hotPath,calmPath);
+  assert.match(hotPath,/^M100\.0,200\.0/);
+  assert.match(hotPath,/L600\.0,180\.0$/);
 });
 
 test('real flow trail moves buys upward and sells downward',()=>{

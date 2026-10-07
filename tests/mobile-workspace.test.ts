@@ -39,7 +39,7 @@ test("large holder maps use worker physics and hybrid canvas rendering", () => {
   assert.match(worker, /forceSimulation/);
 });
 
-test("live wave particles are event-only and support dual realtime transports", () => {
+test("live waves animate all focus tokens while fresh impulses stay event-only", () => {
   assert.doesNotMatch(wave, /setCycle/);
   assert.match(wave, /activeWaveEvents/);
   assert.match(wave, /selectWaveTokens/);
@@ -51,7 +51,10 @@ test("live wave particles are event-only and support dual realtime transports", 
   assert.match(liveWs, /targets\.slice\(0,16\)/);
   assert.match(liveWs, /getTransaction/);
   assert.match(liveWs, /existing=queue\.findIndex/);
-  assert.match(wave, /Math\.max\(8,Math\.floor\(\(safeHeight-180\)\/82\)\)/);
+  assert.match(wave, /: 12;/);
+  assert.match(wave, /livingWaveDynamics/);
+  assert.match(wave, /livingWavePath/);
+  assert.match(wave, /moving-flow-particle/);
   assert.match(liveRealtime, /postgres_changes/);
 });
 

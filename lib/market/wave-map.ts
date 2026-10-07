@@ -11,6 +11,7 @@ export type WaveLayout={mint:string;x:number;y:number;r:number;strength:number;e
 export type ActiveWaveEvent=Pick<LiveMarketEvent,'mint'|'signature'|'wallet'|'side'|'usd_value'|'evidence'|'whale'|'block_at'|'observed_at'>;
 export type FlowTrailTrade={signature:string;side:'buy'|'sell';usdValue:number|null;at:string;live?:boolean};
 export type FlowTrailPoint={x:number;y:number;side:'buy'|'sell'|null;usdValue:number|null;signature:string|null;live:boolean};
+export type LivingWaveDynamics={amplitude:number;frequency:number;duration:number;activity:number};
 
 const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v);
 const clamp=(v:number,min:number,max:number)=>Math.max(min,Math.min(max,v));
@@ -39,6 +40,31 @@ export function wavePath(x1:number,y1:number,x2:number,y2:number,amplitude:numbe
     const t=i/48,x=x1+(x2-x1)*t;
     const smooth=t*t*(3-2*t);
     const y=y1+(y2-y1)*smooth+Math.sin(t*Math.PI*8+phase)*Math.sin(t*Math.PI)*amplitude;
+    return (i===0?'M':'L')+x.toFixed(1)+','+y.toFixed(1);
+  }).join(' ');
+}
+
+export function livingWaveDynamics(hypeScore:number|null|undefined,buys:number,sells:number):LivingWaveDynamics{
+  const hype=clamp(Number(hypeScore??0),0,100)/100;
+  const trades=Math.max(0,buys)+Math.max(0,sells);
+  const activity=clamp(Math.log1p(trades)/Math.log(31),0,1);
+  return {
+    amplitude:6+hype*10+activity*18,
+    frequency:2.4+hype*1.8+activity*4.8,
+    duration:clamp(3.1-hype*.75-activity*1.55,.72,3.1),
+    activity,
+  };
+}
+
+export function livingWavePath(x1:number,y1:number,x2:number,y2:number,dynamics:LivingWaveDynamics,phase=0){
+  return Array.from({length:65},(_,i)=>{
+    const t=i/64,x=x1+(x2-x1)*t;
+    const smooth=t*t*(3-2*t);
+    const base=y1+(y2-y1)*smooth;
+    const envelope=Math.sin(Math.PI*t);
+    const primary=Math.sin(t*Math.PI*dynamics.frequency*2+phase);
+    const nervous=Math.sin(t*Math.PI*dynamics.frequency*4.6+phase*1.7)*(.18+.3*dynamics.activity);
+    const y=base+(primary+nervous)*envelope*dynamics.amplitude;
     return (i===0?'M':'L')+x.toFixed(1)+','+y.toFixed(1);
   }).join(' ');
 }
