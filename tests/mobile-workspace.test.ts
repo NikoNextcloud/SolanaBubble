@@ -48,8 +48,10 @@ test("live wave particles are event-only and support dual realtime transports", 
   assert.match(wave, /particle\.side==="buy"/);
   assert.match(wave, /particle\.side==="sell"/);
   assert.match(liveWs, /logsSubscribe/);
-  assert.match(liveWs, /targets\.slice\(0,8\)/);
+  assert.match(liveWs, /targets\.slice\(0,16\)/);
   assert.match(liveWs, /getTransaction/);
+  assert.match(liveWs, /existing=queue\.findIndex/);
+  assert.match(wave, /Math\.max\(8,Math\.floor\(\(safeHeight-180\)\/82\)\)/);
   assert.match(liveRealtime, /postgres_changes/);
 });
 
