@@ -53,6 +53,19 @@ test('desktop wave layout fits twelve tokens in two readable columns without ove
   }
 });
 
+test('zoom-out density layout fits thirty tokens across three compact columns',()=>{
+  const tokens=Array.from({length:30},(_,i)=>({mint:'dense-'+i,hypeScore:20+(i%70)}));
+  const metrics=new Map(tokens.map((t,i)=>[t.mint,{buys:2,sells:1,buyUsd:null,sellUsd:null,strength:(i%5)*20-40,buyIntensity:2,sellIntensity:1,liveCount:0,lastEventAt:null}]));
+  const layout=waveMapLayout(tokens,metrics,1000,820);
+  assert.equal(layout.length,30);
+  assert.equal(new Set(layout.map(p=>p.x)).size,3);
+  for(const x of new Set(layout.map(p=>p.x))){
+    const column=layout.filter(p=>p.x===x).sort((a,b)=>a.y-b.y);
+    for(let i=1;i<column.length;i++)assert.ok(column[i].y-column[i-1].y>40);
+  }
+  assert.ok(layout.every(p=>p.r>=18&&p.r<=27));
+});
+
 test('higher hype and activity make the living wave faster and more nervous',()=>{
   const calm=livingWaveDynamics(12,1,1);
   const hot=livingWaveDynamics(92,18,12);
