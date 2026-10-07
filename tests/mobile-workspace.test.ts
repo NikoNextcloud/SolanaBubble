@@ -26,7 +26,7 @@ test("mobile market exposes filters and selected token details", () => {
   assert.match(wave, /quick-detail-action/);
   assert.match(theme, /is-token-selected\.is-mobile-open/);
   assert.match(theme, /safe-area-inset-bottom/);
-  assert.match(wave, /LIVE ORDER FLOW/);
+  assert.match(wave, /LIVE TRADES/);
   assert.match(wave, /STRENGTH/);
   assert.match(market, /MarketWaveMap/);
   assert.match(market, /market-fullscreen-button/);
