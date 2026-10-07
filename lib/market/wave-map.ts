@@ -70,7 +70,7 @@ export function opportunityWaveSignal(token:WaveTokenInput):OpportunityWaveSigna
   const score=Math.round(clamp(opportunity*.36+confidence*.26+capital*.18+momentum*.10+(100-risk)*.10,0,100));
   const partial=!finite(token.capitalFlowScore)||!finite(token.momentumScore);
   const intensity=active?clamp((score-65)/30,.22,1):0;
-  const strength:OpportunityWaveSignal['strength']=!active?'none':score>=82&&confidence>=75&&risk<=40?'strong':'developing';
+  const strength:OpportunityWaveSignal['strength']=!active?'none':score>=78&&confidence>=75&&risk<=40?'strong':'developing';
   const reasons:string[]=[];
   if(opportunity>=75)reasons.push('Opportunity '+Math.round(opportunity));
   if(confidence>=65)reasons.push('Confidence '+Math.round(confidence));
