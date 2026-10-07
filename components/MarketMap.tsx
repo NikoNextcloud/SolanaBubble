@@ -785,7 +785,7 @@ export default function MarketMap() {
           </div>}
           <details className="market-legend map-signal-legend">
             <summary>Как да четеш импулсите</summary>
-            <div><span><i className="market-buy-dot"/>Зелен импулс = нов BUY</span><span><i className="market-sell-dot"/>Червен импулс = нов SELL</span><span>Без нова сделка няма линия или replay</span><span>Strength: +100 силен buy pressure · 0 баланс · −100 силен sell pressure</span><span className="comet-trust-legend"><i className="direct"/>Движеща точка = live Solana сделка <i className="routed"/>Cyan = routed</span><small>Кръговете пулсират само като визуален маркер. Trade импулсите идват единствено от свежи live events и изчезват след кратката анимация.</small></div>
+            <div><span><i className="market-buy-dot"/>Зелен импулс = нов BUY</span><span><i className="market-sell-dot"/>Червен импулс = нов SELL</span><span>Бяла вълна = по-силен opportunity setup (Opportunity + Confidence + нисък Risk), не гаранция за печалба</span><span>По-силно сияние на токена = по-висок Hype</span><span>Strength: +100 силен buy pressure · 0 баланс · −100 силен sell pressure</span><span className="comet-trust-legend"><i className="direct"/>Движеща точка = live Solana сделка <i className="routed"/>Cyan = routed</span><small>BUY/SELL точките са реални observed swaps. Бялата opportunity вълна е моделна индикация и се показва само при достатъчно confidence и контролиран risk.</small></div>
           </details>
         </div>
 
