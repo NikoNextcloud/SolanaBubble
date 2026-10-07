@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {PublicSolanaRpcProvider,SolanaRpcError,rpcEndpoint} from '../lib/rpc-provider';
 import {selectHolderWork} from '../lib/market/scheduling';
+import {classifyReliability} from '../lib/market/reliability';
 test('FIFO priority uses one slot and remaining budget rotates tracked tokens',()=>{
  const tokens=[{mint:'a'},{mint:'b'},{mint:'c'}];const first=selectHolderWork(tokens,['c','b'],0,2);assert.deepEqual(first.candidates.map(t=>t.mint),['c','a']);assert.deepEqual(selectHolderWork(tokens,['c'],1,2).candidates.map(t=>t.mint),['c','b']);assert.deepEqual(selectHolderWork(tokens,[],2,2).candidates.map(t=>t.mint),['c','a']);assert.equal(selectHolderWork(tokens,['c'],0,0).candidates.length,0);
 });
@@ -12,4 +13,14 @@ test('null transaction and unsupported RPC version remain distinct diagnostics',
 test('method routing respects independent overrides and shared legacy configuration',()=>{
  const names=['SOLANA_RPC_URL','SOLANA_TRAFFIC_RPC_URL','SOLANA_HOLDER_RPC_URL'];const saved=names.map(n=>process.env[n]);
  try{for(const n of names)delete process.env[n];assert.equal(rpcEndpoint('getTransaction'),'https://solana-rpc.publicnode.com');assert.equal(rpcEndpoint('getProgramAccounts'),'https://api.mainnet-beta.solana.com');process.env.SOLANA_RPC_URL='shared';assert.equal(rpcEndpoint('getTransaction'),'shared');process.env.SOLANA_TRAFFIC_RPC_URL='traffic';process.env.SOLANA_HOLDER_RPC_URL='holders';assert.equal(rpcEndpoint('getSignaturesForAddress'),'traffic');assert.equal(rpcEndpoint('getTokenSupply'),'holders');}finally{names.forEach((n,i)=>{if(saved[i]==null)delete process.env[n];else process.env[n]=saved[i];});}
+});
+
+test('production reliability distinguishes healthy, quiet and degraded coverage',()=>{
+ const now=Date.parse('2026-10-07T12:30:00Z');
+ const healthy=classifyReliability({workerState:'ok',workerUpdatedAt:'2026-10-07T12:29:30Z',marketAt:'2026-10-07T12:29:00Z',tokens:100,recentTraffic:18,usableTraffic:12,liveEvents20m:30,liveUniqueMints20m:9,liveLatestObservedAt:'2026-10-07T12:29:55Z'},now);
+ assert.equal(healthy.level,'healthy');assert.equal(healthy.liveState,'active');assert.equal(Math.round(healthy.coveragePct),18);
+ const quiet=classifyReliability({workerState:'ok',workerUpdatedAt:'2026-10-07T12:29:30Z',marketAt:'2026-10-07T12:29:00Z',tokens:100,recentTraffic:4,usableTraffic:1,liveEvents20m:0,liveUniqueMints20m:0},now);
+ assert.equal(quiet.level,'healthy');assert.equal(quiet.liveState,'quiet');
+ const degraded=classifyReliability({workerState:'error',workerUpdatedAt:'2026-10-07T12:00:00Z',marketAt:'2026-10-07T12:00:00Z',tokens:100,recentTraffic:0,usableTraffic:0},now);
+ assert.equal(degraded.level,'degraded');
 });
