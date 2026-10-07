@@ -81,16 +81,25 @@ export function opportunityWaveSignal(token:WaveTokenInput):OpportunityWaveSigna
 }
 
 export function livingWavePath(x1:number,y1:number,x2:number,y2:number,dynamics:LivingWaveDynamics,phase=0){
-  return Array.from({length:65},(_,i)=>{
-    const t=i/64,x=x1+(x2-x1)*t;
+  const points=Array.from({length:25},(_,i)=>{
+    const t=i/24,x=x1+(x2-x1)*t;
     const smooth=t*t*(3-2*t);
     const base=y1+(y2-y1)*smooth;
     const envelope=Math.sin(Math.PI*t);
     const primary=Math.sin(t*Math.PI*dynamics.frequency*2+phase);
-    const nervous=Math.sin(t*Math.PI*dynamics.frequency*4.6+phase*1.7)*(.18+.3*dynamics.activity);
-    const y=base+(primary+nervous)*envelope*dynamics.amplitude;
-    return (i===0?'M':'L')+x.toFixed(1)+','+y.toFixed(1);
-  }).join(' ');
+    const nervous=Math.sin(t*Math.PI*dynamics.frequency*4.2+phase*1.55)*(.14+.26*dynamics.activity);
+    const micro=Math.sin(t*Math.PI*dynamics.frequency*7.4+phase*.72)*(.04+.12*dynamics.activity);
+    const y=base+(primary+nervous+micro)*envelope*dynamics.amplitude;
+    return {x,y};
+  });
+  let path='M'+points[0].x.toFixed(1)+','+points[0].y.toFixed(1);
+  for(let i=1;i<points.length-1;i++){
+    const p=points[i],next=points[i+1];
+    const mx=(p.x+next.x)/2,my=(p.y+next.y)/2;
+    path+=' Q'+p.x.toFixed(1)+','+p.y.toFixed(1)+' '+mx.toFixed(1)+','+my.toFixed(1);
+  }
+  const last=points[points.length-1];
+  return path+' L'+last.x.toFixed(1)+','+last.y.toFixed(1);
 }
 
 export function buildFlowTrail(trades:FlowTrailTrade[],x1:number,y1:number,x2:number,endY:number,maxPoints=18):FlowTrailPoint[]{
@@ -197,20 +206,24 @@ export function waveMapLayout(tokens:WaveTokenInput[],metrics:Map<string,WaveMet
   if(!tokens.length)return [];
   const top=92,bottom=Math.max(top+1,height-78),usable=Math.max(1,bottom-top);
   const mobile=width<700;
-  const columns=mobile?1:2;
+  const columns=mobile?1:tokens.length>12?3:2;
   const rows=Math.max(1,Math.ceil(tokens.length/columns));
   const rowGap=rows<=1?0:usable/(rows-1);
   const scaleY=(score:number)=>top+(100-clamp(score,-100,100))/200*usable;
-  const leftX=mobile?72:72;
-  const rightX=mobile?72:Math.min(228,Math.max(188,width*.185));
-  const rowRadius=rows<=1?31:clamp((rowGap-26)/2,22,31);
+  const xs=mobile
+    ? [72]
+    : columns===3
+      ? [62,Math.min(150,Math.max(132,width*.145)),Math.min(242,Math.max(212,width*.235))]
+      : [72,Math.min(228,Math.max(188,width*.185))];
+  const minimumRadius=columns===3?18:22;
+  const rowRadius=rows<=1?31:clamp((rowGap-(columns===3?18:26))/2,minimumRadius,31);
   return tokens.map((token,index)=>{
     const hype=clamp(Number(token.hypeScore??50),0,100);
-    const r=Math.min(clamp(23+hype*.075,23,30),rowRadius);
+    const r=Math.min(clamp((columns===3?20:23)+hype*(columns===3?.065:.075),columns===3?20:23,columns===3?27:30),rowRadius);
     const strength=metrics.get(token.mint)?.strength??0;
-    const column=mobile?0:index%2;
-    const row=mobile?index:Math.floor(index/2);
-    const x=column===0?leftX:rightX;
+    const column=mobile?0:index%columns;
+    const row=mobile?index:Math.floor(index/columns);
+    const x=xs[column]??xs[0];
     const y=rows<=1?(top+bottom)/2:top+row*rowGap;
     return {mint:token.mint,x,y,r,strength,endY:scaleY(strength)};
   });
