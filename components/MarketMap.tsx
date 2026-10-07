@@ -13,8 +13,7 @@ import SavedMarketFilters from "./SavedMarketFilters";
 import {useWatchlist} from "./useWatchlist";
 import {matchesWatchFilters} from "@/lib/watchlist";
 import { fomoTokenUrl, gmgnTokenUrl } from "@/lib/token-links";
-import { MARKET_X_TICKS, MARKET_Y_TICKS, applyMarketViewport, marketCoordinateBase } from "@/lib/market/coordinates";
-import { declutterMarketNodes } from "@/lib/market/declutter";
+import { marketCoordinateBase } from "@/lib/market/coordinates";
 import MarketWaveMap from "./MarketWaveMap";
 import {useLiveMarketEvents} from "./useLiveMarketEvents";
 import {useSolanaLiveSwaps,type LivePoolTarget} from "./useSolanaLiveSwaps";
@@ -646,85 +645,7 @@ export default function MarketMap() {
 
   const filteredTokens=tokens.filter(t=>matchesWatchFilters(t,watch.state.filters,watch.state.entries));
   const nodes = [...nodeMap.current.values()].filter(n=>n.isCore||matchesWatchFilters(n,watch.state.filters,watch.state.entries));
-  const mapNodes = nodes.filter((n) => !n.isCore);
-  const mapLayoutKey = mapNodes
-    .map((n) => `${n.mint}:${n.x.toFixed(1)}:${n.y.toFixed(1)}:${n.r.toFixed(1)}`)
-    .join("|");
-  const declutteredMapNodes = useMemo(() => viewMode === "map"
-    ? declutterMarketNodes(mapNodes, {
-        // Keep dense coordinate clusters readable: >2x the previous edge-to-edge gap.
-        gap: size.w <= 700 ? 88 : 152,
-        maxDisplacement: size.w <= 700 ? 260 : 520,
-        iterations: size.w <= 700 ? 34 : 48,
-        anchorStrength: size.w <= 700 ? .028 : .015,
-      })
-    : mapNodes.map((n) => ({ ...n, anchorX: n.x, anchorY: n.y, displacement: 0 })),
-    [mapLayoutKey, size.w, viewMode],
-  );
-  const renderedNodes = viewMode === "map" ? declutteredMapNodes : nodes;
-  const renderNodeByMint = useMemo(() => new Map(renderedNodes.map((n) => [n.mint, n])), [renderedNodes]);
-  const combinedFlows = [...flows, ...expansionFlows];
-  const hotFlowKeys = new Set([
-    ...[...combinedFlows]
-      .sort((a, b) => (b.usd1h * (b.confidence ?? 1)) - (a.usd1h * (a.confidence ?? 1)))
-      .slice(0, 4)
-      .map((f) => `${f.from}>${f.to}:${f.kind}`),
-    ...hotPath.map((p) => `${p.from}>${p.to}:rotation`),
-  ]);
-  const hotNodeMints = new Set(hotPath.flatMap((p) => [p.from, p.to]));
-  const focusMints = new Set<string>();
-  if (selected?.mint) {
-    focusMints.add(selected.mint);
-    for (const flow of combinedFlows) {
-      if (flow.from === selected.mint) focusMints.add(flow.to);
-      if (flow.to === selected.mint) focusMints.add(flow.from);
-    }
-  }
-  const visibleMints=new Set(nodes.map(n=>n.mint));
-  const visibleFlows = combinedFlows
-    .map((f) => ({ ...f, source: nodeMap.current.get(f.from), target: nodeMap.current.get(f.to) }))
-    .filter((f) => f.source && f.target && visibleMints.has(f.from) && visibleMints.has(f.to))
-    .slice(0, 100);
-
-  const netFlowByMint = new Map<string, number>();
-  for (const flow of combinedFlows) {
-    netFlowByMint.set(flow.from, (netFlowByMint.get(flow.from) ?? 0) - flow.usd1h);
-    netFlowByMint.set(flow.to, (netFlowByMint.get(flow.to) ?? 0) + flow.usd1h);
-  }
-
-  const hottest = [...renderedNodes]
-    .filter((n) => !n.isCore)
-    .sort((a, b) => hypeScore(b) - hypeScore(a))
-    .slice(0, 5);
-
-  // Hype particle halo: strong green signal cloud around high-hype planets.
-  const signalDust = viewMode === "map"
-    ? [...renderedNodes]
-        .filter((n) => !n.isCore && hypeScore(n) >= 65)
-        .sort((a, b) => hypeScore(b) - hypeScore(a))
-        .slice(0, 18)
-        .flatMap((n, nodeIndex) => {
-          const hype = hypeScore(n);
-          const normalized = Math.max(0, Math.min(1, (hype - 65) / 35));
-          const count = Math.round(7 + normalized * 23);
-          return Array.from({ length: count }, (_, i) => {
-            const seed = nodeIndex * 1307 + i * 29 + n.mint.charCodeAt(i % n.mint.length);
-            const angle = visualNoise(seed) * Math.PI * 2;
-            const ring = Math.pow(visualNoise(seed + 1.7), .62);
-            const distance = n.r + 12 + ring * (26 + normalized * 46);
-            return {
-              key: `${n.mint}:hype-particle:${i}`,
-              x: n.x + Math.cos(angle) * distance,
-              y: n.y + Math.sin(angle) * distance * .82,
-              r: .65 + visualNoise(seed + 2.6) * (1.25 + normalized * .7),
-              opacity: .18 + normalized * .42 + visualNoise(seed + 3.3) * .16,
-              delay: visualNoise(seed + 5.1) * 2.8,
-              duration: 1.9 + visualNoise(seed + 7.2) * 2.3,
-            };
-          });
-        })
-        .slice(0, 360)
-    : [];
+  const renderedNodes = nodes;
 
   void tick;
 
@@ -744,7 +665,7 @@ export default function MarketMap() {
           </div>
           <div className="market-toolbar-actions">
 
-            {viewMode === "map" && <span className="market-coordinate-mode">Market cap × Price 1h</span>}
+            {viewMode === "map" && <span className="market-coordinate-mode">Live order flow × Strength</span>}
             {viewMode === "map" && <span className={`market-live-latency latency-${liveLatency.cls}`}>{liveLatency.label}</span>}
             {viewMode === "map" && <button
               type="button"
@@ -806,7 +727,7 @@ export default function MarketMap() {
 
       <section className="market-workspace reference-market-workspace">
         <div className="market-map" ref={wrap}>
-          {viewMode === "map" && <div className="lovable-map-hint">Клик: FoMo/GmGn · Двоен клик: Holders · Планетите = координати · Drag картата · Scroll zoom</div>}
+          {viewMode === "map" && <div className="lovable-map-hint">Клик: FoMo/GmGn · Двоен клик: Holders · Монетите са вляво · BUY зелено · SELL червено · Вълните сочат Strength вдясно · Drag · Scroll zoom</div>}
           {watch.ready && (viewMode === "list" ? !filteredTokens.length : !renderedNodes.length) && tokens.length > 0 && <div className="pause-banner">No tokens match your saved filters. Reset filters or add favorites.</div>}
           {streamLive === false && <div className="pause-banner">
             {autoPaused ? "Автоматична пауза след 2 мин. без активност" : "Live режимът е на пауза"} · данните са от кеша
@@ -860,9 +781,9 @@ export default function MarketMap() {
             <button onClick={resetMarketView} aria-label="Reset zoom">⛶</button>
             <button className="market-fullscreen-button" onClick={toggleMapFullscreen} aria-label={isMapFullscreen ? "Exit fullscreen map" : "Fullscreen map"} title={isMapFullscreen ? "Изход от цял екран" : "Карта на цял екран"}>{isMapFullscreen ? "⤡" : "⤢"}</button>
           </div>}
-          <details className="market-legend map-signal-legend" open>
-            <summary>Как да четеш балоните · оценка</summary>
-            <div><span><i className="market-buy-dot"/>Зелено: покупки по брой</span><span><i className="market-sell-dot"/>Червено: продажби по брой</span><span>↑ Засилва се · → Баланс · ↓ Отслабва · ? Unknown</span><span>Размер = Hype · Яркост = Velocity · Пулс = Acceleration</span><span>Контур = Holder growth · Жълт пръстен = Risk</span><span className="traffic-confidence-legend"><i className="reliable"/>Traffic: надежден <i className="partial"/>частичен <i className="insufficient"/>недостатъчен</span><span className="comet-trust-legend"><i className="direct"/>Плътна комета = verified direct <i className="routed"/>Cyan контур = routed <i className="aggregate"/>Бледа = aggregate</span><span>⚠ Liquidity ↓: рязък спад · Whale +/−: праг 1% supply</span><small>LOD: далечен zoom показва основните сигнали; приближаването добавя статус, Hype и събития. Traffic е partial multi-pool sample, не целият пазар. Risk остава отделен.</small></div>
+          <details className="market-legend map-signal-legend">
+            <summary>Как да четеш вълните</summary>
+            <div><span><i className="market-buy-dot"/>Зелена вълна = BUY</span><span><i className="market-sell-dot"/>Червена вълна = SELL</span><span>По-силна активност = по-голяма кривина</span><span>Strength: +100 силен buy pressure · 0 баланс · −100 силен sell pressure</span><span className="comet-trust-legend"><i className="direct"/>Движеща точка = реална/запазена сделка <i className="routed"/>Cyan = routed</span><small>Основата е retained 5m traffic sample, допълнен с по-нови live Solana сделки. Scale измерва order-flow balance, не прогноза за цена.</small></div>
           </details>
         </div>
 
