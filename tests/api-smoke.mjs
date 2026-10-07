@@ -20,6 +20,7 @@ const db=http.createServer((req,res)=>{
     {wallet:'smart-wallet',side:'buy',usd_value:2500,block_at:at,evidence:'direct',program:'Fixture DEX'},
     {wallet:'smart-wallet',side:'buy',usd_value:1800,block_at:new Date(Date.now()-1200000).toISOString(),evidence:'direct',program:'Fixture DEX'}
   ]));
+  else if(path==='/rest/v1/live_market_events') res.end(JSON.stringify([{mint,side:'buy',evidence:'direct',observed_at:at,block_at:new Date(Date.now()-12000).toISOString()}]));
   else {res.statusCode=500;res.end(JSON.stringify({error:'Unexpected database request'}));}
 });
 await new Promise(resolve=>db.listen(0,'127.0.0.1',resolve));
@@ -62,7 +63,7 @@ try {
   const refresh=await get(`/api/tokens/${mint}/refresh`);assert.equal(refresh.status,200);const observation=await refresh.json();assert.equal(observation.balances[0].balance,10);assert.equal(observation.cached,true);assert.equal(observation.metrics.top10SupplyPct,50);
   assert.equal((await fetch(`http://127.0.0.1:${appPort}/api/market/ingest`,{method:'POST',headers:{authorization:'Bearer fixture-secret'}})).status,409);
   missingMarket=true;assert.equal((await get('/api/market')).status,202);
-  const worker=await get("/api/market/status");assert.equal(worker.status,200);assert.match(worker.headers.get("vercel-cdn-cache-control")??"",/s-maxage=120/);
+  const worker=await get("/api/market/status");assert.equal(worker.status,200);assert.match(worker.headers.get("vercel-cdn-cache-control")??"",/s-maxage=60/);const workerBody=await worker.json();assert.equal(workerBody.liveEvents20m,1);assert.equal(workerBody.liveUniqueMints20m,1);
   assert.equal(mutations,0,'Cache endpoints must never mutate DB or start ingestion');
   console.log('API smoke passed: cached GET, Decision Terminal v5, replay/network intelligence, bounded history, ingest auth, Map/List and section routes.');
 } finally {app.kill('SIGTERM'); await new Promise(resolve=>db.close(resolve));}
