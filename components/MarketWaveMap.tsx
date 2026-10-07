@@ -23,6 +23,7 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
 }){
  const safeWidth=Math.max(520,width||900),safeHeight=Math.max(420,height||560);
  const [cycle,setCycle]=useState(0);
+ const [activeParticleId,setActiveParticleId]=useState<string|null>(null);
  useEffect(()=>{if(!animated)return;const id=window.setInterval(()=>setCycle(v=>v+1),3200);return()=>window.clearInterval(id)},[animated]);
  const tokenByMint=useMemo(()=>new Map(tokens.map(t=>[t.mint,t])),[tokens]);
  const metrics=useMemo(()=>new Map<string,WaveMetrics>(tokens.map(t=>[t.mint,waveMetrics(t,events,now)])),[tokens,events,now]);
@@ -33,12 +34,12 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
  const scaleX=safeWidth-72,top=70,bottom=safeHeight-54,usable=Math.max(1,bottom-top);
  const scaleY=(score:number)=>top+(100-Math.max(-100,Math.min(100,score)))/200*usable;
  const walletIntel=useMemo(()=>{
-   const map=new Map<string,{smart:Set<string>;coordinated:Set<string>}>();
+   const map=new Map<string,{profiles:Map<string,{score:number;label:string;netUsd:number|null}>;coordinated:Set<string>}>();
    for(const token of tokens){
      const rows=trafficSampleRows(token.trafficSample);
-     const smart=new Set(buildWalletProfiles(rows,now).filter(p=>p.score>=64&&p.label!=="Bot-like").map(p=>p.wallet));
+     const profiles=new Map(buildWalletProfiles(rows,now).map(p=>[p.wallet,{score:p.score,label:p.label,netUsd:p.netUsd}]));
      const coordinated=new Set(detectCoordinatedWallets(rows).filter(c=>c.confidence!=="low").flatMap(c=>c.wallets));
-     map.set(token.mint,{smart,coordinated});
+     map.set(token.mint,{profiles,coordinated});
    }
    return map;
  },[tokens,now]);
@@ -60,7 +61,7 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
    }
    return [...out.values()].sort((a,b)=>Date.parse(b.blockAt)-Date.parse(a.blockAt)).slice(0,maxComets);
  },[tokens,events,maxComets]);
- const quick=quickActionMint?layoutByMint.get(quickActionMint):null;
+  const activeParticle=activeParticleId?particles.find(p=>p.id===activeParticleId):null;\n  const activeParticleProfile=activeParticle?walletIntel.get(activeParticle.mint)?.profiles.get(activeParticle.wallet):null;\n  const activeParticleCoordinated=activeParticle?walletIntel.get(activeParticle.mint)?.coordinated.has(activeParticle.wallet)??false:false;\n const quick=quickActionMint?layoutByMint.get(quickActionMint):null;
  const quickToken=quickActionMint?tokens.find(t=>t.mint===quickActionMint):null;
  const quickLayout=quick?positionQuickActions({nodeX:quick.x,nodeY:quick.y,nodeRadius:quick.r,viewX:mapView.x,viewY:mapView.y,scale:mapView.k,viewportWidth:safeWidth,viewportHeight:safeHeight,preferredWidth:safeWidth<=640?236:224,panelHeight:42}):null;
  return <div className={[styles.root,!animated?styles.paused:""].filter(Boolean).join(" ")}>
@@ -99,9 +100,9 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
        const point=layoutByMint.get(particle.mint),m=metrics.get(particle.mint);if(!point||!m)return null;
        const intensity=particle.side==="buy"?m.buyIntensity:m.sellIntensity,amp=waveAmplitude(intensity,maxIntensity);
        const path=wavePath(point.x+point.r+3,point.y,scaleX,point.endY,amp,(layoutIndex.get(particle.mint)??0)*.71+(particle.side==="sell"?Math.PI:0));
-       const intel=walletIntel.get(particle.mint),smart=intel?.smart.has(particle.wallet)??false,coordinated=intel?.coordinated.has(particle.wallet)??false;
+       const intel=walletIntel.get(particle.mint),profile=intel?.profiles.get(particle.wallet),smart=Boolean(profile&&profile.score>=64&&profile.label!=="Bot-like"),coordinated=intel?.coordinated.has(particle.wallet)??false;
        const cls=[styles.event,particle.side==="buy"?styles.eventBuy:styles.eventSell,particle.whale?styles.eventWhale:"",smart?styles.eventSmart:"",coordinated?styles.eventCoordinated:"","targeted-comet","targeted-comet-"+(particle.side==="buy"?"in":"out"),particle.evidence==="routed"?"targeted-comet-routed":"targeted-comet-direct",particle.whale?"targeted-comet-whale":"",smart?"targeted-comet-smart":"",coordinated?"targeted-comet-coordinated":""].filter(Boolean).join(" ");
-       return <g key={particle.id+":"+cycle+":"+index} className={cls}><circle r={particle.whale?4:3} className={styles.eventDot+" targeted-comet-body"}><title>{particle.side.toUpperCase()+" · "+particle.wallet.slice(0,5)+"…"+particle.wallet.slice(-4)}{smart?" · Smart Money":""}{coordinated?" · Coordinated":""}</title><animateMotion dur={(2.1+(index%5)*.18)+"s"} begin={(index*.08)+"s"} repeatCount="1" fill="freeze" path={path}/></circle></g>;
+       return <g key={particle.id+":"+cycle+":"+index} className={cls} onClick={e=>{e.stopPropagation();setActiveParticleId(particle.id)}}><circle r={particle.whale?4:3} className={styles.eventDot+" targeted-comet-body"}><title>{particle.side.toUpperCase()+" · "+particle.wallet.slice(0,5)+"…"+particle.wallet.slice(-4)}{smart?" · Smart Money":""}{coordinated?" · Coordinated":""}</title><animateMotion dur={(2.1+(index%5)*.18)+"s"} begin={(index*.08)+"s"} repeatCount="1" fill="freeze" path={path}/></circle></g>;
      })}
     </g>
    </g>
@@ -109,6 +110,6 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
   {quick&&quickToken&&quickLayout&&<div className={styles.quick+" token-quick-actions token-quick-actions-overlay"} style={{left:quickLayout.left,top:quickLayout.top,width:quickLayout.width}} onPointerDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()} onDoubleClick={e=>e.stopPropagation()}>
     <a href={fomoTokenUrl(quickToken.mint)} target="_blank" rel="noreferrer">FoMo ↗</a><a href={gmgnTokenUrl(quickToken.mint)} target="_blank" rel="noreferrer">GmGn ↗</a><button className="quick-detail-action" onClick={()=>onDetails(quickToken)}>Details</button><button className="quick-holder-action" onClick={()=>onOpen(quickToken)}>Holders</button>
   </div>}
-  <div className={styles.status}><b>5m order flow</b> · green BUY · red SELL · curve = intensity · scale = buy/sell strength</div>
+  {activeParticle&&<div className={styles.detail+" targeted-comet-detail"}><button className="detail-close" onClick={()=>setActiveParticleId(null)} aria-label="Close wallet profile">×</button><strong>{activeParticleProfile?.label??(activeParticle.whale?"Whale":"Wallet")} · {activeParticle.side.toUpperCase()}</strong><span>{activeParticle.wallet.slice(0,6)}…{activeParticle.wallet.slice(-5)}</span><small>{activeParticleProfile?`Wallet score ${activeParticleProfile.score}/100 · Wallet net ${activeParticleProfile.netUsd==null?"—":Math.round(activeParticleProfile.netUsd).toLocaleString()+" USD"}`:"Wallet score unavailable"}{activeParticleCoordinated?" · Coordinated":""}</small></div>}\n  <div className={styles.status}><b>5m order flow</b> · green BUY · red SELL · curve = intensity · scale = buy/sell strength</div>
  </div>;
 }
