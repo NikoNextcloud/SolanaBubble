@@ -286,9 +286,15 @@ const page = await openCdpPage();
 try {
   await page.setViewport(390, 844, true);
   await page.navigate();
+  assert.equal(await page.evaluate("Boolean(document.querySelector('.terminal-onboarding'))"),true,"first visit must show the quick-start guide");
+  await page.evaluate("document.querySelector('.terminal-onboarding-footer button')?.click()");
   await page.evaluate(`localStorage.setItem("solanabubble:market-snapshot:free", ${JSON.stringify(JSON.stringify(snapshot))})`);
   await page.navigate();
   await page.waitFor("document.querySelectorAll('.market-token-bubble').length >= 2");
+  assert.equal(await page.evaluate("Boolean(document.querySelector('.live-coverage-status'))"),true,"market must expose live-data reliability");
+  await page.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:'k',ctrlKey:true,bubbles:true}))");
+  assert.equal(await page.evaluate("document.activeElement?.getAttribute('aria-label')"),"Търси Solana токен","Ctrl+K must focus global search");
+  await page.evaluate("document.activeElement?.blur()");
   await installDecisionFixture(page,intelligenceFixture);
 
 
