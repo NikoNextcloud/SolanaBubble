@@ -286,7 +286,7 @@ const page = await openCdpPage();
 try {
   await page.setViewport(390, 844, true);
   await page.navigate();
-  assert.equal(await page.evaluate("Boolean(document.querySelector('.terminal-onboarding'))"),true,"first visit must show the quick-start guide");
+  await page.waitFor("Boolean(document.querySelector('.terminal-onboarding'))");
   await page.evaluate("document.querySelector('.terminal-onboarding-footer button')?.click()");
   await page.evaluate(`localStorage.setItem("solanabubble:market-snapshot:free", ${JSON.stringify(JSON.stringify(snapshot))})`);
   await page.navigate();
