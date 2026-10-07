@@ -34,6 +34,7 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
           SUPABASE_SERVICE_ROLE_KEY: placeholder
           ADMIN_SECRET: placeholder
+          NEXT_PUBLIC_BROWSER_SMOKE: "1"
       - run: npm run test:api
       - name: Browser smoke (mobile + desktop)
         env:
@@ -41,6 +42,7 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
           SUPABASE_SERVICE_ROLE_KEY: placeholder
           ADMIN_SECRET: placeholder
+          NEXT_PUBLIC_BROWSER_SMOKE: "1"
         run: |
           set -euo pipefail
           npm run start -- -H 127.0.0.1 -p 3000 > /tmp/solanabubble-next.log 2>&1 &
@@ -81,4 +83,5 @@ jobs:
           path: |
             /tmp/solanabubble-mobile.png
             /tmp/solanabubble-desktop.png
+            /tmp/solanabubble-live-impulses.png
           if-no-files-found: ignore
