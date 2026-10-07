@@ -361,6 +361,7 @@ try {
   await page.evaluate(`document.querySelector(".market-zoom-controls button[aria-label='Zoom out']")?.click()`);
   assert.equal(await page.evaluate("document.querySelector('.market-pan-surface')?.getAttribute('data-lod')"), "far");
   await page.evaluate(`document.querySelector(".market-zoom-controls button[aria-label='Reset zoom']")?.click()`);
+  await page.waitFor("document.querySelector('.market-pan-surface')?.getAttribute('data-lod') === 'mid'");
 
   const fixedBefore = await page.evaluate(`(() => {
     const el = document.querySelector(".market-token-bubble");
