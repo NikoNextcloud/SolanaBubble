@@ -1,5 +1,5 @@
 "use client";
-import {useEffect,useMemo,useState,type PointerEventHandler,type WheelEventHandler} from "react";
+import {useEffect,useMemo,useRef,useState,type PointerEventHandler,type WheelEventHandler} from "react";
 import type {LiveMarketEvent} from "@/lib/market/live-events";
 import type {TrafficSummary} from "@/lib/market/traffic/summary";
 import {buildWalletProfiles,detectCoordinatedWallets,trafficSampleRows} from "@/lib/market/intelligence-core";
@@ -23,6 +23,7 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
  const safeWidth=Math.max(520,width||900),safeHeight=Math.max(420,height||560);
  const [clock,setClock]=useState(()=>Date.now());
  const [activeParticleId,setActiveParticleId]=useState<string|null>(null);
+ const clickTimer=useRef<number|null>(null);
  useEffect(()=>{
    const started=Date.now();setClock(started);
    const timers=events.map(event=>{
@@ -32,6 +33,9 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
    }).filter(delay=>Number.isFinite(delay)&&delay>0&&delay<4600).map(delay=>window.setTimeout(()=>setClock(Date.now()),delay+60));
    return()=>timers.forEach(id=>window.clearTimeout(id));
  },[events]);
+ useEffect(()=>()=>{if(clickTimer.current!=null)window.clearTimeout(clickTimer.current)},[]);
+ const handleTokenClick=(token:MarketWaveToken)=>{onSelect(token);if(clickTimer.current!=null)window.clearTimeout(clickTimer.current);clickTimer.current=window.setTimeout(()=>{onQuickAction(token.mint);clickTimer.current=null},180)};
+ const handleTokenDoubleClick=(token:MarketWaveToken)=>{if(clickTimer.current!=null){window.clearTimeout(clickTimer.current);clickTimer.current=null}onQuickAction(null);onOpen(token)};
 
  const tokenByMint=useMemo(()=>new Map(tokens.map(t=>[t.mint,t])),[tokens]);
  const metrics=useMemo(()=>new Map<string,WaveMetrics>(tokens.map(t=>[t.mint,waveMetrics(t,events,now)])),[tokens,events,now]);
@@ -97,7 +101,7 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
       const fill=point.strength>8?"url(#waveCoinBuy)":point.strength<-8?"url(#waveCoinSell)":"url(#waveCoinFlat)";
       const label=(token.symbol||token.name||token.mint.slice(0,6)).slice(0,12);
       return <g key={token.mint} className="market-node-group" data-flow-rank={index+1}>
-       <g className={styles.token} role="button" tabIndex={0} aria-label={(token.symbol||token.name||token.mint)+": strength "+point.strength} onPointerDown={e=>e.stopPropagation()} onClick={()=>{onSelect(token);onQuickAction(token.mint)}} onDoubleClick={()=>onOpen(token)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onSelect(token);onQuickAction(token.mint)}}}>
+       <g className={styles.token} role="button" tabIndex={0} aria-label={(token.symbol||token.name||token.mint)+": strength "+point.strength} onPointerDown={e=>e.stopPropagation()} onClick={()=>handleTokenClick(token)} onDoubleClick={()=>handleTokenDoubleClick(token)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onSelect(token);onQuickAction(token.mint)}}}>
         <circle cx={point.x} cy={point.y} r={point.r+8} className={[styles.pulseHalo,haloClass,"token-pulse-halo"].join(" ")}/>
         <circle cx={point.x} cy={point.y} r={point.r+8} className={[styles.pulseHalo,styles.pulseHaloSecondary,haloClass,"token-pulse-halo"].join(" ")}/>
         <circle cx={point.x} cy={point.y} r={point.r} fill={fill} aria-label={(token.symbol||token.name||token.mint)+": strength "+point.strength} className={["market-token-bubble",styles.coin,flowClass,selected?styles.coinSelected:""].filter(Boolean).join(" ")}><title>{(token.symbol||token.name||token.mint)+" · strength "+point.strength+" · "+m.buys+" buys / "+m.sells+" sells"}</title></circle>
