@@ -29,6 +29,9 @@ export async function checkFlowTrajectoryUi(page) {
       opportunityWaveCount: document.querySelectorAll(".opportunity-wave-path").length,
       strongOpportunityCount: document.querySelectorAll('.opportunity-wave-group[data-strength="strong"]').length,
       hypeAuraCount: document.querySelectorAll(".token-hype-aura").length,
+      hypeFlareCount: document.querySelectorAll(".token-hype-flare").length,
+      morphAnimationCount: document.querySelectorAll(".living-wave-path > animate").length,
+      particleMpathCount: document.querySelectorAll(".moving-flow-particle animateMotion mpath").length,
       opportunityAnimations: [...document.querySelectorAll(".opportunity-wave-path")].map((el) => getComputedStyle(el).animationPlayState),
       animationStates: [...document.querySelectorAll(".living-wave-path")].map((el) => {
         const style = getComputedStyle(el);
@@ -61,9 +64,25 @@ export async function checkFlowTrajectoryUi(page) {
   assert.ok(ui.opportunityWaveCount >= 1, "qualified token must render a white opportunity wave");
   assert.ok(ui.strongOpportunityCount >= 1, "high-confidence low-risk fixture must render a strong opportunity wave");
   assert.ok(ui.hypeAuraCount >= 1, "high-hype token must render a stronger hype aura");
+  assert.ok(ui.hypeFlareCount >= 1, "high-hype token must render a bright flare");
+  assert.equal(ui.morphAnimationCount, ui.visibleTokenCount, "every visible wave must morph its SVG shape");
+  assert.ok(ui.particleMpathCount >= 4, "real BUY/SELL particles must follow the morphing wave path");
   assert.ok(ui.opportunityAnimations.every((state) => state === "running"), "opportunity waves must stay animated");
   const offsetBefore = ui.animationStates[0]?.offset;
-  await new Promise((resolve) => setTimeout(resolve, 360));
+  const shapeBefore = await page.evaluate(`(() => {
+    const path=document.querySelector(".living-wave-path");
+    if(!path)return null;
+    const point=path.getPointAtLength(path.getTotalLength()*.37);
+    return {x:point.x,y:point.y};
+  })()`);
+  await new Promise((resolve) => setTimeout(resolve, 420));
   const offsetAfter = await page.evaluate("getComputedStyle(document.querySelector('.living-wave-path')).strokeDashoffset");
+  const shapeAfter = await page.evaluate(`(() => {
+    const path=document.querySelector(".living-wave-path");
+    if(!path)return null;
+    const point=path.getPointAtLength(path.getTotalLength()*.37);
+    return {x:point.x,y:point.y};
+  })()`);
   assert.notEqual(offsetAfter, offsetBefore, "living wave dash motion must visibly advance over time");
+  assert.ok(shapeBefore&&shapeAfter&&Math.abs(shapeAfter.y-shapeBefore.y)>.02, "living wave geometry must morph over time, not remain rigid");
 }
