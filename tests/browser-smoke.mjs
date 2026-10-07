@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import {decisionTerminalFixture} from "./fixtures/decision-terminal-browser.mjs";
 import {installDecisionFixture,checkDecisionTerminal} from "./fixtures/decision-terminal-browser-check.mjs";
+import {proveObservedAtImpulses} from "./fixtures/live-impulse-browser.mjs";
 
 const CHROME = process.env.CHROME_DEBUG_URL || "http://127.0.0.1:9222";
 const APP = process.env.BROWSER_SMOKE_URL || "http://127.0.0.1:3000";
@@ -347,6 +348,10 @@ try {
   assert.equal(coordinateUi.fullscreenButton, true, "map must expose a fullscreen control");
   assert.equal(coordinateUi.fullscreenVisible, true, "fullscreen control must be visibly reachable");
   assert.equal(coordinateUi.fullscreenInsideMap, true, "fullscreen control must stay inside the map");
+
+  await proveObservedAtImpulses(page, TEST_MINT);
+  console.log("smoke: observed-at-live-impulses");
+
   assert.match(await page.evaluate("document.querySelector('.market-live-latency')?.textContent || ''"), /Live|Delayed|Snapshot/);
   assert.equal(await page.evaluate("document.querySelector('.market-pan-surface')?.getAttribute('data-lod')"), "mid");
   await page.evaluate("document.querySelector('.capital-flow-toggle')?.click()");
