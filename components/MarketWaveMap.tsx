@@ -147,6 +147,10 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
           const radius=Math.max(2.8,Math.min(6,2.8+Math.log10(1+Math.max(0,trade.usdValue??0))*.72));
           return <circle key={"dot-"+trade.signature} cx={trade.x} cy={trade.y} r={radius} className={[styles.flowDot,trade.side==="buy"?styles.flowDotBuy:styles.flowDotSell,trade.live?styles.flowDotLive:"","flow-trade-dot","flow-trade-"+trade.side].filter(Boolean).join(" ")} data-side={trade.side} data-live={trade.live?"true":"false"}><title>{trade.side?.toUpperCase()+" · real swap"+(trade.usdValue!=null?" · $"+Math.round(trade.usdValue).toLocaleString():"")}</title></circle>;
         })}
+        {trail.length>1&&(()=>{
+          const head=trail[trail.length-1];
+          return <circle cx={head.x} cy={head.y} r={8.5} className={[styles.flowHead,head.side==="buy"?styles.flowHeadBuy:styles.flowHeadSell,"flow-current-head"].join(" ")}><title>{"Current order-flow position · "+(head.side==="buy"?"BUY pressure":"SELL pressure")}</title></circle>;
+        })()}
        </g>;
      })}
     </g>
