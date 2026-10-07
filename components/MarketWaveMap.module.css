@@ -24,6 +24,8 @@
 .flowDotBuy{fill:#35df86;filter:drop-shadow(0 0 4px rgba(53,223,134,.68))}
 .flowDotSell{fill:#ff5f6b;filter:drop-shadow(0 0 4px rgba(255,95,107,.68))}
 .flowDotLive{stroke:#fff;stroke-width:1.6;animation:flowDotPop 1.05s ease-out infinite}
+.flowHead{fill:#0b0f14;stroke-width:2;vector-effect:non-scaling-stroke;filter:drop-shadow(0 0 8px currentColor);pointer-events:none}
+.flowHeadBuy{stroke:#35df86;color:#35df86}.flowHeadSell{stroke:#ff5f6b;color:#ff5f6b}
 .event{pointer-events:auto;cursor:pointer}
 .eventWave{fill:none;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;stroke-dasharray:42 128;animation:eventImpulse 4.05s linear 1 forwards;filter:drop-shadow(0 0 5px currentColor)}
 .eventWaveBuy{stroke:#35df86;color:#35df86}.eventWaveSell{stroke:#ff5f6b;color:#ff5f6b}
