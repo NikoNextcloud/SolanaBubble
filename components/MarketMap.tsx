@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 
 import type { Intelligence, SignalAlert } from "@/lib/market/signals";
 import WorkerStatus from "./WorkerStatus";
+import LiveCoverageStatus from "./LiveCoverageStatus";
 import TokenSignalCard from "./TokenSignalCard";
 import AlertsPanel from "./AlertsPanel";
 import MarketSidebarCharts from "./MarketSidebarCharts";
@@ -264,6 +265,7 @@ export default function MarketMap() {
   const [viewMode, setViewMode] = useState<MarketViewMode>("map");
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const [alertsOpen,setAlertsOpen]=useState(false);
   const [showTrafficOverlay, setShowTrafficOverlay] = useState(true);
   const [capitalFlowOnly,setCapitalFlowOnly]=useState(false);
   const [autoGraph, setAutoGraph] = useState(true);
@@ -278,6 +280,17 @@ export default function MarketMap() {
   const mapLod=mapView.k<.78?"far":mapView.k>1.55?"near":"mid";
   const mapPanDrag = useRef({ active: false, pointerId: -1, startX: 0, startY: 0, baseX: 0, baseY: 0 });
   const [isMapFullscreen, setIsMapFullscreen] = useState(false);
+  useEffect(()=>{
+    const openAlerts=()=>setAlertsOpen(true);
+    window.addEventListener("solanabubble:open-alerts",openAlerts);
+    try{
+      if(localStorage.getItem("solanabubble:open-alerts")==="1"){
+        localStorage.removeItem("solanabubble:open-alerts");
+        setAlertsOpen(true);
+      }
+    }catch{}
+    return()=>window.removeEventListener("solanabubble:open-alerts",openAlerts);
+  },[]);
 
   const beginMapPan = (e: React.PointerEvent<SVGSVGElement>) => {
     if (e.button !== 0) return;
@@ -702,6 +715,7 @@ export default function MarketMap() {
       >{mobileToolsOpen ? "Скрий филтрите" : "Филтри и качество"} {mobileToolsOpen ? "↑" : "↓"}</button>
       <div className={`market-tools-drawer ${mobileToolsOpen ? "is-open" : ""}`}>
         <SavedMarketFilters/>
+        <LiveCoverageStatus/>
         <DataQuality marketAt={updated}/>
       </div>
       <section className="market-stats reference-market-stats">
@@ -807,7 +821,7 @@ export default function MarketMap() {
               regime={marketRegime}
               onSelect={mint=>{const t=tokens.find(t=>t.mint===mint);const node=nodeMap.current.get(mint);if(t)setSelected(t);if(node)expandToken(node);}}
             />
-            <details className="sidebar-secondary">
+            <details className="sidebar-secondary" open={alertsOpen} onToggle={event=>setAlertsOpen((event.currentTarget as HTMLDetailsElement).open)}>
               <summary>Alerts & live activity</summary>
               <AlertsPanel alerts={visibleAlerts} onSelect={mint => { const t = tokens.find(t => t.mint === mint); if (t) setSelected(t); else router.push(`/token/${mint}`); }} />
               {(liveMarketEvents.length > 0 || recentEvents.length > 0) && <div className="market-activity-feed reference-side-card">
