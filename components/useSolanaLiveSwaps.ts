@@ -8,7 +8,7 @@ export type LivePoolTarget={mint:string;pool:string};
 
 const WS_URL=process.env.NEXT_PUBLIC_SOLANA_WS_URL||"wss://api.mainnet-beta.solana.com";
 const HTTP_URL=process.env.NEXT_PUBLIC_SOLANA_RPC_URL||"https://api.mainnet-beta.solana.com";
-const MAX_PER_MINUTE=18;
+const MAX_PER_MINUTE=28;
 
 export function useSolanaLiveSwaps(targets:LivePoolTarget[],enabled=true){
   const [events,setEvents]=useState<LiveMarketEvent[]>([]);
@@ -75,7 +75,7 @@ export function useSolanaLiveSwaps(targets:LivePoolTarget[],enabled=true){
       try{ws=new WebSocket(WS_URL);}catch{scheduleReconnect();return;}
       ws.onopen=()=>{
         retry=0;setStatus("live");
-        targets.slice(0,8).forEach((target,index)=>{
+        targets.slice(0,16).forEach((target,index)=>{
           const id=index+1;requestTargets.set(id,target);
           ws?.send(JSON.stringify({jsonrpc:"2.0",id,method:"logsSubscribe",params:[{mentions:[target.pool]},{commitment:"confirmed"}]}));
         });
@@ -96,8 +96,10 @@ export function useSolanaLiveSwaps(targets:LivePoolTarget[],enabled=true){
           const pendingKey=`${target.mint}:${signature}:queued`;
           if(seen.current.has(pendingKey))return;
           seen.current.add(pendingKey);
+          const existing=queue.findIndex(item=>item.target.pool===target.pool);
+          if(existing>=0)queue.splice(existing,1);
           queue.push({signature,target});
-          if(queue.length>24)queue.splice(0,queue.length-24);
+          if(queue.length>32)queue.splice(0,queue.length-32);
           void processQueue();
         }catch{}
       };
