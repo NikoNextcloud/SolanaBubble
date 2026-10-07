@@ -268,6 +268,15 @@ const snapshot = {
 };
 
 
+for (let i=0;i<14;i+=1) snapshot.tokens.push({
+  mint:"ExtraBrowserMint"+String(i).padStart(2,"0")+"111111111111111111111111",
+  name:"Extra Browser "+i,symbol:"X"+i,dex:"raydium",pairAddress:"ExtraPair"+i,
+  priceUsd:.001,marketCap:50000+i*1000,liquidityUsd:12000,volume1h:500+i*50,volume24h:5000,
+  buys1h:4+i%3,sells1h:3+i%2,trades1h:8+i%4,priceChange1h:0,priceChange24h:0,boost:0,
+  hypeScore:10+i,traffic:"flat",netFlowUsd1h:0,activityDelta:0,hypeDelta:0,
+});
+
+
 const intelligenceFixture = decisionTerminalFixture(TEST_MINT);
 
 const page = await openCdpPage();
@@ -320,10 +329,12 @@ try {
       pulseHaloCount: document.querySelectorAll(".token-pulse-halo").length,
       eventOnly: document.querySelector(".targeted-comet-layer")?.getAttribute("data-event-only"),
       strengthTickCount: document.querySelectorAll(".wave-strength-tick").length,
+      visibleTokenCount: Number(document.querySelector(".market-pan-surface")?.getAttribute("data-visible-tokens") || 0),
+      focusInfo: document.querySelector("[class*=focusInfo]")?.textContent || "",
     };
   })()`);
-  assert.match(coordinateUi.axisTitle, /COINS/);
-  assert.match(coordinateUi.axisTitle, /LIVE TRADES/);
+  assert.match(coordinateUi.axisTitle, /FOCUS TOKENS/);
+  assert.match(coordinateUi.axisTitle, /LIVE TRADE IMPULSES/);
   assert.match(coordinateUi.axisTitle, /STRENGTH/);
   assert.equal(coordinateUi.buyWaveCount, 0, "idle market must not render BUY impulses");
   assert.equal(coordinateUi.sellWaveCount, 0, "idle market must not render SELL impulses");
@@ -331,6 +342,8 @@ try {
   assert.equal(coordinateUi.eventOnly, "true", "trade layer must be event-only");
   assert.ok(coordinateUi.pulseHaloCount >= 2, "token circles must keep the pulsing halo");
   assert.equal(coordinateUi.strengthTickCount, 9, "strength ticks required");
+  assert.ok(coordinateUi.visibleTokenCount <= 6, "mobile map must cap focus tokens");
+  assert.match(coordinateUi.focusInfo, /more available in List/);
   assert.equal(coordinateUi.fullscreenButton, true, "map must expose a fullscreen control");
   assert.equal(coordinateUi.fullscreenVisible, true, "fullscreen control must be visibly reachable");
   assert.equal(coordinateUi.fullscreenInsideMap, true, "fullscreen control must stay inside the map");
@@ -544,6 +557,7 @@ try {
   assert.ok(desktop.docWidth <= desktop.width + 1, "desktop layout must not overflow horizontally");
   const desktopCometCount = await page.evaluate("document.querySelectorAll('.targeted-comet').length");
   assert.equal(desktopCometCount, 0, "desktop idle state must not replay retained trades");
+  assert.ok(await page.evaluate("Number(document.querySelector('.market-pan-surface')?.getAttribute('data-visible-tokens') || 0) <= 9"), "desktop map must cap focus tokens");
 
   const desktopBubble = await page.evaluate(`(() => {
     const el = document.querySelector('.market-token-bubble[aria-label^="BTEST:"]');
