@@ -39,7 +39,9 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
 
  const tokenByMint=useMemo(()=>new Map(tokens.map(t=>[t.mint,t])),[tokens]);
  const metrics=useMemo(()=>new Map<string,WaveMetrics>(tokens.map(t=>[t.mint,waveMetrics(t,events,now)])),[tokens,events,now]);
- const maxVisible=Math.max(4,Math.min(safeWidth<700?6:9,Math.floor((safeHeight-180)/(safeWidth<700?94:92))));
+ const maxVisible=safeWidth<700
+   ? Math.max(4,Math.min(6,Math.floor((safeHeight-180)/94)))
+   : Math.min(9,Math.max(8,Math.floor((safeHeight-180)/82)));
  const visibleTokens=useMemo(()=>selectWaveTokens(tokens,events,metrics,selectedMint,maxVisible,clock),[tokens,events,metrics,selectedMint,maxVisible,clock]);
  const visibleTokenByMint=useMemo(()=>new Map(visibleTokens.map(t=>[t.mint,t])),[visibleTokens]);
  const layout=useMemo(()=>waveMapLayout(visibleTokens,metrics,safeWidth,safeHeight),[visibleTokens,metrics,safeWidth,safeHeight]);
