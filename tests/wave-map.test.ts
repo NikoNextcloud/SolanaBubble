@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {activeWaveEvents,selectWaveTokens,tokenStrength,waveAmplitude,waveMapLayout,waveMetrics,wavePath} from '../lib/market/wave-map';
+import {activeWaveEvents,buildFlowTrail,selectWaveTokens,tokenStrength,waveAmplitude,waveMapLayout,waveMetrics,wavePath} from '../lib/market/wave-map';
 
 test('wave amplitude grows with stronger order flow',()=>{
   assert.ok(waveAmplitude(80,100)>waveAmplitude(20,100));
@@ -51,6 +51,23 @@ test('desktop wave layout uses two readable token columns without overlap',()=>{
     const column=layout.filter(p=>p.x===x).sort((a,b)=>a.y-b.y);
     for(let i=1;i<column.length;i++)assert.ok(column[i].y-column[i-1].y>=80);
   }
+});
+
+test('real flow trail moves buys upward and sells downward',()=>{
+  const buy=buildFlowTrail([{signature:'b1',side:'buy',usdValue:1200,at:'2026-10-07T10:00:00Z'}],100,200,500,200,10);
+  const sell=buildFlowTrail([{signature:'s1',side:'sell',usdValue:1200,at:'2026-10-07T10:00:00Z'}],100,200,500,200,10);
+  assert.equal(buy.length,2);
+  assert.equal(sell.length,2);
+  assert.ok(buy[1].y<200,'BUY should move the trajectory upward');
+  assert.ok(sell[1].y>200,'SELL should move the trajectory downward');
+});
+
+test('real flow trail deduplicates signatures and keeps newest points bounded',()=>{
+  const rows=Array.from({length:25},(_,i)=>({signature:'sig-'+i,side:(i%2?'sell':'buy') as 'buy'|'sell',usdValue:100+i,at:new Date(Date.parse('2026-10-07T10:00:00Z')+i*1000).toISOString()}));
+  rows.push({...rows[24],side:'buy'});
+  const trail=buildFlowTrail(rows,10,100,410,120,12);
+  assert.equal(trail.length,13);
+  assert.equal(trail.at(-1)?.signature,'sig-24');
 });
 
 test('active wave event lifetime is based on observed arrival, not older block time',()=>{

@@ -5,7 +5,7 @@ import type {TrafficSummary} from "@/lib/market/traffic/summary";
 import {buildWalletProfiles,detectCoordinatedWallets,trafficSampleRows} from "@/lib/market/intelligence-core";
 import {positionQuickActions} from "@/lib/market/quick-actions";
 import {fomoTokenUrl,gmgnTokenUrl} from "@/lib/token-links";
-import {activeWaveEvents,selectWaveTokens,waveAmplitude,waveMapLayout,waveMetrics,wavePath,type WaveMetrics} from "@/lib/market/wave-map";
+import {activeWaveEvents,buildFlowTrail,selectWaveTokens,waveAmplitude,waveMapLayout,waveMetrics,wavePath,type FlowTrailTrade,type WaveMetrics} from "@/lib/market/wave-map";
 import styles from "./MarketWaveMap.module.css";
 
 export type MarketWaveToken={
@@ -62,6 +62,22 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
  },[visibleTokens,now]);
 
  const visibleMints=useMemo(()=>new Set(visibleTokens.map(t=>t.mint)),[visibleTokens]);
+ const flowTrails=useMemo(()=>{
+   const map=new Map<string,ReturnType<typeof buildFlowTrail>>();
+   for(const token of visibleTokens){
+     const point=layoutByMint.get(token.mint);
+     if(!point)continue;
+     const retained:FlowTrailTrade[]=trafficSampleRows(token.trafficSample).map((row,index)=>({
+       signature:row.signature||[`retained`,token.mint,row.wallet,row.side,row.block_at,index].join(":"),
+       side:row.side,usdValue:row.usd_value,at:row.block_at,live:false,
+     }));
+     const live:FlowTrailTrade[]=events.filter(event=>event.mint===token.mint).map(event=>({
+       signature:event.signature,side:event.side,usdValue:event.usd_value,at:event.block_at,live:true,
+     }));
+     map.set(token.mint,buildFlowTrail([...retained,...live],point.x+point.r+12,point.y,scaleX,point.endY,20));
+   }
+   return map;
+ },[visibleTokens,events,layoutByMint,scaleX]);
  const particles=useMemo<Particle[]>(()=>{
    if(!animated)return [];
    return activeWaveEvents(events,visibleMints,clock,4200,maxComets).map(event=>({
@@ -115,6 +131,30 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
       </g>;
     })}
 
+    <g className="flow-history-layer" data-real-swaps-only="true">
+     {layout.map(point=>{
+       const trail=flowTrails.get(point.mint)??[];
+       if(trail.length<2)return null;
+       return <g key={"trail-"+point.mint} className="token-flow-trail" data-mint={point.mint}>
+        {trail.slice(1).map((current,index)=>{
+          const previous=trail[index];
+          const dx=current.x-previous.x;
+          const c1x=previous.x+dx*.36,c2x=previous.x+dx*.72;
+          const d=`M${previous.x.toFixed(1)},${previous.y.toFixed(1)} C${c1x.toFixed(1)},${previous.y.toFixed(1)} ${c2x.toFixed(1)},${current.y.toFixed(1)} ${current.x.toFixed(1)},${current.y.toFixed(1)}`;
+          return <path key={"seg-"+current.signature} d={d} className={[styles.flowSegment,current.side==="buy"?styles.flowSegmentBuy:styles.flowSegmentSell,"flow-trace-segment","flow-trace-"+current.side].join(" ")}/>;
+        })}
+        {trail.slice(1).map((trade,index)=>{
+          const radius=Math.max(2.8,Math.min(6,2.8+Math.log10(1+Math.max(0,trade.usdValue??0))*.72));
+          return <circle key={"dot-"+trade.signature} cx={trade.x} cy={trade.y} r={radius} className={[styles.flowDot,trade.side==="buy"?styles.flowDotBuy:styles.flowDotSell,trade.live?styles.flowDotLive:"","flow-trade-dot","flow-trade-"+trade.side].filter(Boolean).join(" ")} data-side={trade.side} data-live={trade.live?"true":"false"}><title>{trade.side?.toUpperCase()+" · real swap"+(trade.usdValue!=null?" · $"+Math.round(trade.usdValue).toLocaleString():"")}</title></circle>;
+        })}
+        {trail.length>1&&(()=>{
+          const head=trail[trail.length-1];
+          return <circle cx={head.x} cy={head.y} r={8.5} className={[styles.flowHead,head.side==="buy"?styles.flowHeadBuy:styles.flowHeadSell,"flow-current-head"].join(" ")}><title>{"Current order-flow position · "+(head.side==="buy"?"BUY pressure":"SELL pressure")}</title></circle>;
+        })()}
+       </g>;
+     })}
+    </g>
+
     <g className="targeted-comet-layer" data-event-only="true">
      {particles.map((particle,index)=>{
        const point=layoutByMint.get(particle.mint);if(!point)return null;
@@ -137,6 +177,6 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
     <a href={fomoTokenUrl(quickToken.mint)} target="_blank" rel="noreferrer">FoMo ↗</a><a href={gmgnTokenUrl(quickToken.mint)} target="_blank" rel="noreferrer">GmGn ↗</a><button className="quick-detail-action" onClick={()=>onDetails(quickToken)}>Details</button><button className="quick-holder-action" onClick={()=>onOpen(quickToken)}>Holders</button>
   </div>}
   {activeParticle&&<div className={styles.detail+" targeted-comet-detail"}><button className="detail-close" onClick={()=>setActiveParticleId(null)} aria-label="Close wallet profile">×</button><strong>{activeParticleProfile?.label??(activeParticle.whale?"Whale":"Wallet")} · {activeParticle.side.toUpperCase()}</strong><span>{activeParticle.wallet.slice(0,6)}…{activeParticle.wallet.slice(-5)}</span><small>{activeParticleProfile?`Wallet score ${activeParticleProfile.score}/100 · Wallet net ${activeParticleProfile.netUsd==null?"—":Math.round(activeParticleProfile.netUsd).toLocaleString()+" USD"}`:"Wallet score unavailable"}{activeParticleCoordinated?" · Coordinated":""}</small></div>}
-  <div className={styles.status}><b>LIVE</b> · BUY green · SELL red · impulse visible ~4s after event arrival</div>
+  <div className={styles.status}><b>LIVE</b> · green dot = BUY · red dot = SELL · recent real swaps form the trajectory · fresh arrival gets a ~4s impulse</div>
  </div>;
 }

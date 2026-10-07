@@ -9,6 +9,8 @@ export type WaveTokenInput={
 export type WaveMetrics={buys:number;sells:number;buyUsd:number|null;sellUsd:number|null;strength:number;buyIntensity:number;sellIntensity:number;liveCount:number;lastEventAt:string|null};
 export type WaveLayout={mint:string;x:number;y:number;r:number;strength:number;endY:number};
 export type ActiveWaveEvent=Pick<LiveMarketEvent,'mint'|'signature'|'wallet'|'side'|'usd_value'|'evidence'|'whale'|'block_at'|'observed_at'>;
+export type FlowTrailTrade={signature:string;side:'buy'|'sell';usdValue:number|null;at:string;live?:boolean};
+export type FlowTrailPoint={x:number;y:number;side:'buy'|'sell'|null;usdValue:number|null;signature:string|null;live:boolean};
 
 const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v);
 const clamp=(v:number,min:number,max:number)=>Math.max(min,Math.min(max,v));
@@ -39,6 +41,42 @@ export function wavePath(x1:number,y1:number,x2:number,y2:number,amplitude:numbe
     const y=y1+(y2-y1)*smooth+Math.sin(t*Math.PI*8+phase)*Math.sin(t*Math.PI)*amplitude;
     return (i===0?'M':'L')+x.toFixed(1)+','+y.toFixed(1);
   }).join(' ');
+}
+
+export function buildFlowTrail(trades:FlowTrailTrade[],x1:number,y1:number,x2:number,endY:number,maxPoints=18):FlowTrailPoint[]{
+  const deduped=new Map<string,FlowTrailTrade>();
+  for(const trade of trades){
+    const at=Date.parse(trade.at);
+    if(!trade.signature||!Number.isFinite(at))continue;
+    const previous=deduped.get(trade.signature);
+    if(!previous||trade.live)deduped.set(trade.signature,trade);
+  }
+  const ordered=[...deduped.values()]
+    .sort((a,b)=>Date.parse(a.at)-Date.parse(b.at))
+    .slice(-Math.max(1,maxPoints));
+  if(!ordered.length)return [];
+  const points:FlowTrailPoint[]=[{x:x1,y:y1,side:null,usdValue:null,signature:null,live:false}];
+  let momentum=0,offset=0;
+  for(let index=0;index<ordered.length;index++){
+    const trade=ordered[index],progress=(index+1)/ordered.length;
+    const priced=finite(trade.usdValue)&&trade.usdValue!>=0;
+    const weight=priced?clamp(.72+Math.log10(1+trade.usdValue!)/3.2,.72,2.15):1;
+    const signed=trade.side==='buy'?-1:1;
+    momentum=momentum*.58+signed*weight;
+    offset=clamp(offset+momentum*8.5,-72,72);
+    const trendY=y1+(endY-y1)*progress;
+    const envelope=.35+.65*Math.sin(Math.PI*progress);
+    const y=trendY+offset*envelope;
+    points.push({
+      x:x1+(x2-x1)*progress,
+      y,
+      side:trade.side,
+      usdValue:trade.usdValue,
+      signature:trade.signature,
+      live:Boolean(trade.live),
+    });
+  }
+  return points;
 }
 
 export function activeWaveEvents(events:LiveMarketEvent[],visibleMints:Set<string>,now=Date.now(),ttlMs=4200,maxEvents=12):ActiveWaveEvent[]{
