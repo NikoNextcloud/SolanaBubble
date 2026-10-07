@@ -5,7 +5,7 @@ import type {TrafficSummary} from "@/lib/market/traffic/summary";
 import {buildWalletProfiles,detectCoordinatedWallets,trafficSampleRows} from "@/lib/market/intelligence-core";
 import {positionQuickActions} from "@/lib/market/quick-actions";
 import {fomoTokenUrl,gmgnTokenUrl} from "@/lib/token-links";
-import {activeWaveEvents,buildFlowTrail,selectWaveTokens,waveAmplitude,waveMapLayout,waveMetrics,wavePath,type FlowTrailTrade,type WaveMetrics} from "@/lib/market/wave-map";
+import {activeWaveEvents,buildFlowTrail,livingWaveDynamics,livingWavePath,selectWaveTokens,waveAmplitude,waveMapLayout,waveMetrics,wavePath,type FlowTrailTrade,type WaveMetrics} from "@/lib/market/wave-map";
 import styles from "./MarketWaveMap.module.css";
 
 export type MarketWaveToken={
@@ -22,7 +22,6 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
 }){
  const safeWidth=Math.max(520,width||900),safeHeight=Math.max(420,height||560);
  const [clock,setClock]=useState(()=>Date.now());
- const [wavePhase,setWavePhase]=useState(0);
  const [activeParticleId,setActiveParticleId]=useState<string|null>(null);
  const clickTimer=useRef<number|null>(null);
  useEffect(()=>{
@@ -34,11 +33,6 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
    }).filter(delay=>Number.isFinite(delay)&&delay>0&&delay<4600).map(delay=>window.setTimeout(()=>setClock(Date.now()),delay+60));
    return()=>timers.forEach(id=>window.clearTimeout(id));
  },[events]);
- useEffect(()=>{
-   if(!animated)return;
-   const timer=window.setInterval(()=>setWavePhase(value=>(value+.34)%(Math.PI*16)),120);
-   return()=>window.clearInterval(timer);
- },[animated]);
  useEffect(()=>()=>{if(clickTimer.current!=null)window.clearTimeout(clickTimer.current)},[]);
  const handleTokenClick=(token:MarketWaveToken)=>{onSelect(token);if(clickTimer.current!=null)window.clearTimeout(clickTimer.current);clickTimer.current=window.setTimeout(()=>{onQuickAction(token.mint);clickTimer.current=null},180)};
  const handleTokenDoubleClick=(token:MarketWaveToken)=>{if(clickTimer.current!=null){window.clearTimeout(clickTimer.current);clickTimer.current=null}onQuickAction(null);onOpen(token)};
@@ -47,7 +41,7 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
  const metrics=useMemo(()=>new Map<string,WaveMetrics>(tokens.map(t=>[t.mint,waveMetrics(t,events,now)])),[tokens,events,now]);
  const maxVisible=safeWidth<700
    ? Math.max(4,Math.min(6,Math.floor((safeHeight-180)/94)))
-   : Math.min(9,Math.max(8,Math.floor((safeHeight-180)/82)));
+   : 12;
  const visibleTokens=useMemo(()=>selectWaveTokens(tokens,events,metrics,selectedMint,maxVisible,clock),[tokens,events,metrics,selectedMint,maxVisible,clock]);
  const visibleTokenByMint=useMemo(()=>new Map(visibleTokens.map(t=>[t.mint,t])),[visibleTokens]);
  const layout=useMemo(()=>waveMapLayout(visibleTokens,metrics,safeWidth,safeHeight),[visibleTokens,metrics,safeWidth,safeHeight]);
@@ -86,18 +80,19 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
  },[visibleTokens,events,layoutByMint,scaleX]);
  const livingWaves=useMemo(()=>layout.map((point,index)=>{
    const m=metrics.get(point.mint);
-   const activity=Math.max(1,(m?.buyIntensity??0)+(m?.sellIntensity??0));
-   const pressure=Math.abs(point.strength)/100;
-   const amplitude=Math.min(34,8+Math.log1p(activity)*2.4+pressure*8);
+   const token=visibleTokenByMint.get(point.mint);
+   const dynamics=livingWaveDynamics(token?.hypeScore,m?.buys??0,m?.sells??0);
    const side=point.strength>4?"buy":point.strength<-4?"sell":"neutral";
    return {
      mint:point.mint,
      side,
-     d:wavePath(point.x+point.r+12,point.y,scaleX,point.endY,amplitude,wavePhase+index*.82),
+     d:livingWavePath(point.x+point.r+12,point.y,scaleX,point.endY,dynamics,index*.73),
      x:scaleX,
      y:point.endY,
+     dynamics,
    };
- }),[layout,metrics,scaleX,wavePhase]);
+ }),[layout,metrics,visibleTokenByMint,scaleX]);
+ const livingWaveByMint=useMemo(()=>new Map(livingWaves.map(wave=>[wave.mint,wave])),[livingWaves]);
  const particles=useMemo<Particle[]>(()=>{
    if(!animated)return [];
    return activeWaveEvents(events,visibleMints,clock,4200,maxComets).map(event=>({
@@ -151,14 +146,16 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
       </g>;
     })}
 
-    <g className="living-wave-layer" data-all-focus-tokens="true" data-wave-phase={wavePhase.toFixed(2)}>
+    <g className="living-wave-layer" data-all-focus-tokens="true" data-wave-motion="continuous">
      {livingWaves.map(wave=><g key={"live-wave-"+wave.mint} className="living-wave-group" data-mint={wave.mint}>
        <path d={wave.d} className={[
          styles.livingWave,
          wave.side==="buy"?styles.livingWaveBuy:wave.side==="sell"?styles.livingWaveSell:styles.livingWaveNeutral,
          "living-wave-path",
          "living-wave-"+wave.side,
-       ].join(" ")} data-mint={wave.mint}/>
+       ].join(" ")} data-mint={wave.mint} data-activity={wave.dynamics.activity.toFixed(3)}
+       style={{animationDuration:wave.dynamics.duration+"s"}}
+       strokeDasharray={(12+wave.dynamics.activity*16).toFixed(1)+" "+(10-wave.dynamics.activity*4).toFixed(1)}/>
        <circle cx={wave.x} cy={wave.y} r={5.5} className={[
          styles.livingHead,
          wave.side==="buy"?styles.livingHeadBuy:wave.side==="sell"?styles.livingHeadSell:styles.livingHeadNeutral,
@@ -167,26 +164,24 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
      </g>)}
     </g>
 
-    <g className="flow-history-layer" data-real-swaps-only="true">
+    <g className="flow-history-layer" data-real-swaps-only="true" data-particles-follow-wave="true">
      {layout.map(point=>{
        const trail=flowTrails.get(point.mint)??[];
-       if(trail.length<2)return null;
+       const wave=livingWaveByMint.get(point.mint);
+       if(!wave||trail.length<2)return null;
+       const trades=trail.slice(1);
+       const travel=Math.max(1.5,wave.dynamics.duration*2.15);
        return <g key={"trail-"+point.mint} className="token-flow-trail" data-mint={point.mint}>
-        {trail.slice(1).map((current,index)=>{
-          const previous=trail[index];
-          const dx=current.x-previous.x;
-          const c1x=previous.x+dx*.36,c2x=previous.x+dx*.72;
-          const d=`M${previous.x.toFixed(1)},${previous.y.toFixed(1)} C${c1x.toFixed(1)},${previous.y.toFixed(1)} ${c2x.toFixed(1)},${current.y.toFixed(1)} ${current.x.toFixed(1)},${current.y.toFixed(1)}`;
-          return <path key={"seg-"+current.signature} d={d} className={[styles.flowSegment,current.side==="buy"?styles.flowSegmentBuy:styles.flowSegmentSell,"flow-trace-segment","flow-trace-"+current.side].join(" ")}/>;
+        {trades.map((trade,index)=>{
+          const radius=Math.max(2.4,Math.min(5.4,2.4+Math.log10(1+Math.max(0,trade.usdValue??0))*.62));
+          const begin=-(index/Math.max(1,trades.length))*travel;
+          return <circle key={"dot-"+trade.signature} r={radius}
+           className={[styles.flowDot,trade.side==="buy"?styles.flowDotBuy:styles.flowDotSell,trade.live?styles.flowDotLive:"","flow-trade-dot","moving-flow-particle","flow-trade-"+trade.side].filter(Boolean).join(" ")}
+           data-side={trade.side} data-live={trade.live?"true":"false"}>
+            <title>{trade.side?.toUpperCase()+" · real swap"+(trade.usdValue!=null?" · $"+Math.round(trade.usdValue).toLocaleString():"")}</title>
+            {animated&&<animateMotion dur={travel+"s"} begin={begin+"s"} repeatCount="indefinite" path={wave.d}/>}
+           </circle>;
         })}
-        {trail.slice(1).map((trade,index)=>{
-          const radius=Math.max(2.8,Math.min(6,2.8+Math.log10(1+Math.max(0,trade.usdValue??0))*.72));
-          return <circle key={"dot-"+trade.signature} cx={trade.x} cy={trade.y} r={radius} className={[styles.flowDot,trade.side==="buy"?styles.flowDotBuy:styles.flowDotSell,trade.live?styles.flowDotLive:"","flow-trade-dot","flow-trade-"+trade.side].filter(Boolean).join(" ")} data-side={trade.side} data-live={trade.live?"true":"false"}><title>{trade.side?.toUpperCase()+" · real swap"+(trade.usdValue!=null?" · $"+Math.round(trade.usdValue).toLocaleString():"")}</title></circle>;
-        })}
-        {trail.length>1&&(()=>{
-          const head=trail[trail.length-1];
-          return <circle cx={head.x} cy={head.y} r={8.5} className={[styles.flowHead,head.side==="buy"?styles.flowHeadBuy:styles.flowHeadSell,"flow-current-head"].join(" ")}><title>{"Current order-flow position · "+(head.side==="buy"?"BUY pressure":"SELL pressure")}</title></circle>;
-        })()}
        </g>;
      })}
     </g>
@@ -213,6 +208,6 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
     <a href={fomoTokenUrl(quickToken.mint)} target="_blank" rel="noreferrer">FoMo ↗</a><a href={gmgnTokenUrl(quickToken.mint)} target="_blank" rel="noreferrer">GmGn ↗</a><button className="quick-detail-action" onClick={()=>onDetails(quickToken)}>Details</button><button className="quick-holder-action" onClick={()=>onOpen(quickToken)}>Holders</button>
   </div>}
   {activeParticle&&<div className={styles.detail+" targeted-comet-detail"}><button className="detail-close" onClick={()=>setActiveParticleId(null)} aria-label="Close wallet profile">×</button><strong>{activeParticleProfile?.label??(activeParticle.whale?"Whale":"Wallet")} · {activeParticle.side.toUpperCase()}</strong><span>{activeParticle.wallet.slice(0,6)}…{activeParticle.wallet.slice(-5)}</span><small>{activeParticleProfile?`Wallet score ${activeParticleProfile.score}/100 · Wallet net ${activeParticleProfile.netUsd==null?"—":Math.round(activeParticleProfile.netUsd).toLocaleString()+" USD"}`:"Wallet score unavailable"}{activeParticleCoordinated?" · Coordinated":""}</small></div>}
-  <div className={styles.status}><b>LIVE</b> · every focus token has a moving wave · BUY pressure bends up · SELL pressure bends down · real trades appear as green/red dots</div>
+  <div className={styles.status}><b>LIVE</b> · 12 desktop focus tokens · hype + trade activity control wave turbulence · real BUY/SELL dots travel along each wave</div>
  </div>;
 }
