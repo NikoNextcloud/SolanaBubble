@@ -69,8 +69,8 @@ export function waveMapLayout(tokens:WaveTokenInput[],metrics:Map<string,WaveMet
   const top=70,bottom=Math.max(top+1,height-54),usable=Math.max(1,bottom-top);
   const rowGap=rows<=1?0:usable/(rows-1);
   const scaleY=(score:number)=>top+(100-clamp(score,-100,100))/200*usable;
-  const leftWidth=Math.min(width*.3,width<700?230:330);
-  const colGap=columns<=1?0:(leftWidth-90)/(columns-1);
+  const lastColumnX=Math.min(width*.44,width<700?228:330);
+  const colGap=columns<=1?0:(lastColumnX-48)/(columns-1);
   return tokens.map((token,index)=>{
     const row=Math.floor(index/columns),col=index%columns;
     const hype=clamp(Number(token.hypeScore??50),0,100);
