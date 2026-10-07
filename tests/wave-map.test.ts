@@ -39,15 +39,18 @@ test('wave metrics augment retained sample only with newer live events',()=>{
   assert.ok(result.strength>0);
 });
 
-test('focused wave layout stays in one readable left-side column',()=>{
+test('desktop wave layout uses two readable token columns without overlap',()=>{
   const tokens=Array.from({length:8},(_,i)=>({mint:String(i).padStart(32,'1'),hypeScore:50}));
   const metrics=new Map(tokens.map((t,i)=>[t.mint,{buys:1,sells:1,buyUsd:null,sellUsd:null,strength:i%2?50:-50,buyIntensity:2,sellIntensity:2,liveCount:0,lastEventAt:null}]));
   const layout=waveMapLayout(tokens,metrics,1000,820);
   assert.equal(layout.length,8);
-  assert.equal(new Set(layout.map(p=>p.x)).size,1);
-  assert.ok(layout.every(p=>p.x<120));
+  assert.equal(new Set(layout.map(p=>p.x)).size,2);
+  assert.ok(layout.every(p=>p.x<260));
   assert.ok(layout.every(p=>p.endY>=92&&p.endY<=742));
-  for(let i=1;i<layout.length;i++)assert.ok(layout[i].y-layout[i-1].y>=80);
+  for(const x of new Set(layout.map(p=>p.x))){
+    const column=layout.filter(p=>p.x===x).sort((a,b)=>a.y-b.y);
+    for(let i=1;i<column.length;i++)assert.ok(column[i].y-column[i-1].y>=80);
+  }
 });
 
 test('active wave event lifetime is based on observed arrival, not older block time',()=>{
