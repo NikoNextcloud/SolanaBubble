@@ -325,14 +325,14 @@ try {
   assert.match(coordinateUi.axisTitle, /STRENGTH/);
   assert.ok(coordinateUi.buyWaveCount > 0, "BUY activity must render green wave paths");
   assert.ok(coordinateUi.sellWaveCount > 0, "SELL activity must render red wave paths");
-  assert.equal(coordinateUi.strengthTickCount, 9, "strength scale must expose -100 to +100 ticks");
+  assert.equal(coordinateUi.strengthTickCount, 9, "strength ticks required");
   assert.equal(coordinateUi.fullscreenButton, true, "map must expose a fullscreen control");
   assert.equal(coordinateUi.fullscreenVisible, true, "fullscreen control must be visibly reachable");
   assert.equal(coordinateUi.fullscreenInsideMap, true, "fullscreen control must stay inside the map");
   assert.equal(coordinateUi.cometCount, 10, "mobile map must cap targeted capital comets at 10");
   const cometCycleBefore = await page.evaluate("Number(document.querySelector('.targeted-comet-layer')?.getAttribute('data-comet-cycle') || 0)");
-  assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-in').length > 0"), "BUY trade particles must travel along green waves toward the strength scale");
-  assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-out').length > 0"), "SELL trade particles must travel along red waves toward the strength scale");
+  assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-in').length > 0"), "BUY wave particles required");
+  assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-out').length > 0"), "SELL wave particles required");
   assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-routed').length > 0"), "routed traffic must remain visually distinct");
   assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-whale').length > 0"), "observed whale traffic must have a distinct comet style");
   assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-smart').length > 0"), "constructive Smart Money wallets must have a distinct comet style");
@@ -578,7 +578,7 @@ try {
   assert.equal(desktopQuickInside, true, "desktop quick actions must stay within the map");
 
   await page.screenshot("/tmp/solanabubble-desktop.png");
-  console.log("Browser smoke passed: Lovable-style live BUY/SELL wave map, strength scale, wallet trade particles, Decision Terminal v5, FoMo/GmGn and Holder Map.");
+  console.log("Browser smoke passed: live wave map + v5 flows.");
 } finally {
   page.ws.close();
 }
