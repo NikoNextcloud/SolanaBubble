@@ -13,10 +13,8 @@ import SavedMarketFilters from "./SavedMarketFilters";
 import {useWatchlist} from "./useWatchlist";
 import {matchesWatchFilters} from "@/lib/watchlist";
 import { fomoTokenUrl, gmgnTokenUrl } from "@/lib/token-links";
-import { positionQuickActions } from "@/lib/market/quick-actions";
-import { MARKET_X_TICKS, MARKET_Y_TICKS, applyMarketViewport, marketCoordinateBase } from "@/lib/market/coordinates";
-import { declutterMarketNodes } from "@/lib/market/declutter";
-import MarketCometLayer from "./MarketCometLayer";
+import { marketCoordinateBase } from "@/lib/market/coordinates";
+import MarketWaveMap from "./MarketWaveMap";
 import {useLiveMarketEvents} from "./useLiveMarketEvents";
 import {useSolanaLiveSwaps,type LivePoolTarget} from "./useSolanaLiveSwaps";
 import type {LiveMarketEvent} from "@/lib/market/live-events";
@@ -647,98 +645,7 @@ export default function MarketMap() {
 
   const filteredTokens=tokens.filter(t=>matchesWatchFilters(t,watch.state.filters,watch.state.entries));
   const nodes = [...nodeMap.current.values()].filter(n=>n.isCore||matchesWatchFilters(n,watch.state.filters,watch.state.entries));
-  const mapNodes = nodes.filter((n) => !n.isCore);
-  const mapLayoutKey = mapNodes
-    .map((n) => `${n.mint}:${n.x.toFixed(1)}:${n.y.toFixed(1)}:${n.r.toFixed(1)}`)
-    .join("|");
-  const declutteredMapNodes = useMemo(() => viewMode === "map"
-    ? declutterMarketNodes(mapNodes, {
-        // Keep dense coordinate clusters readable: >2x the previous edge-to-edge gap.
-        gap: size.w <= 700 ? 88 : 152,
-        maxDisplacement: size.w <= 700 ? 260 : 520,
-        iterations: size.w <= 700 ? 34 : 48,
-        anchorStrength: size.w <= 700 ? .028 : .015,
-      })
-    : mapNodes.map((n) => ({ ...n, anchorX: n.x, anchorY: n.y, displacement: 0 })),
-    [mapLayoutKey, size.w, viewMode],
-  );
-  const renderedNodes = viewMode === "map" ? declutteredMapNodes : nodes;
-  const renderNodeByMint = useMemo(() => new Map(renderedNodes.map((n) => [n.mint, n])), [renderedNodes]);
-  const quickActionNode = quickActionMint ? (renderNodeByMint.get(quickActionMint) ?? nodeMap.current.get(quickActionMint)) : null;
-  const quickActionLayout = quickActionNode ? positionQuickActions({
-    nodeX: quickActionNode.x,
-    nodeY: quickActionNode.y,
-    nodeRadius: quickActionNode.r,
-    viewX: mapView.x,
-    viewY: mapView.y,
-    scale: mapView.k,
-    viewportWidth: size.w,
-    viewportHeight: size.h,
-    preferredWidth: size.w <= 640 ? 236 : 148,
-    panelHeight: size.w <= 640 ? 52 : 42,
-  }) : null;
-  const combinedFlows = [...flows, ...expansionFlows];
-  const hotFlowKeys = new Set([
-    ...[...combinedFlows]
-      .sort((a, b) => (b.usd1h * (b.confidence ?? 1)) - (a.usd1h * (a.confidence ?? 1)))
-      .slice(0, 4)
-      .map((f) => `${f.from}>${f.to}:${f.kind}`),
-    ...hotPath.map((p) => `${p.from}>${p.to}:rotation`),
-  ]);
-  const hotNodeMints = new Set(hotPath.flatMap((p) => [p.from, p.to]));
-  const focusMints = new Set<string>();
-  if (selected?.mint) {
-    focusMints.add(selected.mint);
-    for (const flow of combinedFlows) {
-      if (flow.from === selected.mint) focusMints.add(flow.to);
-      if (flow.to === selected.mint) focusMints.add(flow.from);
-    }
-  }
-  const visibleMints=new Set(nodes.map(n=>n.mint));
-  const visibleFlows = combinedFlows
-    .map((f) => ({ ...f, source: nodeMap.current.get(f.from), target: nodeMap.current.get(f.to) }))
-    .filter((f) => f.source && f.target && visibleMints.has(f.from) && visibleMints.has(f.to))
-    .slice(0, 100);
-
-  const netFlowByMint = new Map<string, number>();
-  for (const flow of combinedFlows) {
-    netFlowByMint.set(flow.from, (netFlowByMint.get(flow.from) ?? 0) - flow.usd1h);
-    netFlowByMint.set(flow.to, (netFlowByMint.get(flow.to) ?? 0) + flow.usd1h);
-  }
-
-  const hottest = [...renderedNodes]
-    .filter((n) => !n.isCore)
-    .sort((a, b) => hypeScore(b) - hypeScore(a))
-    .slice(0, 5);
-
-  // Hype particle halo: strong green signal cloud around high-hype planets.
-  const signalDust = viewMode === "map"
-    ? [...renderedNodes]
-        .filter((n) => !n.isCore && hypeScore(n) >= 65)
-        .sort((a, b) => hypeScore(b) - hypeScore(a))
-        .slice(0, 18)
-        .flatMap((n, nodeIndex) => {
-          const hype = hypeScore(n);
-          const normalized = Math.max(0, Math.min(1, (hype - 65) / 35));
-          const count = Math.round(7 + normalized * 23);
-          return Array.from({ length: count }, (_, i) => {
-            const seed = nodeIndex * 1307 + i * 29 + n.mint.charCodeAt(i % n.mint.length);
-            const angle = visualNoise(seed) * Math.PI * 2;
-            const ring = Math.pow(visualNoise(seed + 1.7), .62);
-            const distance = n.r + 12 + ring * (26 + normalized * 46);
-            return {
-              key: `${n.mint}:hype-particle:${i}`,
-              x: n.x + Math.cos(angle) * distance,
-              y: n.y + Math.sin(angle) * distance * .82,
-              r: .65 + visualNoise(seed + 2.6) * (1.25 + normalized * .7),
-              opacity: .18 + normalized * .42 + visualNoise(seed + 3.3) * .16,
-              delay: visualNoise(seed + 5.1) * 2.8,
-              duration: 1.9 + visualNoise(seed + 7.2) * 2.3,
-            };
-          });
-        })
-        .slice(0, 360)
-    : [];
+  const renderedNodes = nodes;
 
   void tick;
 
@@ -758,7 +665,7 @@ export default function MarketMap() {
           </div>
           <div className="market-toolbar-actions">
 
-            {viewMode === "map" && <span className="market-coordinate-mode">Market cap × Price 1h</span>}
+            {viewMode === "map" && <span className="market-coordinate-mode">Live order flow × Strength</span>}
             {viewMode === "map" && <span className={`market-live-latency latency-${liveLatency.cls}`}>{liveLatency.label}</span>}
             {viewMode === "map" && <button
               type="button"
@@ -820,7 +727,7 @@ export default function MarketMap() {
 
       <section className="market-workspace reference-market-workspace">
         <div className="market-map" ref={wrap}>
-          {viewMode === "map" && <div className="lovable-map-hint">Клик: FoMo/GmGn · Двоен клик: Holders · Планетите = координати · Drag картата · Scroll zoom</div>}
+          {viewMode === "map" && <div className="lovable-map-hint">Клик: FoMo/GmGn · Двоен клик: Holders · Монетите са вляво · BUY зелено · SELL червено · Вълните сочат Strength вдясно · Drag · Scroll zoom</div>}
           {watch.ready && (viewMode === "list" ? !filteredTokens.length : !renderedNodes.length) && tokens.length > 0 && <div className="pause-banner">No tokens match your saved filters. Reset filters or add favorites.</div>}
           {streamLive === false && <div className="pause-banner">
             {autoPaused ? "Автоматична пауза след 2 мин. без активност" : "Live режимът е на пауза"} · данните са от кеша
@@ -843,257 +750,29 @@ export default function MarketMap() {
                 <span className={traffic.cls}>{traffic.symbol} {traffic.label}</span>
               </button>;
             })}
-          </div> : <svg
-            className={`market-pan-surface ${animateSignals?"signals-animated":"signals-paused"} ${mapPanDrag.current.active ? "is-panning" : ""} ${capitalFlowOnly?"capital-flow-only":""} lod-${mapLod}`}
-            data-lod={mapLod}
-            data-capital-flow-only={capitalFlowOnly?"true":"false"}
+          </div> : <MarketWaveMap
+            tokens={renderedNodes.filter(n=>!n.isCore)}
+            events={liveMarketEvents}
+            width={size.w}
+            height={size.h}
+            now={signalNow??Date.now()}
+            selectedMint={selected?.mint??null}
+            quickActionMint={quickActionMint}
+            mapView={mapView}
+            lod={mapLod}
+            capitalFlowOnly={capitalFlowOnly}
+            animated={animateSignals}
+            maxComets={size.w<=700?10:15}
+            onSelect={token=>{const node=nodeMap.current.get(token.mint);if(node){setSelected(node);setMobileDetailOpen(false);void expandToken(node);}}}
+            onQuickAction={setQuickActionMint}
+            onDetails={token=>{const node=nodeMap.current.get(token.mint);if(node){setSelected(node);setMobileDetailOpen(true);}}}
+            onOpen={token=>{const node=nodeMap.current.get(token.mint);if(node)openToken(node);}}
             onWheel={handleMapWheel}
             onPointerDown={beginMapPan}
             onPointerMove={moveMapPan}
             onPointerUp={endMapPan}
             onPointerCancel={endMapPan}
-          >
-            <defs>
-              <radialGradient id="marketGlow">
-                <stop offset="0%" stopColor="#87909f" stopOpacity=".16" />
-                <stop offset="55%" stopColor="#4c5563" stopOpacity=".05" />
-                <stop offset="100%" stopColor="#0e1015" stopOpacity="0" />
-              </radialGradient>
-              <radialGradient id="spaceBgCenter" cx="50%" cy="45%" r="78%">
-                <stop offset="0%" stopColor="#303943" />
-                <stop offset="42%" stopColor="#202831" />
-                <stop offset="100%" stopColor="#10151b" />
-              </radialGradient>
-              <radialGradient id="planetGradIn" cx="34%" cy="27%" r="78%">
-                <stop offset="0%" stopColor="#eafff6" />
-                <stop offset="22%" stopColor="#8cf3c6" />
-                <stop offset="68%" stopColor="#2ea46f" />
-                <stop offset="100%" stopColor="#153e31" />
-              </radialGradient>
-              <radialGradient id="planetGradOut" cx="34%" cy="27%" r="78%">
-                <stop offset="0%" stopColor="#fff0f2" />
-                <stop offset="22%" stopColor="#ff9eaa" />
-                <stop offset="68%" stopColor="#cf4e62" />
-                <stop offset="100%" stopColor="#4b2029" />
-              </radialGradient>
-              <radialGradient id="planetGradFlat" cx="34%" cy="27%" r="78%">
-                <stop offset="0%" stopColor="#f1f4f7" />
-                <stop offset="24%" stopColor="#b9c4ce" />
-                <stop offset="68%" stopColor="#65727f" />
-                <stop offset="100%" stopColor="#303942" />
-              </radialGradient>
-              <pattern id="tinyStars" width="220" height="220" patternUnits="userSpaceOnUse">
-                <circle cx="18" cy="22" r="1" fill="#ffffff" opacity=".55" />
-                <circle cx="74" cy="38" r="1.2" fill="#dfe8ff" opacity=".38" />
-                <circle cx="142" cy="28" r=".9" fill="#ffffff" opacity=".48" />
-                <circle cx="198" cy="46" r="1.1" fill="#ffffff" opacity=".37" />
-                <circle cx="36" cy="102" r="1.3" fill="#fff5d6" opacity=".4" />
-                <circle cx="114" cy="86" r="1" fill="#ffffff" opacity=".42" />
-                <circle cx="180" cy="120" r=".9" fill="#d9f3ff" opacity=".39" />
-                <circle cx="64" cy="172" r="1.1" fill="#ffffff" opacity=".44" />
-                <circle cx="150" cy="188" r="1.4" fill="#fff5d6" opacity=".31" />
-                <circle cx="205" cy="176" r="1" fill="#ffffff" opacity=".4" />
-              </pattern>
-              <marker id="marketArrowBuy" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5" markerHeight="5" orient="auto">
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="#46d58d" />
-              </marker>
-              <marker id="marketArrowSell" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5" markerHeight="5" orient="auto">
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="#ff6473" />
-              </marker>
-            </defs>
-            <g className="space-background" pointerEvents="none">
-              <rect x="0" y="0" width={size.w} height={size.h} fill="url(#spaceBgCenter)" />
-              <rect x="0" y="0" width={size.w} height={size.h} fill="url(#tinyStars)" />
-              <ellipse cx={size.w / 2} cy={size.h * .48} rx={size.w * .36} ry={size.h * .34} className="space-nebula-core" />
-            </g>
-            <ellipse cx={size.w / 2} cy={size.h / 2} rx={size.w * .34} ry={size.h * .34} fill="url(#marketGlow)" />
-
-            {viewMode === "map" && <>
-              <g className="market-axis-grid lovable-coordinate-grid" pointerEvents="none">
-                {MARKET_Y_TICKS.map((value) => {
-                  const base = marketCoordinateBase(1e4, value, size.w, size.h);
-                  const screen = applyMarketViewport(base, mapView);
-                  return <g key={`axis-y-${value}`}>
-                    <line x1="0" y1={screen.y} x2={size.w} y2={screen.y} className={value === 0 ? "axis-zero-line" : ""} />
-                    <text x="8" y={screen.y - 5}>{value > 0 ? "+" : ""}{value}%</text>
-                  </g>;
-                })}
-                {MARKET_X_TICKS.map(({ value, label }) => {
-                  const base = marketCoordinateBase(value, 0, size.w, size.h);
-                  const screen = applyMarketViewport(base, mapView);
-                  return <g key={`axis-x-${value}`}>
-                    <line x1={screen.x} y1="0" x2={screen.x} y2={size.h} />
-                    <text x={screen.x} y={size.h - 9} textAnchor="middle">{label}</text>
-                  </g>;
-                })}
-                <text x="48" y="14" className="axis-title">PRICE CHANGE · 1H</text>
-                <text x={size.w - 14} y={size.h - 9} textAnchor="end" className="axis-title">MARKET CAP</text>
-              </g>
-            </>}
-            <g transform={`translate(${mapView.x} ${mapView.y}) scale(${mapView.k})`} className="market-pan-layer">
-            <g className="market-signal-dust hype-particle-cloud" pointerEvents="none">
-              {signalDust.map((p) => <circle
-                key={p.key}
-                cx={p.x}
-                cy={p.y}
-                r={p.r}
-                className="signal-dust-dot hype-green-particle"
-                opacity={p.opacity}
-                style={{
-                  ["--particle-delay" as any]: `${p.delay}s`,
-                  ["--particle-duration" as any]: `${p.duration}s`,
-                }}
-              />)}
-            </g>
-            {viewMode === "map" && <MarketCometLayer
-              nodes={renderedNodes.filter((n) => !n.isCore)}
-              events={recentEvents}
-              liveEvents={liveMarketEvents}
-              active={animateSignals}
-              maxComets={size.w <= 700 ? 10 : 15}
-            />}
-            {renderedNodes.map((n, i) => {
-              const signal=bubbleSignal(n,signalNow??NaN);
-              const confidence=trafficConfidence(n.trafficSample,signalNow??NaN);
-              const color=signal.flow==='in'?'#66d39a':signal.flow==='out'?'#ee746c':'#a9afb7';
-              const total = Math.max(1, n.buys1h + n.sells1h);
-              const imbalance = (n.buys1h - n.sells1h) / total;
-              const activity = Math.min(1, Math.log10(Math.max(1, n.trades1h + 1)) / 4);
-              const hype = hypeScore(n);
-              const traffic = {...trafficState(n),cls:signal.flow};
-              const netFlow = Number.isFinite(Number(n.netFlowUsd1h)) ? Number(n.netFlowUsd1h) : (netFlowByMint.get(n.mint) ?? 0);
-              const focusDimmed = Boolean(selected?.mint && !focusMints.has(n.mint) && !n.isCore);
-              const pulseDuration = n.isCore ? 3.2 : Math.max(.8, Math.min(5, 4 - Math.tanh(Number(signal.fresh?n.hypeAcceleration??0:0) / .3) * 3));
-              const brightness = Math.max(.65, Math.min(1.5, 1 + Math.tanh(Math.abs(Number(signal.fresh?n.hypeVelocity??0:0))) * .5));
-              const anchorDistance = "anchorX" in n ? Number((n as any).displacement ?? 0) : 0;
-              return <g
-                key={n.mint}
-                transform={`translate(${n.x} ${n.y})`}
-                className={`market-node-group ${animateSignals ? "is-animated" : "is-paused"}`}
-                style={{ ["--node-pulse-duration" as any]: `${pulseDuration}s` }}
-              >
-                {anchorDistance > 18 && <line
-                  x1={0}
-                  y1={0}
-                  x2={Number((n as any).anchorX) - n.x}
-                  y2={Number((n as any).anchorY) - n.y}
-                  className="market-anchor-link"
-                  pointerEvents="none"
-                />}
-                <circle
-                  r={n.r + 6 + hype * .045}
-                  className="market-hype-glow"
-                  strokeWidth={1 + hype * .038}
-                  strokeOpacity={Math.min(.96, (.10 + hype / 108) * brightness)}
-                  style={{
-                    ["--hype-strength" as any]: Math.max(.08, hype / 100),
-                    ["--hype-color" as any]: traffic.cls === "in" ? "#66d39a" : traffic.cls === "out" ? "#ee746c" : "#a9afb7",
-                    ["--hype-blur" as any]: `${4 + hype * .12}px`,
-                    ["--hype-duration" as any]: `${pulseDuration}s`,
-                  }}
-                  pointerEvents="none"
-                />
-                {hype >= 48 && <circle
-                  r={n.r + 12 + hype * .075}
-                  className="market-hype-glow market-hype-glow-outer"
-                  strokeWidth={.8 + hype * .02}
-                  strokeOpacity={Math.min(.85, (.08 + hype / 165) * brightness)}
-                  style={{
-                    ["--hype-strength" as any]: hype / 100,
-                    ["--hype-color" as any]: traffic.cls === "in" ? "#66d39a" : traffic.cls === "out" ? "#ee746c" : "#c7cbd0",
-                    ["--hype-blur" as any]: `${8 + hype * .16}px`,
-                    ["--hype-duration" as any]: `${pulseDuration}s`,
-                  }}
-                  pointerEvents="none"
-                />}
-                <circle
-                  r={n.r}
-                  fill={n.isCore ? "#2b3138" : `url(#${planetGradientId(n)})`}
-                  fillOpacity={n.isCore ? ".98" : ".94"}
-                  stroke={selected?.mint === n.mint ? "#ffffff" : n.isCore ? "#b8c0c8" : color}
-                  strokeWidth={(selected?.mint === n.mint ? 2.5 : 1.5) + Math.max(0, Math.min(4, Number(signal.fresh&&n.holderObservedAt&&signalNow!=null&&signalNow-Date.parse(n.holderObservedAt)<60*60_000?n.holderGrowthPct??0:0) / 5))}
-                  className={[
-                    n.isCore ? "market-token-bubble market-core-bubble planet-bubble" : "market-token-bubble planet-bubble",
-                    hotNodeMints.has(n.mint) ? "hot-path-node" : "",
-                    activityPulse.includes(n.mint) ? "trade-hit" : "",
-                    focusDimmed ? "focus-dimmed" : "",
-                  ].filter(Boolean).join(" ")}
-                  tabIndex={n.isCore?-1:0}
-                  role="button"
-                  aria-label={`${n.symbol||n.name||n.mint}: ${signal.label}; Traffic confidence: ${confidence.label}${signal.liquidityDrop?', Liquidity ↓':''}${signal.whaleLabel?', '+signal.whaleLabel:''}`}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onKeyDown={e=>{if(!n.isCore&&(e.key==='Enter'||e.key===' ')){e.preventDefault();setSelected(n);setQuickActionMint(n.mint);expandToken(n);}}}
-                  onClick={() => {
-                    if (!n.isCore) {
-                      setSelected(n);
-                      setQuickActionMint(n.mint);
-                      setMobileDetailOpen(false);
-                      expandToken(n);
-                    }
-                  }}
-                  onDoubleClick={() => {
-                    if (!n.isCore) openToken(n);
-                  }}
-                >
-                  <title>{`${n.symbol||n.name||n.mint} · ${signal.label}\nTraffic confidence: ${confidence.label}\n${signal.reasons.join("\n")}\nПосоката е оценка от rolling 1h trade counts + Hype, не измерен паричен поток и не прогноза за цена.`}</title>
-                </circle>
-                {!n.isCore && <g className={`traffic-confidence confidence-${confidence.level}`} pointerEvents="none">
-                  <title>Traffic Confidence · {confidence.label}</title>
-                  <circle cx={n.r * .7} cy={-n.r * .7} r="7" className="traffic-confidence-rim" />
-                  <circle cx={n.r * .7} cy={-n.r * .7} r="4" className="traffic-confidence-core" />
-                </g>}
-                {!n.isCore && (signal.riskWarning || signal.liquidityDrop) && <circle r={n.r + 9} fill="none" stroke={signal.liquidityDrop ? "#ff6473" : "#f5bd62"} strokeWidth="2" strokeDasharray="5 4" pointerEvents="none"/>}
-                {!n.isCore && <circle
-                  r={Math.max(4, n.r * .7)}
-                  cx={-n.r * .16}
-                  cy={-n.r * .2}
-                  className="planet-highlight"
-                  pointerEvents="none"
-                />}
-                
-                {viewMode === "map" && !n.isCore && <g className="reference-node-label" data-lod={mapLod} pointerEvents="none">
-                  <text x="0" y={-n.r - 32} textAnchor="middle" className="reference-token-name">{(n.symbol||n.name||n.mint.slice(0,5)).slice(0,12)} <tspan className={`map-direction direction-${signal.state}`}>{signal.arrow}</tspan></text>
-                  <text x="0" y={-n.r - 18} textAnchor="middle" className={`map-signal-status direction-${signal.state}`}>{signal.label}</text>
-                  <rect x="-42" y={n.r + 8} width="84" height="15" rx="3" className="reference-pool-chip"/>
-                  <text x="0" y={n.r + 19} textAnchor="middle" className="reference-pool-text">H {Math.round(hype)} · {n.dex?n.dex.slice(0,6):'Pool'}</text>
-                  {(signal.liquidityDrop||signal.whaleLabel) && <text x="0" y={n.r + 37} textAnchor="middle" className={signal.liquidityDrop?'map-event-badge liquidity-badge':'map-event-badge whale-badge'}>{signal.liquidityDrop?'⚠ Liquidity ↓':signal.whaleLabel}</text>}
-                  {signal.liquidityDrop&&signal.whaleLabel&&<text x="0" y={n.r+51} textAnchor="middle" className="map-event-badge whale-badge">{signal.whaleLabel}</text>}
-                </g>}
-                {n.imageUrl && !n.isCore ? <>
-                  <clipPath id={`token-clip-${n.mint}`}><circle r={Math.max(5, n.r - 3)} /></clipPath>
-                  <image
-                    href={n.imageUrl}
-                    x={-(n.r - 3)}
-                    y={-(n.r - 3)}
-                    width={(n.r - 3) * 2}
-                    height={(n.r - 3) * 2}
-                    preserveAspectRatio="xMidYMid slice"
-                    clipPath={`url(#token-clip-${n.mint})`}
-                    pointerEvents="none"
-                    className="market-token-icon"
-                  />
-                </> : n.r >= 17 && <text textAnchor="middle" dy="4" className="market-symbol">{n.symbol || "?"}</text>}
-                {activityPulse.includes(n.mint) && !n.isCore && <>
-                  <circle r={n.r + 8} className="market-shockwave shockwave-a" pointerEvents="none" />
-                  <circle r={n.r + 8} className="market-shockwave shockwave-b" pointerEvents="none" />
-                </>}
-              </g>;
-            })}
-            </g>
-          </svg>}
-
-          {viewMode === "map" && quickActionNode && quickActionLayout && <div
-            className="token-quick-actions token-quick-actions-overlay"
-            style={{ left: quickActionLayout.left, top: quickActionLayout.top, width: quickActionLayout.width }}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => event.stopPropagation()}
-            onDoubleClick={(event) => event.stopPropagation()}
-          >
-            <a href={fomoTokenUrl(quickActionNode.mint)} target="_blank" rel="noreferrer">FoMo ↗</a>
-            <a href={gmgnTokenUrl(quickActionNode.mint)} target="_blank" rel="noreferrer">GmGn ↗</a>
-            <button className="quick-detail-action" onClick={() => setMobileDetailOpen(true)}>Details</button>
-            <button className="quick-holder-action" onClick={() => openToken(quickActionNode)} disabled={loadingMint === quickActionNode.mint}>Holders</button>
-          </div>}
+          />}
 
           {viewMode === "map" && <div className="market-zoom-controls">
             <button onClick={() => zoomMapBy(1 / 1.18)} aria-label="Zoom out">−</button>
@@ -1102,9 +781,9 @@ export default function MarketMap() {
             <button onClick={resetMarketView} aria-label="Reset zoom">⛶</button>
             <button className="market-fullscreen-button" onClick={toggleMapFullscreen} aria-label={isMapFullscreen ? "Exit fullscreen map" : "Fullscreen map"} title={isMapFullscreen ? "Изход от цял екран" : "Карта на цял екран"}>{isMapFullscreen ? "⤡" : "⤢"}</button>
           </div>}
-          <details className="market-legend map-signal-legend" open>
-            <summary>Как да четеш балоните · оценка</summary>
-            <div><span><i className="market-buy-dot"/>Зелено: покупки по брой</span><span><i className="market-sell-dot"/>Червено: продажби по брой</span><span>↑ Засилва се · → Баланс · ↓ Отслабва · ? Unknown</span><span>Размер = Hype · Яркост = Velocity · Пулс = Acceleration</span><span>Контур = Holder growth · Жълт пръстен = Risk</span><span className="traffic-confidence-legend"><i className="reliable"/>Traffic: надежден <i className="partial"/>частичен <i className="insufficient"/>недостатъчен</span><span className="comet-trust-legend"><i className="direct"/>Плътна комета = verified direct <i className="routed"/>Cyan контур = routed <i className="aggregate"/>Бледа = aggregate</span><span>⚠ Liquidity ↓: рязък спад · Whale +/−: праг 1% supply</span><small>LOD: далечен zoom показва основните сигнали; приближаването добавя статус, Hype и събития. Traffic е partial multi-pool sample, не целият пазар. Risk остава отделен.</small></div>
+          <details className="market-legend map-signal-legend">
+            <summary>Как да четеш вълните</summary>
+            <div><span><i className="market-buy-dot"/>Зелена вълна = BUY</span><span><i className="market-sell-dot"/>Червена вълна = SELL</span><span>По-силна активност = по-голяма кривина</span><span>Strength: +100 силен buy pressure · 0 баланс · −100 силен sell pressure</span><span className="comet-trust-legend"><i className="direct"/>Движеща точка = реална/запазена сделка <i className="routed"/>Cyan = routed</span><small>Основата е retained 5m traffic sample, допълнен с по-нови live Solana сделки. Scale измерва order-flow balance, не прогноза за цена.</small></div>
           </details>
         </div>
 

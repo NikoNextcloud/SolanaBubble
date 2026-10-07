@@ -310,24 +310,29 @@ try {
     const rect = full?.getBoundingClientRect();
     const style = full ? getComputedStyle(full) : null;
     return {
-      axisTitle: [...document.querySelectorAll(".lovable-coordinate-grid .axis-title")].map((el) => el.textContent).join(" · "),
+      axisTitle: [...document.querySelectorAll(".wave-axis-title")].map((el) => el.textContent).join(" · "),
       fullscreenButton: Boolean(full),
       fullscreenVisible: Boolean(full && rect && style?.display !== "none" && style?.visibility !== "hidden" && rect.width > 0 && rect.height > 0),
       fullscreenInsideMap: Boolean(map && rect && rect.left >= map.left && rect.right <= map.right && rect.top >= map.top && rect.bottom <= map.bottom),
       cometCount: document.querySelectorAll(".targeted-comet").length,
-      hypeParticleCount: document.querySelectorAll(".hype-green-particle").length,
-      anchorLinkCount: document.querySelectorAll(".market-anchor-link").length,
+      buyWaveCount: document.querySelectorAll(".wave-buy-path").length,
+      sellWaveCount: document.querySelectorAll(".wave-sell-path").length,
+      strengthTickCount: document.querySelectorAll(".wave-strength-tick").length,
     };
   })()`);
-  assert.match(coordinateUi.axisTitle, /PRICE CHANGE · 1H/);
-  assert.match(coordinateUi.axisTitle, /MARKET CAP/);
+  assert.match(coordinateUi.axisTitle, /COINS/);
+  assert.match(coordinateUi.axisTitle, /LIVE ORDER FLOW/);
+  assert.match(coordinateUi.axisTitle, /STRENGTH/);
+  assert.ok(coordinateUi.buyWaveCount > 0, "BUY activity must render green wave paths");
+  assert.ok(coordinateUi.sellWaveCount > 0, "SELL activity must render red wave paths");
+  assert.equal(coordinateUi.strengthTickCount, 9, "strength ticks required");
   assert.equal(coordinateUi.fullscreenButton, true, "map must expose a fullscreen control");
   assert.equal(coordinateUi.fullscreenVisible, true, "fullscreen control must be visibly reachable");
   assert.equal(coordinateUi.fullscreenInsideMap, true, "fullscreen control must stay inside the map");
   assert.equal(coordinateUi.cometCount, 10, "mobile map must cap targeted capital comets at 10");
   const cometCycleBefore = await page.evaluate("Number(document.querySelector('.targeted-comet-layer')?.getAttribute('data-comet-cycle') || 0)");
-  assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-in').length > 0"), "BUY comets must fly toward token planets");
-  assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-out').length > 0"), "SELL comets must fly away from token planets");
+  assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-in').length > 0"), "BUY wave particles required");
+  assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-out').length > 0"), "SELL wave particles required");
   assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-routed').length > 0"), "routed traffic must remain visually distinct");
   assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-whale').length > 0"), "observed whale traffic must have a distinct comet style");
   assert.ok(await page.evaluate("document.querySelectorAll('.targeted-comet-smart').length > 0"), "constructive Smart Money wallets must have a distinct comet style");
@@ -356,8 +361,7 @@ try {
   await page.evaluate(`document.querySelector(".market-zoom-controls button[aria-label='Zoom out']")?.click()`);
   assert.equal(await page.evaluate("document.querySelector('.market-pan-surface')?.getAttribute('data-lod')"), "far");
   await page.evaluate(`document.querySelector(".market-zoom-controls button[aria-label='Reset zoom']")?.click()`);
-  assert.ok(coordinateUi.hypeParticleCount >= 12, "high-hype planets must render a visible green particle halo");
-  assert.ok(coordinateUi.anchorLinkCount >= 1, "decluttered coordinate clusters must keep a subtle anchor guide");
+  await page.waitFor("document.querySelector('.market-pan-surface')?.getAttribute('data-lod') === 'mid'");
 
   const fixedBefore = await page.evaluate(`(() => {
     const el = document.querySelector(".market-token-bubble");
@@ -371,8 +375,8 @@ try {
     return rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
   })()`);
   assert.ok(fixedBefore && fixedAfter);
-  assert.ok(Math.abs(fixedAfter.x - fixedBefore.x) < 0.5, "planet x position must stay fixed on its data coordinate");
-  assert.ok(Math.abs(fixedAfter.y - fixedBefore.y) < 0.5, "planet y position must stay fixed on its data coordinate");
+  assert.ok(Math.abs(fixedAfter.x - fixedBefore.x) < 0.5, "coin x position must stay fixed in the left flow column");
+  assert.ok(Math.abs(fixedAfter.y - fixedBefore.y) < 0.5, "coin y position must stay fixed in the flow layout");
 
   const declutterState = await page.evaluate(`(() => {
     const bubbles = [...document.querySelectorAll(".market-token-bubble")].map((el) => {
@@ -394,13 +398,13 @@ try {
     }
     return { minimumClearance };
   })()`);
-  assert.ok(declutterState.minimumClearance >= 55, "dense coordinate planets must keep a wide visual gap");
+  assert.ok(declutterState.minimumClearance >= 55, "left-side coin layout must keep a readable visual gap");
 
   const mobileMapBounds = await page.evaluate(`(() => {
     const map = document.querySelector(".market-map")?.getBoundingClientRect();
     const bubbles = [...document.querySelectorAll(".market-token-bubble")].map((el) => el.getBoundingClientRect());
-    const labels = [...document.querySelectorAll(".reference-node-label")].map((el) => el.getBoundingClientRect());
-    if (!map) return { bubblesInside: false, labelsInside: false };
+    const ticks = [...document.querySelectorAll(".wave-strength-tick")].map((el) => el.getBoundingClientRect());
+    if (!map) return { bubblesInside: false, scaleInside: false, coinsOnLeft: false };
     const inside = (rect, pad = 1) =>
       rect.left >= map.left + pad &&
       rect.right <= map.right - pad &&
@@ -408,11 +412,13 @@ try {
       rect.bottom <= map.bottom - pad;
     return {
       bubblesInside: bubbles.length > 0 && bubbles.every((rect) => inside(rect, 1)),
-      labelsInside: labels.length > 0 && labels.every((rect) => inside(rect, 4)),
+      scaleInside: ticks.length === 9 && ticks.every((rect) => inside(rect, 1)),
+      coinsOnLeft: bubbles.length > 0 && bubbles.every((rect) => rect.left + rect.width / 2 < map.left + map.width * 0.48),
     };
   })()`);
-  assert.equal(mobileMapBounds.bubblesInside, true, "mobile bubbles must not be clipped by the map edges");
-  assert.equal(mobileMapBounds.labelsInside, true, "mobile bubble labels must remain readable inside the map");
+  assert.equal(mobileMapBounds.bubblesInside, true, "coins inside map");
+  assert.equal(mobileMapBounds.scaleInside, true, "strength scale visible");
+  assert.equal(mobileMapBounds.coinsOnLeft, true, "coins stay left");
 
   await page.evaluate("document.querySelector('.mobile-search-toggle')?.click()");
   await page.waitFor("Boolean(document.querySelector('.lovable-header-search.is-mobile-open'))");
@@ -573,7 +579,7 @@ try {
   assert.equal(desktopQuickInside, true, "desktop quick actions must stay within the map");
 
   await page.screenshot("/tmp/solanabubble-desktop.png");
-  console.log("Browser smoke passed: Decision Terminal v5, Time Machine, wallet comet profiles, compact rail, continuous smart/coordinated comets, single-click FoMo/GmGn and double-click Holder Map.");
+  console.log("Browser smoke passed: live wave map + v5 flows.");
 } finally {
   page.ws.close();
 }
