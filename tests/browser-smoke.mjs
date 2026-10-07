@@ -272,7 +272,7 @@ const snapshot = {
 };
 
 
-for (let i=0;i<14;i+=1) snapshot.tokens.push({
+for (let i=0;i<29;i+=1) snapshot.tokens.push({
   mint:"ExtraBrowserMint"+String(i).padStart(2,"0")+"111111111111111111111111",
   name:"Extra Browser "+i,symbol:"X"+i,dex:"raydium",pairAddress:"ExtraPair"+i,
   priceUsd:.001,marketCap:50000+i*1000,liquidityUsd:12000,volume1h:500+i*50,volume24h:5000,
@@ -537,8 +537,43 @@ try {
   assert.ok(desktop.docWidth <= desktop.width + 1, "desktop layout must not overflow horizontally");
   const desktopCometCount = await page.evaluate("document.querySelectorAll('.targeted-comet').length");
   assert.equal(desktopCometCount, 0, "desktop idle state must not replay retained trades");
-  assert.equal(await page.evaluate("Number(document.querySelector('.market-pan-surface')?.getAttribute('data-visible-tokens') || 0)"), 12, "desktop map must render twelve focus tokens when enough tokens are available");
-  assert.equal(await page.evaluate("document.querySelectorAll('.living-wave-path').length"), 12, "all twelve desktop focus tokens must have a living wave");
+  assert.equal(await page.evaluate("Number(document.querySelector('.market-pan-surface')?.getAttribute('data-visible-tokens') || 0)"), 12, "desktop map must render twelve focus tokens at normal zoom");
+  assert.equal(await page.evaluate("document.querySelectorAll('.living-wave-path').length"), 12, "all twelve normal-zoom focus tokens must have a living wave");
+
+  await page.evaluate(`document.querySelector(".market-zoom-controls button[aria-label='Zoom out']")?.click()`);
+  await page.evaluate(`document.querySelector(".market-zoom-controls button[aria-label='Zoom out']")?.click()`);
+  await page.waitFor("Number(document.querySelector('.market-pan-surface')?.getAttribute('data-visible-tokens') || 0) === 18");
+  assert.equal(await page.evaluate("document.querySelector('.market-pan-surface')?.getAttribute('data-focus-capacity')"), "18");
+  await page.evaluate(`document.querySelector(".market-zoom-controls button[aria-label='Zoom out']")?.click()`);
+  await page.waitFor("Number(document.querySelector('.market-pan-surface')?.getAttribute('data-visible-tokens') || 0) === 24");
+  await page.evaluate(`document.querySelector(".market-zoom-controls button[aria-label='Zoom out']")?.click()`);
+  await page.waitFor("Number(document.querySelector('.market-pan-surface')?.getAttribute('data-visible-tokens') || 0) === 30");
+  const farDensity = await page.evaluate(`(() => {
+    const bubbles=[...document.querySelectorAll(".market-token-bubble")].map((el)=>{
+      const rect=el.getBoundingClientRect();
+      return {x:rect.left+rect.width/2,y:rect.top+rect.height/2,r:rect.width/2};
+    });
+    let clearance=Infinity;
+    for(let i=0;i<bubbles.length;i++)for(let j=i+1;j<bubbles.length;j++){
+      const a=bubbles[i],b=bubbles[j];
+      clearance=Math.min(clearance,Math.hypot(a.x-b.x,a.y-b.y)-a.r-b.r);
+    }
+    return {
+      count:bubbles.length,
+      waves:document.querySelectorAll(".living-wave-path").length,
+      columns:new Set(bubbles.map(b=>Math.round(b.x))).size,
+      clearance,
+      hypeSecondary:document.querySelectorAll(".token-hype-aura-secondary").length,
+    };
+  })()`);
+  assert.equal(farDensity.count,30,"deep zoom-out must reveal thirty focus tokens");
+  assert.equal(farDensity.waves,30,"every zoomed-out token must keep a living wave");
+  assert.ok(farDensity.columns>=3,"dense zoom-out layout must expand into at least three token columns");
+  assert.ok(farDensity.clearance>=5,"dense zoom-out token circles must not overlap");
+  assert.ok(farDensity.hypeSecondary>=1,"extreme hype token must render the stronger secondary beacon");
+  await page.evaluate(`document.querySelector(".market-zoom-controls button[aria-label='Reset zoom']")?.click()`);
+  await page.waitFor("Number(document.querySelector('.market-pan-surface')?.getAttribute('data-visible-tokens') || 0) === 12");
+  console.log("smoke: adaptive-zoom-density");
 
   const desktopBubble = await page.evaluate(`(() => {
     const el = document.querySelector('.market-token-bubble[aria-label^="BTEST:"]');
