@@ -231,7 +231,7 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
    </g>
   </svg>
 
-  <div className={styles.focusInfo}><b>{visibleTokens.length} focus tokens</b><span> · {Math.round(mapView.k*100)}% zoom</span>{hiddenCount>0?<span> · {hiddenCount} more in List</span>:null}<small>{lod==="far"?"zoom out reveals more market coverage":lod==="near"?"detail mode prioritizes the strongest tokens":"live trades are automatically prioritized"}</small></div>
+  <div className={styles.focusInfo}><b>{visibleTokens.length} focus tokens</b><span> · {Math.round(mapView.k*100)}% zoom</span>{hiddenCount>0?<span> · {hiddenCount} more available in List</span>:null}<small>{lod==="far"?"zoom out reveals more market coverage":lod==="near"?"detail mode prioritizes the strongest tokens":"live trades are automatically prioritized"}</small></div>
   {quick&&quickToken&&quickLayout&&<div className={styles.quick+" token-quick-actions token-quick-actions-overlay"} style={{left:quickLayout.left,top:quickLayout.top,width:quickLayout.width}} onPointerDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()} onDoubleClick={e=>e.stopPropagation()}>
     <a href={fomoTokenUrl(quickToken.mint)} target="_blank" rel="noreferrer">FoMo ↗</a><a href={gmgnTokenUrl(quickToken.mint)} target="_blank" rel="noreferrer">GmGn ↗</a><button className="quick-detail-action" onClick={()=>onDetails(quickToken)}>Details</button><button className="quick-holder-action" onClick={()=>onOpen(quickToken)}>Holders</button>
   </div>}
