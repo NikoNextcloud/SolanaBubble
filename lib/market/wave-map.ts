@@ -78,18 +78,18 @@ export function waveMetrics(token:WaveTokenInput,events:LiveMarketEvent[],now=Da
 export function waveMapLayout(tokens:WaveTokenInput[],metrics:Map<string,WaveMetrics>,width:number,height:number):WaveLayout[]{
   if(!tokens.length)return [];
   const mobile=width<700;
-  const columns=mobile?(tokens.length>10?2:1):(tokens.length>18?2:1);
+  const columns=mobile?(tokens.length>8?2:1):(tokens.length>11?2:1);
   const rows=Math.ceil(tokens.length/columns);
   const top=84,bottom=Math.max(top+1,height-68),usable=Math.max(1,bottom-top);
   const rowGap=rows<=1?0:usable/(rows-1);
   const scaleY=(score:number)=>top+(100-clamp(score,-100,100))/200*usable;
-  const firstX=64,lastX=columns===1?firstX:Math.min(width*.42,mobile?220:270);
+  const firstX=72,lastX=columns===1?firstX:Math.min(width*.38,mobile?224:286);
   const colGap=columns<=1?0:(lastX-firstX)/(columns-1);
-  const rowRadius=rows<=1?28:clamp((rowGap-18)/2,14,28);
+  const rowRadius=rows<=1?29:clamp((rowGap-20)/2,15,29);
   return tokens.map((token,index)=>{
     const row=Math.floor(index/columns),col=index%columns;
     const hype=clamp(Number(token.hypeScore??50),0,100);
-    const r=Math.min(clamp(17+hype*.1,17,27),rowRadius);
+    const r=Math.min(clamp(19+hype*.1,19,29),rowRadius);
     const strength=metrics.get(token.mint)?.strength??0;
     const y=rows<=1?(top+bottom)/2:top+row*rowGap;
     return {mint:token.mint,x:firstX+col*colGap,y,r,strength,endY:scaleY(strength)};
