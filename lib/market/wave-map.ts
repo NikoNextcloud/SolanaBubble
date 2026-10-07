@@ -65,7 +65,8 @@ export function buildFlowTrail(trades:FlowTrailTrade[],x1:number,y1:number,x2:nu
     momentum=momentum*.58+signed*weight;
     offset=clamp(offset+momentum*8.5,-72,72);
     const trendY=y1+(endY-y1)*progress;
-    const y=trendY+offset*Math.sin(Math.PI*progress);
+    const envelope=.35+.65*Math.sin(Math.PI*progress);
+    const y=trendY+offset*envelope;
     points.push({
       x:x1+(x2-x1)*progress,
       y,
