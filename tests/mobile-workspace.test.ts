@@ -7,7 +7,7 @@ const market = readFileSync(new URL("../components/MarketMap.tsx", import.meta.u
 const theme = readFileSync(new URL("../app/lovable-theme.css", import.meta.url), "utf8");
 const holder = readFileSync(new URL("../components/BubbleMap.tsx", import.meta.url), "utf8");
 const worker = readFileSync(new URL("../workers/holder-physics.worker.ts", import.meta.url), "utf8");
-const comet = readFileSync(new URL("../components/MarketCometLayer.tsx", import.meta.url), "utf8");
+const wave = readFileSync(new URL("../components/MarketWaveMap.tsx", import.meta.url), "utf8");
 const liveWs = readFileSync(new URL("../components/useSolanaLiveSwaps.ts", import.meta.url), "utf8");
 const liveRealtime = readFileSync(new URL("../components/useLiveMarketEvents.ts", import.meta.url), "utf8");
 
@@ -23,12 +23,12 @@ test("mobile market exposes filters and selected token details", () => {
   assert.match(theme, /\.market-tools-drawer\.is-open/);
   assert.match(theme, /\.reference-market-side\.is-token-selected/);
   assert.match(market, /mobileDetailOpen/);
-  assert.match(market, /quick-detail-action/);
+  assert.match(wave, /quick-detail-action/);
   assert.match(theme, /is-token-selected\.is-mobile-open/);
   assert.match(theme, /safe-area-inset-bottom/);
-  assert.match(market, /MARKET_X_TICKS/);
-  assert.match(market, /PRICE CHANGE · 1H/);
-  assert.match(market, /MarketCometLayer/);
+  assert.match(wave, /LIVE ORDER FLOW/);
+  assert.match(wave, /STRENGTH/);
+  assert.match(market, /MarketWaveMap/);
   assert.match(market, /market-fullscreen-button/);
 });
 
@@ -39,23 +39,23 @@ test("large holder maps use worker physics and hybrid canvas rendering", () => {
   assert.match(worker, /forceSimulation/);
 });
 
-test("market comets continuously replay and support dual realtime transports", () => {
-  assert.match(comet, /setInterval\(\(\)=>setCycle/);
-  assert.match(comet, /direction: "in" \| "out"/);
-  assert.match(comet, /data-comet-quality/);
+test("live wave particles continuously replay and support dual realtime transports", () => {
+  assert.match(wave, /setInterval\(\(\)=>setCycle/);
+  assert.match(wave, /targeted-comet-in/);
+  assert.match(wave, /targeted-comet-out/);
   assert.match(liveWs, /logsSubscribe/);
   assert.match(liveWs, /getTransaction/);
   assert.match(liveRealtime, /postgres_changes/);
 });
 
-test("Visual Core v3 exposes LOD, capital-flow mode, trails and server live ingestion",()=>{
+test("Wave Core preserves LOD, capital-flow mode, continuous trade particles and server live ingestion",()=>{
   const market=readFileSync(new URL("../components/MarketMap.tsx",import.meta.url),"utf8");
-  const comet=readFileSync(new URL("../components/MarketCometLayer.tsx",import.meta.url),"utf8");
+  const wave=readFileSync(new URL("../components/MarketWaveMap.tsx",import.meta.url),"utf8");
   const helius=readFileSync(new URL("../app/api/webhooks/helius/route.ts",import.meta.url),"utf8");
-  assert.match(market,/data-lod/);
+  assert.match(wave,/data-lod/);
   assert.match(market,/capital-flow-toggle/);
   assert.match(market,/market-live-latency/);
-  assert.match(comet,/targeted-comet-trail/);
+  assert.match(wave,/animateMotion/);
   assert.match(helius,/HELIUS_WEBHOOK_SECRET/);
   assert.match(helius,/live_market_events/);
 });
