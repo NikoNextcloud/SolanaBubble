@@ -3,6 +3,7 @@ import fs from "node:fs";
 import {decisionTerminalFixture} from "./fixtures/decision-terminal-browser.mjs";
 import {installDecisionFixture,checkDecisionTerminal} from "./fixtures/decision-terminal-browser-check.mjs";
 import {proveObservedAtImpulses} from "./fixtures/live-impulse-browser.mjs";
+import {checkFlowTrajectoryUi} from "./fixtures/flow-trajectory-browser.mjs";
 
 const CHROME = process.env.CHROME_DEBUG_URL || "http://127.0.0.1:9222";
 const APP = process.env.BROWSER_SMOKE_URL || "http://127.0.0.1:3000";
@@ -314,48 +315,7 @@ try {
   assert.ok(Math.abs(mobileInitial.navBottom - 844) <= 2, "bottom navigation must stay inside the viewport");
   assert.ok(mobileInitial.navTop >= 760, "bottom navigation must remain thumb reachable");
 
-  const coordinateUi = await page.evaluate(`(() => {
-    const map = document.querySelector(".market-map")?.getBoundingClientRect();
-    const full = document.querySelector(".market-fullscreen-button");
-    const rect = full?.getBoundingClientRect();
-    const style = full ? getComputedStyle(full) : null;
-    return {
-      axisTitle: [...document.querySelectorAll(".wave-axis-title")].map((el) => el.textContent).join(" · "),
-      fullscreenButton: Boolean(full),
-      fullscreenVisible: Boolean(full && rect && style?.display !== "none" && style?.visibility !== "hidden" && rect.width > 0 && rect.height > 0),
-      fullscreenInsideMap: Boolean(map && rect && rect.left >= map.left && rect.right <= map.right && rect.top >= map.top && rect.bottom <= map.bottom),
-      cometCount: document.querySelectorAll(".targeted-comet").length,
-      buyWaveCount: document.querySelectorAll(".wave-buy-path").length,
-      sellWaveCount: document.querySelectorAll(".wave-sell-path").length,
-      pulseHaloCount: document.querySelectorAll(".token-pulse-halo").length,
-      eventOnly: document.querySelector(".targeted-comet-layer")?.getAttribute("data-event-only"),
-      realSwapTrace: document.querySelector(".flow-history-layer")?.getAttribute("data-real-swaps-only"),
-      traceSegments: document.querySelectorAll(".flow-trace-segment").length,
-      traceBuyDots: document.querySelectorAll(".flow-trade-buy").length,
-      traceSellDots: document.querySelectorAll(".flow-trade-sell").length,
-      strengthTickCount: document.querySelectorAll(".wave-strength-tick").length,
-      visibleTokenCount: Number(document.querySelector(".market-pan-surface")?.getAttribute("data-visible-tokens") || 0),
-      focusInfo: document.querySelector("[class*=focusInfo]")?.textContent || "",
-    };
-  })()`);
-  assert.match(coordinateUi.axisTitle, /TOKENS/);
-  assert.match(coordinateUi.axisTitle, /ORDER FLOW/);
-  assert.match(coordinateUi.axisTitle, /STRENGTH/);
-  assert.equal(coordinateUi.buyWaveCount, 0, "idle market must not render BUY impulses");
-  assert.equal(coordinateUi.sellWaveCount, 0, "idle market must not render SELL impulses");
-  assert.equal(coordinateUi.cometCount, 0, "retained traffic must not replay as fake live impulses");
-  assert.equal(coordinateUi.eventOnly, "true", "fresh impulse layer must be event-only");
-  assert.equal(coordinateUi.realSwapTrace, "true", "trajectory history must be built from real swaps only");
-  assert.ok(coordinateUi.traceSegments >= 4, "retained real swaps must form a visible order-flow trajectory");
-  assert.ok(coordinateUi.traceBuyDots >= 1, "real BUY swaps must render green trajectory dots");
-  assert.ok(coordinateUi.traceSellDots >= 1, "real SELL swaps must render red trajectory dots");
-  assert.ok(coordinateUi.pulseHaloCount >= 2, "token circles must keep the pulsing halo");
-  assert.equal(coordinateUi.strengthTickCount, 9, "strength ticks required");
-  assert.ok(coordinateUi.visibleTokenCount <= 6, "mobile map must cap focus tokens");
-  assert.match(coordinateUi.focusInfo, /more available in List/);
-  assert.equal(coordinateUi.fullscreenButton, true, "map must expose a fullscreen control");
-  assert.equal(coordinateUi.fullscreenVisible, true, "fullscreen control must be visibly reachable");
-  assert.equal(coordinateUi.fullscreenInsideMap, true, "fullscreen control must stay inside the map");
+  await checkFlowTrajectoryUi(page);
 
   await proveObservedAtImpulses(page, TEST_MINT);
   console.log("smoke: observed-at-live-impulses");
