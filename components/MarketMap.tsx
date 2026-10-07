@@ -227,7 +227,7 @@ export default function MarketMap() {
       const pools=(token.trafficPools?.length?token.trafficPools.map(p=>p.pairAddress):token.pairAddress?[token.pairAddress]:[]).filter(Boolean);
       for(const pool of pools.slice(0,2)){
         if(seen.has(pool))continue;seen.add(pool);picked.push({mint:token.mint,pool});
-        if(picked.length>=4)return picked;
+        if(picked.length>=8)return picked;
       }
     }
     return picked;
@@ -242,7 +242,7 @@ export default function MarketMap() {
     }
     return [...merged.values()].sort((a,b)=>Date.parse(b.block_at)-Date.parse(a.block_at)).slice(0,80);
   },[solanaLive.events,realtime.events]);
-  const liveLatencySeconds=liveMarketEvents[0]?Math.max(0,(Date.now()-Date.parse(liveMarketEvents[0].block_at))/1000):null;
+  const liveLatencySeconds=liveMarketEvents[0]?Math.max(0,(Date.now()-Date.parse(liveMarketEvents[0].observed_at||liveMarketEvents[0].block_at))/1000):null;
   const liveLatency=liveLatencySeconds==null
     ? {label:"Snapshot",cls:"snapshot"}
     : liveLatencySeconds<5

@@ -4,19 +4,24 @@ import type {TrafficSummary} from './traffic/summary';
 export type WaveTokenInput={
   mint:string;symbol?:string|null;name?:string|null;imageUrl?:string|null;
   marketCap?:number|null;hypeScore?:number|null;buys1h?:number|null;sells1h?:number|null;
-  trafficSample?:TrafficSummary|null;
+  trades1h?:number|null;volume1h?:number|null;trafficSample?:TrafficSummary|null;
 };
 export type WaveMetrics={buys:number;sells:number;buyUsd:number|null;sellUsd:number|null;strength:number;buyIntensity:number;sellIntensity:number;liveCount:number;lastEventAt:string|null};
 export type WaveLayout={mint:string;x:number;y:number;r:number;strength:number;endY:number};
-export type ActiveWaveEvent=Pick<LiveMarketEvent,'mint'|'signature'|'wallet'|'side'|'usd_value'|'evidence'|'whale'|'block_at'>;
+export type ActiveWaveEvent=Pick<LiveMarketEvent,'mint'|'signature'|'wallet'|'side'|'usd_value'|'evidence'|'whale'|'block_at'|'observed_at'>;
 
 const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v);
 const clamp=(v:number,min:number,max:number)=>Math.max(min,Math.min(max,v));
+const eventSeenAt=(event:Pick<LiveMarketEvent,'observed_at'|'block_at'>)=>{
+  const observed=Date.parse(event.observed_at);
+  if(Number.isFinite(observed))return observed;
+  return Date.parse(event.block_at);
+};
 
-// Lovable visual rule preserved: equal flow is neutral, all-buy/all-sell are +/-100.
+// Equal flow is neutral, all-buy/all-sell are +/-100.
 export function tokenStrength(buys:number,sells:number,buyUsd:number|null=null,sellUsd:number|null=null){
   const countTotal=Math.max(0,buys)+Math.max(0,sells);
-  const countBalance=countTotal? (Math.max(0,buys)-Math.max(0,sells))/countTotal:0;
+  const countBalance=countTotal?(Math.max(0,buys)-Math.max(0,sells))/countTotal:0;
   const priced=finite(buyUsd)&&finite(sellUsd)&&(buyUsd!+sellUsd!)>0;
   const usdBalance=priced?(buyUsd!-sellUsd!)/(buyUsd!+sellUsd!):countBalance;
   return Math.round(clamp((countBalance*.7+usdBalance*.3)*100,-100,100));
@@ -24,28 +29,53 @@ export function tokenStrength(buys:number,sells:number,buyUsd:number|null=null,s
 
 export function waveAmplitude(intensity:number,maxIntensity:number){
   const normalized=maxIntensity>0?clamp(intensity/maxIntensity,0,1):0;
-  return 3+Math.pow(normalized,.62)*28;
+  return 5+Math.pow(normalized,.58)*34;
 }
 
 export function wavePath(x1:number,y1:number,x2:number,y2:number,amplitude:number,phase=0){
-  return Array.from({length:65},(_,i)=>{
-    const t=i/64,x=x1+(x2-x1)*t;
+  return Array.from({length:49},(_,i)=>{
+    const t=i/48,x=x1+(x2-x1)*t;
     const smooth=t*t*(3-2*t);
-    const y=y1+(y2-y1)*smooth+Math.sin(t*Math.PI*8+phase)*Math.sin(t*Math.PI)*amplitude;
-    return (i===0?'M':'L')+x.toFixed(2)+','+y.toFixed(2);
+    const y=y1+(y2-y1)*smooth+Math.sin(t*Math.PI*6+phase)*Math.sin(t*Math.PI)*amplitude;
+    return (i===0?'M':'L')+x.toFixed(1)+','+y.toFixed(1);
   }).join(' ');
 }
 
-export function activeWaveEvents(events:LiveMarketEvent[],visibleMints:Set<string>,now=Date.now(),ttlMs=2800,maxEvents=15):ActiveWaveEvent[]{
+export function activeWaveEvents(events:LiveMarketEvent[],visibleMints:Set<string>,now=Date.now(),ttlMs=4200,maxEvents=12):ActiveWaveEvent[]{
   return events
     .filter(event=>{
       if(!visibleMints.has(event.mint))return false;
-      const at=Date.parse(event.block_at),age=now-at;
+      const at=eventSeenAt(event),age=now-at;
       return Number.isFinite(at)&&age>=0&&age<=ttlMs;
     })
-    .sort((a,b)=>Date.parse(b.block_at)-Date.parse(a.block_at))
+    .sort((a,b)=>eventSeenAt(b)-eventSeenAt(a))
     .slice(0,maxEvents)
-    .map(({mint,signature,wallet,side,usd_value,evidence,whale,block_at})=>({mint,signature,wallet,side,usd_value,evidence,whale,block_at}));
+    .map(({mint,signature,wallet,side,usd_value,evidence,whale,block_at,observed_at})=>({mint,signature,wallet,side,usd_value,evidence,whale,block_at,observed_at}));
+}
+
+export function selectWaveTokens(tokens:WaveTokenInput[],events:LiveMarketEvent[],metrics:Map<string,WaveMetrics>,selectedMint:string|null,maxVisible:number,now=Date.now()){
+  const recentEventAt=new Map<string,number>();
+  for(const event of events){
+    const at=eventSeenAt(event);
+    if(!Number.isFinite(at)||now-at>60_000||now-at<0)continue;
+    recentEventAt.set(event.mint,Math.max(recentEventAt.get(event.mint)??0,at));
+  }
+  const score=(token:WaveTokenInput)=>{
+    const recent=recentEventAt.get(token.mint);
+    const liveBonus=recent?120_000-Math.min(60_000,now-recent):0;
+    const strength=Math.abs(metrics.get(token.mint)?.strength??0)*210;
+    const hype=clamp(Number(token.hypeScore??0),0,100)*45;
+    const activity=Math.log10(1+Math.max(0,Number(token.volume1h??0))+Math.max(0,Number(token.trades1h??0))*100)*900;
+    return liveBonus+strength+hype+activity;
+  };
+  const ranked=[...tokens].sort((a,b)=>score(b)-score(a));
+  const limit=Math.max(1,maxVisible);
+  const visible=ranked.slice(0,limit);
+  if(selectedMint&&!visible.some(token=>token.mint===selectedMint)){
+    const selected=tokens.find(token=>token.mint===selectedMint);
+    if(selected)visible[Math.max(0,visible.length-1)]=selected;
+  }
+  return visible;
 }
 
 export function waveMetrics(token:WaveTokenInput,events:LiveMarketEvent[],now=Date.now(),windowMs=5*60_000):WaveMetrics{
@@ -77,21 +107,16 @@ export function waveMetrics(token:WaveTokenInput,events:LiveMarketEvent[],now=Da
 
 export function waveMapLayout(tokens:WaveTokenInput[],metrics:Map<string,WaveMetrics>,width:number,height:number):WaveLayout[]{
   if(!tokens.length)return [];
-  const mobile=width<700;
-  const columns=mobile?(tokens.length>8?2:1):(tokens.length>11?2:1);
-  const rows=Math.ceil(tokens.length/columns);
-  const top=84,bottom=Math.max(top+1,height-68),usable=Math.max(1,bottom-top);
-  const rowGap=rows<=1?0:usable/(rows-1);
+  const top=92,bottom=Math.max(top+1,height-78),usable=Math.max(1,bottom-top);
+  const rowGap=tokens.length<=1?0:usable/(tokens.length-1);
   const scaleY=(score:number)=>top+(100-clamp(score,-100,100))/200*usable;
-  const firstX=72,lastX=columns===1?firstX:Math.min(width*.38,mobile?224:286);
-  const colGap=columns<=1?0:(lastX-firstX)/(columns-1);
-  const rowRadius=rows<=1?29:clamp((rowGap-20)/2,15,29);
+  const x=width<700?70:82;
+  const rowRadius=tokens.length<=1?31:clamp((rowGap-24)/2,20,31);
   return tokens.map((token,index)=>{
-    const row=Math.floor(index/columns),col=index%columns;
     const hype=clamp(Number(token.hypeScore??50),0,100);
-    const r=Math.min(clamp(19+hype*.1,19,29),rowRadius);
+    const r=Math.min(clamp(22+hype*.08,22,30),rowRadius);
     const strength=metrics.get(token.mint)?.strength??0;
-    const y=rows<=1?(top+bottom)/2:top+row*rowGap;
-    return {mint:token.mint,x:firstX+col*colGap,y,r,strength,endY:scaleY(strength)};
+    const y=tokens.length<=1?(top+bottom)/2:top+index*rowGap;
+    return {mint:token.mint,x,y,r,strength,endY:scaleY(strength)};
   });
 }
