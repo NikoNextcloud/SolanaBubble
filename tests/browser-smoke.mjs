@@ -414,6 +414,7 @@ try {
   assert.equal(mobileMapBounds.bubblesInside, true, "coins inside map");
   assert.equal(mobileMapBounds.scaleInside, true, "strength scale visible");
   assert.equal(mobileMapBounds.coinsOnLeft, true, "coins stay left");
+  console.log("smoke: focus-layout");
 
   await page.evaluate("document.querySelector('.mobile-search-toggle')?.click()");
   await page.waitFor("Boolean(document.querySelector('.lovable-header-search.is-mobile-open'))");
@@ -450,6 +451,7 @@ try {
   assert.match(quick.text, /Holders/);
   assert.ok(quick.hrefs.some((href) => href.includes(TEST_MINT)), "quick links must preserve the selected mint");
   assert.equal(quick.inside, true, "quick actions must stay inside the mobile viewport");
+  console.log("smoke: quick-actions");
 
   await page.evaluate("document.querySelector('.quick-detail-action')?.click()");
   await page.waitFor("Boolean(document.querySelector('.reference-market-side.is-mobile-open'))");
@@ -468,6 +470,7 @@ try {
   await page.evaluate("document.querySelector('.market-back')?.click()");
   await page.waitFor("!document.querySelector('.reference-market-side.is-mobile-open')");
   await page.screenshot("/tmp/solanabubble-mobile.png");
+  console.log("smoke: mobile-details");
 
   const dragBubble = await page.evaluate(`(() => {
     const els = [...document.querySelectorAll(".market-token-bubble")];
@@ -509,6 +512,7 @@ try {
   await sleep(180);
   const panAfter = await page.evaluate("document.querySelector('.market-pan-layer')?.getAttribute('transform') || ''");
   assert.notEqual(panAfter, panBefore, "dragging the map background must pan the map");
+  console.log("smoke: pan");
   assert.equal(await page.evaluate("location.pathname"), "/", "panning must not open a token route");
 
   await page.evaluate(`(() => {
@@ -532,6 +536,7 @@ try {
   await page.doubleClickAt(doubleBubble.x, doubleBubble.y);
   await page.waitFor(`location.pathname === "/token/${TEST_MINT}"`);
   assert.equal(await page.evaluate("location.pathname"), `/token/${TEST_MINT}`, "double click must open the Holder Map route");
+  console.log("smoke: holder-route");
 
   await page.setViewport(1440, 900, false);
   await page.navigate();
