@@ -26,7 +26,7 @@ test("mobile market exposes filters and selected token details", () => {
   assert.match(wave, /quick-detail-action/);
   assert.match(theme, /is-token-selected\.is-mobile-open/);
   assert.match(theme, /safe-area-inset-bottom/);
-  assert.match(wave, /LIVE TRADE IMPULSES/);
+  assert.match(wave, /ORDER FLOW/);
   assert.match(wave, /STRENGTH/);
   assert.match(market, /MarketWaveMap/);
   assert.match(market, /market-fullscreen-button/);
@@ -48,8 +48,10 @@ test("live wave particles are event-only and support dual realtime transports", 
   assert.match(wave, /particle\.side==="buy"/);
   assert.match(wave, /particle\.side==="sell"/);
   assert.match(liveWs, /logsSubscribe/);
-  assert.match(liveWs, /targets\.slice\(0,8\)/);
+  assert.match(liveWs, /targets\.slice\(0,16\)/);
   assert.match(liveWs, /getTransaction/);
+  assert.match(liveWs, /existing=queue\.findIndex/);
+  assert.match(wave, /Math\.max\(8,Math\.floor\(\(safeHeight-180\)\/82\)\)/);
   assert.match(liveRealtime, /postgres_changes/);
 });
 

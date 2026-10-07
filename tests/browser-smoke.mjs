@@ -334,8 +334,8 @@ try {
       focusInfo: document.querySelector("[class*=focusInfo]")?.textContent || "",
     };
   })()`);
-  assert.match(coordinateUi.axisTitle, /FOCUS TOKENS/);
-  assert.match(coordinateUi.axisTitle, /LIVE TRADE IMPULSES/);
+  assert.match(coordinateUi.axisTitle, /TOKENS/);
+  assert.match(coordinateUi.axisTitle, /ORDER FLOW/);
   assert.match(coordinateUi.axisTitle, /STRENGTH/);
   assert.equal(coordinateUi.buyWaveCount, 0, "idle market must not render BUY impulses");
   assert.equal(coordinateUi.sellWaveCount, 0, "idle market must not render SELL impulses");

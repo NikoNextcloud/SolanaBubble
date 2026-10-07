@@ -224,11 +224,13 @@ export default function MarketMap() {
     const ranked=[...tokens].sort((a,b)=>(Number(b.hypeScore??0)+Math.log10(Math.max(1,b.volume1h))*8)-(Number(a.hypeScore??0)+Math.log10(Math.max(1,a.volume1h))*8));
     const picked:LivePoolTarget[]=[];const seen=new Set<string>();
     for(const token of ranked){
-      const pools=(token.trafficPools?.length?token.trafficPools.map(p=>p.pairAddress):token.pairAddress?[token.pairAddress]:[]).filter(Boolean);
-      for(const pool of pools.slice(0,2)){
-        if(seen.has(pool))continue;seen.add(pool);picked.push({mint:token.mint,pool});
-        if(picked.length>=8)return picked;
-      }
+      const pools=(token.trafficPools?.length
+        ? [...token.trafficPools].sort((a,b)=>Number(b.liquidityUsd??0)-Number(a.liquidityUsd??0)).map(p=>p.pairAddress)
+        : token.pairAddress?[token.pairAddress]:[]).filter(Boolean);
+      const pool=pools.find(candidate=>!seen.has(candidate));
+      if(!pool)continue;
+      seen.add(pool);picked.push({mint:token.mint,pool});
+      if(picked.length>=16)return picked;
     }
     return picked;
   },[tokens]);
