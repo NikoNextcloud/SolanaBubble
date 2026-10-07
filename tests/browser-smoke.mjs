@@ -535,7 +535,8 @@ try {
   assert.ok(desktop.docWidth <= desktop.width + 1, "desktop layout must not overflow horizontally");
   const desktopCometCount = await page.evaluate("document.querySelectorAll('.targeted-comet').length");
   assert.equal(desktopCometCount, 0, "desktop idle state must not replay retained trades");
-  assert.ok(await page.evaluate("Number(document.querySelector('.market-pan-surface')?.getAttribute('data-visible-tokens') || 0) <= 9"), "desktop map must cap focus tokens");
+  assert.equal(await page.evaluate("Number(document.querySelector('.market-pan-surface')?.getAttribute('data-visible-tokens') || 0)"), 12, "desktop map must render twelve focus tokens when enough tokens are available");
+  assert.equal(await page.evaluate("document.querySelectorAll('.living-wave-path').length"), 12, "all twelve desktop focus tokens must have a living wave");
 
   const desktopBubble = await page.evaluate(`(() => {
     const el = document.querySelector('.market-token-bubble[aria-label^="BTEST:"]');
