@@ -127,3 +127,15 @@ test('opportunity wave stays conservative',()=>{
   const risky=opportunityWaveSignal({mint:'22222222222222222222222222222222',opportunityScore:92,signalConfidenceScore:90,manipulationRiskScore:78,capitalFlowScore:80,momentumScore:76});
   assert.equal(risky.active,false);
 });
+
+
+test('living wave phase frames remain morph-compatible but visually distinct',()=>{
+  const dynamics=livingWaveDynamics(88,16,9);
+  const a=livingWavePath(120,210,640,170,dynamics,0);
+  const b=livingWavePath(120,210,640,170,dynamics,1.7);
+  assert.notEqual(a,b);
+  assert.equal((a.match(/ Q/g)||[]).length,(b.match(/ Q/g)||[]).length);
+  assert.equal((a.match(/ L/g)||[]).length,(b.match(/ L/g)||[]).length);
+  assert.match(a,/^M120\.0,210\.0/);
+  assert.match(b,/L640\.0,170\.0$/);
+});
