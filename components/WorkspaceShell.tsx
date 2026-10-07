@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import LiveReliabilityBadge from "./LiveReliabilityBadge";
+import ProductTour from "./ProductTour";
 
 type SearchToken = {
   mint: string;
@@ -32,6 +34,7 @@ export default function WorkspaceShell({
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [openingMint, setOpeningMint] = useState<string | null>(null);
   const [wishlist, setWishlist] = useState<SearchToken[]>([]);
+  const [tourOpenRequest,setTourOpenRequest]=useState(0);
   const searchBox = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -244,6 +247,7 @@ export default function WorkspaceShell({
             </div>}
           </div>
           <div className="lovable-top-actions">
+            <LiveReliabilityBadge />
             <button
               type="button"
               className="mobile-search-toggle"
@@ -254,11 +258,13 @@ export default function WorkspaceShell({
                 setMobileSearchOpen((value) => !value);
               }}
             >{mobileSearchOpen ? "×" : "⌕"}</button>
-            <button type="button" title="Notifications">♧</button>
+            <a href="/market/watchlist" title="Watchlist & alerts" aria-label="Watchlist and alerts">♧</a>
+            <button type="button" title="Quick start" aria-label="Open quick start" onClick={()=>setTourOpenRequest(v=>v+1)}>?</button>
             <span className="lovable-top-avatar">SB</span>
           </div>
         </header>
         <div className="alpha-shell-content">{children}</div>
+        <ProductTour forceOpen={tourOpenRequest}/>
       </section>
     </main>
   );
