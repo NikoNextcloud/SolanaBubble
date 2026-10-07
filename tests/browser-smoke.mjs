@@ -347,6 +347,63 @@ try {
   assert.equal(coordinateUi.fullscreenButton, true, "map must expose a fullscreen control");
   assert.equal(coordinateUi.fullscreenVisible, true, "fullscreen control must be visibly reachable");
   assert.equal(coordinateUi.fullscreenInsideMap, true, "fullscreen control must stay inside the map");
+
+  await page.evaluate(`(() => {
+    const observed = new Date().toISOString();
+    const block = new Date(Date.now() - 12000).toISOString();
+    const emit = (detail) => window.dispatchEvent(new CustomEvent("solanabubble:browser-smoke-live-event", { detail }));
+    emit({
+      mint: "7YttLkHDoV7WJpV8R1F5r4PpWn2YxQ3Zs6AbCdEfGh12",
+      signature: "browser-live-buy",
+      wallet: "BrowserLiveBuyWallet111111111111111111111111",
+      pool: "BrowserPair111",
+      side: "buy",
+      usd_value: 4200,
+      quote_mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      quote_amount: 4200,
+      evidence: "direct",
+      program: "Browser DEX",
+      block_at: block,
+      whale: true,
+      wallet_pct_supply: 1.2,
+      observed_at: observed,
+    });
+    emit({
+      mint: "5OverlapHype111111111111111111111111111111111",
+      signature: "browser-live-sell",
+      wallet: "BrowserLiveSellWallet22222222222222222222222",
+      pool: "BrowserPair333",
+      side: "sell",
+      usd_value: 1800,
+      quote_mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      quote_amount: 1800,
+      evidence: "direct",
+      program: "Browser DEX",
+      block_at: block,
+      whale: false,
+      wallet_pct_supply: null,
+      observed_at: observed,
+    });
+  })()`);
+
+  await page.waitFor("document.querySelectorAll('.wave-buy-path').length >= 1 && document.querySelectorAll('.wave-sell-path').length >= 1");
+  const liveImpulseProof = await page.evaluate(`(() => ({
+    buy: document.querySelectorAll(".wave-buy-path").length,
+    sell: document.querySelectorAll(".wave-sell-path").length,
+    active: Number(document.querySelector(".market-pan-surface")?.getAttribute("data-active-pulses") || 0),
+    visible: Number(document.querySelector(".market-pan-surface")?.getAttribute("data-visible-tokens") || 0),
+  }))()`);
+  assert.ok(liveImpulseProof.buy >= 1, "fresh observed_at BUY must render a visible green impulse");
+  assert.ok(liveImpulseProof.sell >= 1, "fresh observed_at SELL must render a visible red impulse");
+  assert.ok(liveImpulseProof.active >= 2, "fresh BUY/SELL arrivals must stay active despite older block_at");
+  assert.ok(liveImpulseProof.visible <= 6, "live prioritization must not break the mobile focus cap");
+  await page.screenshot("/tmp/solanabubble-live-impulses.png");
+  await sleep(900);
+  assert.ok(await page.evaluate("document.querySelectorAll('.wave-buy-path,.wave-sell-path').length >= 2"), "observed_at impulses must remain visible after RPC-delay-sized block age");
+  await sleep(3600);
+  await page.waitFor("document.querySelectorAll('.wave-buy-path,.wave-sell-path').length === 0");
+  console.log("smoke: observed-at-live-impulses");
+
   assert.match(await page.evaluate("document.querySelector('.market-live-latency')?.textContent || ''"), /Live|Delayed|Snapshot/);
   assert.equal(await page.evaluate("document.querySelector('.market-pan-surface')?.getAttribute('data-lod')"), "mid");
   await page.evaluate("document.querySelector('.capital-flow-toggle')?.click()");
