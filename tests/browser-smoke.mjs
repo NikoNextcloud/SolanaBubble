@@ -416,9 +416,9 @@ try {
       coinsOnLeft: bubbles.length > 0 && bubbles.every((rect) => rect.left + rect.width / 2 < map.left + map.width * 0.48),
     };
   })()`);
-  assert.equal(mobileMapBounds.bubblesInside, true, "mobile coin circles must not be clipped by the map edges");
-  assert.equal(mobileMapBounds.scaleInside, true, "strength scale must remain visible inside the map");
-  assert.equal(mobileMapBounds.coinsOnLeft, true, "all coin circles must stay in the left side of the wave map");
+  assert.equal(mobileMapBounds.bubblesInside, true, "coins inside map");
+  assert.equal(mobileMapBounds.scaleInside, true, "strength scale visible");
+  assert.equal(mobileMapBounds.coinsOnLeft, true, "coins stay left");
 
   await page.evaluate("document.querySelector('.mobile-search-toggle')?.click()");
   await page.waitFor("Boolean(document.querySelector('.lovable-header-search.is-mobile-open'))");
