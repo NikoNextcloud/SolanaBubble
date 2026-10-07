@@ -1,6 +1,7 @@
 "use client";
 import {useEffect,useMemo,useState} from "react";
 import type {SignalAlert} from "@/lib/market/signals";
+import styles from "./AlertsPanel.module.css";
 
 const SEEN_KEY="solanabubble:alerts:seen:v1";
 function readSeen(){try{const rows=JSON.parse(localStorage.getItem(SEEN_KEY)||"[]");return new Set<string>(Array.isArray(rows)?rows.slice(-500):[]);}catch{return new Set<string>();}}
@@ -29,14 +30,14 @@ export default function AlertsPanel({alerts,onSelect}:{alerts:SignalAlert[];onSe
 
   return <section className="reference-side-card intelligence-alerts" aria-label="Smart alerts inbox">
     <div className="market-hot-title"><strong>Smart Alerts</strong><span>{unread} new · last 24h</span></div>
-    <div className="alert-inbox-tabs" role="tablist" aria-label="Alert status">
+    <div className={styles.tabs} role="tablist" aria-label="Alert status">
       {(["all","new","seen"] as const).map(value=><button type="button" key={value} aria-pressed={mode===value} onClick={()=>setMode(value)}>{value==="all"?"All":value==="new"?"New":"Seen"}</button>)}
       {unread>0&&<button type="button" onClick={markAll}>Mark all seen</button>}
     </div>
     <select aria-label="Alert type" value={kind} onChange={e=>setKind(e.target.value)}>
       <option value="all">All signals</option>{["smart-opportunity","smart-money-inflow","smart-money-exit","coordinated-buying","coordinated-selling","bullish-divergence","bearish-divergence","opportunity","hype-threshold","hype-velocity","hype-acceleration","hype","holder-growth","buy-pressure","liquidity","liquidity-disappearing","whale-enter","whale-exit","top-holder-selling"].map(k=><option value={k} key={k}>{k.replaceAll("-"," ")}</option>)}
     </select>
-    {list.slice(0,30).map(alert=><button key={alert.id} className={seen.has(alert.id)?"alert-seen":"alert-new"} onClick={()=>openAlert(alert)}>
+    {list.slice(0,30).map(alert=><button key={alert.id} className={seen.has(alert.id)?styles.seen:styles.unread} onClick={()=>openAlert(alert)}>
       <strong>{alert.symbol||alert.mint.slice(0,6)}</strong>
       <span className={alert.severity==="critical"?"sell":""}>{alert.kind.replaceAll("-"," ")}</span>
       <small>{alert.message} · {new Date(alert.at).toLocaleTimeString()}</small>
