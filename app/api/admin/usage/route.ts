@@ -27,7 +27,7 @@ export async function GET(req: Request) {
     db.from("traffic_swaps").select("signature", { count: "exact", head: true }).eq("evidence", "routed").gte("block_at", since2h),
     db.from("watchlist_sync").select("sync_hash", { count: "exact", head: true }).gt("expires_at", new Date().toISOString()),
     db.from("market_snapshots").select("id", { count: "exact", head: true }),
-    db.from("live_market_events").select("block_at,side,evidence").gte("block_at", new Date(Date.now()-20*60_000).toISOString()).order("block_at",{ascending:false}).limit(500),
+    db.from("live_market_events").select("mint,block_at,observed_at,side,evidence").gte("observed_at", new Date(Date.now()-20*60_000).toISOString()).order("observed_at",{ascending:false}).limit(500),
   ]);
 
   const databaseBytes = Number(dbSize.data ?? 0);
@@ -63,7 +63,9 @@ export async function GET(req: Request) {
       liveBuys20m: (liveEvents.data??[]).filter((row:any)=>row.side==="buy").length,
       liveSells20m: (liveEvents.data??[]).filter((row:any)=>row.side==="sell").length,
       liveDirect20m: (liveEvents.data??[]).filter((row:any)=>row.evidence==="direct").length,
-      liveLatestAt: liveEvents.data?.[0]?.block_at ?? null,
+      liveUniqueMints20m: new Set((liveEvents.data??[]).map((row:any)=>row.mint).filter(Boolean)).size,
+      liveLatestAt: liveEvents.data?.[0]?.observed_at ?? null,
+      liveLatestBlockAt: liveEvents.data?.[0]?.block_at ?? null,
       heliusWebhookConfigured: Boolean(process.env.HELIUS_WEBHOOK_SECRET),
       runtime: {
         environment: process.env.VERCEL_ENV ?? "local",
