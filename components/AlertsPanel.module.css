@@ -1,0 +1,6 @@
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 10px}
+.tabs button{border:1px solid #2a343c;background:#11171c;color:#93a0aa;border-radius:7px;padding:5px 8px;font-size:10px;cursor:pointer}
+.tabs button[aria-pressed="true"]{border-color:rgba(70,213,141,.38);background:#14251d;color:#70e5a3}
+.tabs button:last-child{margin-left:auto}
+.unread{box-shadow:inset 2px 0 #46d58d}
+.seen{opacity:.72}
