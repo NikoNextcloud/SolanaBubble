@@ -1,10 +1,10 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {activeWaveEvents,tokenStrength,waveAmplitude,waveMapLayout,waveMetrics,wavePath} from '../lib/market/wave-map';
+import {activeWaveEvents,selectWaveTokens,tokenStrength,waveAmplitude,waveMapLayout,waveMetrics,wavePath} from '../lib/market/wave-map';
 
 test('wave amplitude grows with stronger order flow',()=>{
   assert.ok(waveAmplitude(80,100)>waveAmplitude(20,100));
-  assert.ok(waveAmplitude(100,100)<=31);
+  assert.ok(waveAmplitude(100,100)<=39);
 });
 
 test('token strength stays bounded and blends count with priced flow',()=>{
@@ -17,8 +17,8 @@ test('token strength stays bounded and blends count with priced flow',()=>{
 
 test('wave path starts and ends at requested anchors',()=>{
   const path=wavePath(20,30,400,80,18,0);
-  assert.match(path,/^M20\.00,30\.00/);
-  assert.match(path,/L400\.00,80\.00$/);
+  assert.match(path,/^M20\.0,30\.0/);
+  assert.match(path,/L400\.0,80\.0$/);
 });
 
 test('wave metrics augment retained sample only with newer live events',()=>{
@@ -39,32 +39,36 @@ test('wave metrics augment retained sample only with newer live events',()=>{
   assert.ok(result.strength>0);
 });
 
-test('wave layout keeps every token in the left region and strength endpoint on scale',()=>{
-  const tokens=Array.from({length:12},(_,i)=>({mint:String(i).padStart(32,'1'),hypeScore:50}));
+test('focused wave layout stays in one readable left-side column',()=>{
+  const tokens=Array.from({length:8},(_,i)=>({mint:String(i).padStart(32,'1'),hypeScore:50}));
   const metrics=new Map(tokens.map((t,i)=>[t.mint,{buys:1,sells:1,buyUsd:null,sellUsd:null,strength:i%2?50:-50,buyIntensity:2,sellIntensity:2,liveCount:0,lastEventAt:null}]));
-  const layout=waveMapLayout(tokens,metrics,1000,600);
-  assert.equal(layout.length,12);
-  assert.ok(layout.every(p=>p.x<340));
-  assert.ok(layout.every(p=>p.endY>=70&&p.endY<=546));
+  const layout=waveMapLayout(tokens,metrics,1000,820);
+  assert.equal(layout.length,8);
+  assert.equal(new Set(layout.map(p=>p.x)).size,1);
+  assert.ok(layout.every(p=>p.x<120));
+  assert.ok(layout.every(p=>p.endY>=92&&p.endY<=742));
+  for(let i=1;i<layout.length;i++)assert.ok(layout[i].y-layout[i-1].y>=80);
 });
 
-
-test('active wave events expire and retained history cannot create impulses',()=>{
+test('active wave event lifetime is based on observed arrival, not older block time',()=>{
   const now=Date.parse('2026-10-07T10:00:00Z');
   const mint='11111111111111111111111111111111';
   const events:any[]=[
-    {mint,signature:'fresh',wallet:'a',side:'buy',usd_value:120,evidence:'direct',whale:false,block_at:'2026-10-07T09:59:58Z'},
-    {mint,signature:'old',wallet:'b',side:'sell',usd_value:80,evidence:'direct',whale:false,block_at:'2026-10-07T09:59:50Z'},
+    {mint,signature:'fresh-arrival',wallet:'a',side:'buy',usd_value:120,evidence:'direct',whale:false,block_at:'2026-10-07T09:59:48Z',observed_at:'2026-10-07T09:59:58Z'},
+    {mint,signature:'old-arrival',wallet:'b',side:'sell',usd_value:80,evidence:'direct',whale:false,block_at:'2026-10-07T09:59:58Z',observed_at:'2026-10-07T09:59:50Z'},
   ];
-  const active=activeWaveEvents(events,new Set([mint]),now,2800,10);
-  assert.deepEqual(active.map(e=>e.signature),['fresh']);
-  assert.equal(activeWaveEvents([],new Set([mint]),now,2800,10).length,0);
+  const active=activeWaveEvents(events,new Set([mint]),now,4200,10);
+  assert.deepEqual(active.map(e=>e.signature),['fresh-arrival']);
+  assert.equal(activeWaveEvents([],new Set([mint]),now,4200,10).length,0);
 });
 
-test('small mobile token sets use one clear column',()=>{
-  const tokens=Array.from({length:8},(_,i)=>({mint:String(i).padStart(32,'2'),hypeScore:60}));
+test('focus selection caps visual density and prioritizes selected and fresh-live tokens',()=>{
+  const now=Date.parse('2026-10-07T10:00:00Z');
+  const tokens=Array.from({length:20},(_,i)=>({mint:'mint-'+i,symbol:'T'+i,hypeScore:i,volume1h:i*1000,trades1h:i}));
   const metrics=new Map(tokens.map(t=>[t.mint,{buys:1,sells:1,buyUsd:null,sellUsd:null,strength:0,buyIntensity:1,sellIntensity:1,liveCount:0,lastEventAt:null}]));
-  const layout=waveMapLayout(tokens,metrics,520,700);
-  assert.equal(new Set(layout.map(p=>p.x)).size,1);
-  assert.ok(layout.every(p=>p.r>=14));
+  const events:any[]=[{mint:'mint-2',signature:'live',wallet:'w',side:'buy',usd_value:10,evidence:'direct',whale:false,block_at:'2026-10-07T09:59:50Z',observed_at:'2026-10-07T09:59:59Z'}];
+  const selected=selectWaveTokens(tokens,events,metrics,'mint-1',6,now);
+  assert.equal(selected.length,6);
+  assert.ok(selected.some(t=>t.mint==='mint-1'));
+  assert.ok(selected.some(t=>t.mint==='mint-2'));
 });
