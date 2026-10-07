@@ -5,6 +5,8 @@ export type WaveTokenInput={
   mint:string;symbol?:string|null;name?:string|null;imageUrl?:string|null;
   marketCap?:number|null;hypeScore?:number|null;buys1h?:number|null;sells1h?:number|null;
   trades1h?:number|null;volume1h?:number|null;trafficSample?:TrafficSummary|null;
+  opportunityScore?:number|null;signalConfidenceScore?:number|null;manipulationRiskScore?:number|null;riskScore?:number|null;
+  capitalFlowScore?:number|null;momentumScore?:number|null;liquidityWarning?:boolean|null;divergenceSignal?:'bullish'|'bearish'|'none'|null;
 };
 export type WaveMetrics={buys:number;sells:number;buyUsd:number|null;sellUsd:number|null;strength:number;buyIntensity:number;sellIntensity:number;liveCount:number;lastEventAt:string|null};
 export type WaveLayout={mint:string;x:number;y:number;r:number;strength:number;endY:number};
@@ -12,6 +14,7 @@ export type ActiveWaveEvent=Pick<LiveMarketEvent,'mint'|'signature'|'wallet'|'si
 export type FlowTrailTrade={signature:string;side:'buy'|'sell';usdValue:number|null;at:string;live?:boolean};
 export type FlowTrailPoint={x:number;y:number;side:'buy'|'sell'|null;usdValue:number|null;signature:string|null;live:boolean};
 export type LivingWaveDynamics={amplitude:number;frequency:number;duration:number;activity:number};
+export type OpportunityWaveSignal={active:boolean;strength:'none'|'developing'|'strong';score:number;intensity:number;partial:boolean;reasons:string[]};
 
 const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v);
 const clamp=(v:number,min:number,max:number)=>Math.max(min,Math.min(max,v));
@@ -54,6 +57,27 @@ export function livingWaveDynamics(hypeScore:number|null|undefined,buys:number,s
     duration:clamp(3.1-hype*.75-activity*1.55,.72,3.1),
     activity,
   };
+}
+
+export function opportunityWaveSignal(token:WaveTokenInput):OpportunityWaveSignal{
+  const opportunity=finite(token.opportunityScore)?clamp(token.opportunityScore!,0,100):0;
+  const confidence=finite(token.signalConfidenceScore)?clamp(token.signalConfidenceScore!,0,100):0;
+  const risk=finite(token.manipulationRiskScore)?clamp(token.manipulationRiskScore!,0,100):finite(token.riskScore)?clamp(token.riskScore!,0,100):100;
+  const capital=finite(token.capitalFlowScore)?clamp(token.capitalFlowScore!,0,100):50;
+  const momentum=finite(token.momentumScore)?clamp(token.momentumScore!,0,100):50;
+  const constructive=capital>=55||token.divergenceSignal==='bullish';
+  const active=opportunity>=75&&confidence>=65&&risk<=55&&constructive&&!token.liquidityWarning;
+  const score=Math.round(clamp(opportunity*.36+confidence*.26+capital*.18+momentum*.10+(100-risk)*.10,0,100));
+  const partial=!finite(token.capitalFlowScore)||!finite(token.momentumScore);
+  const intensity=active?clamp((score-65)/30,.22,1):0;
+  const strength:OpportunityWaveSignal['strength']=!active?'none':score>=82&&confidence>=75&&risk<=40?'strong':'developing';
+  const reasons:string[]=[];
+  if(opportunity>=75)reasons.push('Opportunity '+Math.round(opportunity));
+  if(confidence>=65)reasons.push('Confidence '+Math.round(confidence));
+  if(capital>=55)reasons.push('Capital Flow '+Math.round(capital));
+  if(token.divergenceSignal==='bullish')reasons.push('Bullish divergence');
+  if(risk<=55)reasons.push('Risk '+Math.round(risk));
+  return {active,strength,score,intensity,partial,reasons};
 }
 
 export function livingWavePath(x1:number,y1:number,x2:number,y2:number,dynamics:LivingWaveDynamics,phase=0){
