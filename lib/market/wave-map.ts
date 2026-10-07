@@ -60,18 +60,22 @@ export function selectWaveTokens(tokens:WaveTokenInput[],events:LiveMarketEvent[
     if(!Number.isFinite(at)||now-at>60_000||now-at<0)continue;
     recentEventAt.set(event.mint,Math.max(recentEventAt.get(event.mint)??0,at));
   }
-  return [...tokens].sort((a,b)=>{
-    const score=(token:WaveTokenInput)=>{
-      const recent=recentEventAt.get(token.mint);
-      const liveBonus=recent?120_000-Math.min(60_000,now-recent):0;
-      const selectedBonus=token.mint===selectedMint?250_000:0;
-      const strength=Math.abs(metrics.get(token.mint)?.strength??0)*210;
-      const hype=clamp(Number(token.hypeScore??0),0,100)*45;
-      const activity=Math.log10(1+Math.max(0,Number(token.volume1h??0))+Math.max(0,Number(token.trades1h??0))*100)*900;
-      return selectedBonus+liveBonus+strength+hype+activity;
-    };
-    return score(b)-score(a);
-  }).slice(0,Math.max(1,maxVisible));
+  const score=(token:WaveTokenInput)=>{
+    const recent=recentEventAt.get(token.mint);
+    const liveBonus=recent?120_000-Math.min(60_000,now-recent):0;
+    const strength=Math.abs(metrics.get(token.mint)?.strength??0)*210;
+    const hype=clamp(Number(token.hypeScore??0),0,100)*45;
+    const activity=Math.log10(1+Math.max(0,Number(token.volume1h??0))+Math.max(0,Number(token.trades1h??0))*100)*900;
+    return liveBonus+strength+hype+activity;
+  };
+  const ranked=[...tokens].sort((a,b)=>score(b)-score(a));
+  const limit=Math.max(1,maxVisible);
+  const visible=ranked.slice(0,limit);
+  if(selectedMint&&!visible.some(token=>token.mint===selectedMint)){
+    const selected=tokens.find(token=>token.mint===selectedMint);
+    if(selected)visible[Math.max(0,visible.length-1)]=selected;
+  }
+  return visible;
 }
 
 export function waveMetrics(token:WaveTokenInput,events:LiveMarketEvent[],now=Date.now(),windowMs=5*60_000):WaveMetrics{
