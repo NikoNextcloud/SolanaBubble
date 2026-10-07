@@ -4,6 +4,7 @@ import {decisionTerminalFixture} from "./fixtures/decision-terminal-browser.mjs"
 import {installDecisionFixture,checkDecisionTerminal} from "./fixtures/decision-terminal-browser-check.mjs";
 import {proveObservedAtImpulses} from "./fixtures/live-impulse-browser.mjs";
 import {checkFlowTrajectoryUi} from "./fixtures/flow-trajectory-browser.mjs";
+import {checkAdaptiveZoomDensity} from "./fixtures/adaptive-zoom-browser.mjs";
 
 const CHROME = process.env.CHROME_DEBUG_URL || "http://127.0.0.1:9222";
 const APP = process.env.BROWSER_SMOKE_URL || "http://127.0.0.1:3000";
@@ -272,7 +273,7 @@ const snapshot = {
 };
 
 
-for (let i=0;i<14;i+=1) snapshot.tokens.push({
+for (let i=0;i<29;i+=1) snapshot.tokens.push({
   mint:"ExtraBrowserMint"+String(i).padStart(2,"0")+"111111111111111111111111",
   name:"Extra Browser "+i,symbol:"X"+i,dex:"raydium",pairAddress:"ExtraPair"+i,
   priceUsd:.001,marketCap:50000+i*1000,liquidityUsd:12000,volume1h:500+i*50,volume24h:5000,
@@ -537,8 +538,11 @@ try {
   assert.ok(desktop.docWidth <= desktop.width + 1, "desktop layout must not overflow horizontally");
   const desktopCometCount = await page.evaluate("document.querySelectorAll('.targeted-comet').length");
   assert.equal(desktopCometCount, 0, "desktop idle state must not replay retained trades");
-  assert.equal(await page.evaluate("Number(document.querySelector('.market-pan-surface')?.getAttribute('data-visible-tokens') || 0)"), 12, "desktop map must render twelve focus tokens when enough tokens are available");
-  assert.equal(await page.evaluate("document.querySelectorAll('.living-wave-path').length"), 12, "all twelve desktop focus tokens must have a living wave");
+  assert.equal(await page.evaluate("Number(document.querySelector('.market-pan-surface')?.getAttribute('data-visible-tokens') || 0)"), 12, "desktop map must render twelve focus tokens at normal zoom");
+  assert.equal(await page.evaluate("document.querySelectorAll('.living-wave-path').length"), 12, "all twelve normal-zoom focus tokens must have a living wave");
+
+  await checkAdaptiveZoomDensity(page);
+  console.log("smoke: adaptive-zoom-density");
 
   const desktopBubble = await page.evaluate(`(() => {
     const el = document.querySelector('.market-token-bubble[aria-label^="BTEST:"]');
