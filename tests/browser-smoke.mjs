@@ -166,6 +166,8 @@ const snapshot = {
       opportunityScore: 81,
       signalConfidenceScore: 82,
       manipulationRiskScore: 28,
+      capitalFlowScore: 78,
+      momentumScore: 74,
       divergenceSignal: "bullish",
       opportunityCoverage: "7/8 signal families observed",
       opportunityFactors: [{ label: "Hype", points: 14, evidence: "Hype 72/100" }],
