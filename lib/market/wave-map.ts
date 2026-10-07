@@ -8,6 +8,7 @@ export type WaveTokenInput={
 };
 export type WaveMetrics={buys:number;sells:number;buyUsd:number|null;sellUsd:number|null;strength:number;buyIntensity:number;sellIntensity:number;liveCount:number;lastEventAt:string|null};
 export type WaveLayout={mint:string;x:number;y:number;r:number;strength:number;endY:number};
+export type ActiveWaveEvent=Pick<LiveMarketEvent,'mint'|'signature'|'wallet'|'side'|'usd_value'|'evidence'|'whale'|'block_at'>;
 
 const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v);
 const clamp=(v:number,min:number,max:number)=>Math.max(min,Math.min(max,v));
@@ -33,6 +34,18 @@ export function wavePath(x1:number,y1:number,x2:number,y2:number,amplitude:numbe
     const y=y1+(y2-y1)*smooth+Math.sin(t*Math.PI*8+phase)*Math.sin(t*Math.PI)*amplitude;
     return (i===0?'M':'L')+x.toFixed(2)+','+y.toFixed(2);
   }).join(' ');
+}
+
+export function activeWaveEvents(events:LiveMarketEvent[],visibleMints:Set<string>,now=Date.now(),ttlMs=2800,maxEvents=15):ActiveWaveEvent[]{
+  return events
+    .filter(event=>{
+      if(!visibleMints.has(event.mint))return false;
+      const at=Date.parse(event.block_at),age=now-at;
+      return Number.isFinite(at)&&age>=0&&age<=ttlMs;
+    })
+    .sort((a,b)=>Date.parse(b.block_at)-Date.parse(a.block_at))
+    .slice(0,maxEvents)
+    .map(({mint,signature,wallet,side,usd_value,evidence,whale,block_at})=>({mint,signature,wallet,side,usd_value,evidence,whale,block_at}));
 }
 
 export function waveMetrics(token:WaveTokenInput,events:LiveMarketEvent[],now=Date.now(),windowMs=5*60_000):WaveMetrics{
@@ -64,18 +77,21 @@ export function waveMetrics(token:WaveTokenInput,events:LiveMarketEvent[],now=Da
 
 export function waveMapLayout(tokens:WaveTokenInput[],metrics:Map<string,WaveMetrics>,width:number,height:number):WaveLayout[]{
   if(!tokens.length)return [];
-  const columns=width<700?2:tokens.length>20?3:2;
+  const mobile=width<700;
+  const columns=mobile?(tokens.length>10?2:1):(tokens.length>18?2:1);
   const rows=Math.ceil(tokens.length/columns);
-  const top=70,bottom=Math.max(top+1,height-54),usable=Math.max(1,bottom-top);
+  const top=84,bottom=Math.max(top+1,height-68),usable=Math.max(1,bottom-top);
   const rowGap=rows<=1?0:usable/(rows-1);
   const scaleY=(score:number)=>top+(100-clamp(score,-100,100))/200*usable;
-  const lastColumnX=Math.min(width*.44,width<700?228:330);
-  const colGap=columns<=1?0:(lastColumnX-48)/(columns-1);
+  const firstX=64,lastX=columns===1?firstX:Math.min(width*.42,mobile?220:270);
+  const colGap=columns<=1?0:(lastX-firstX)/(columns-1);
+  const rowRadius=rows<=1?28:clamp((rowGap-18)/2,14,28);
   return tokens.map((token,index)=>{
     const row=Math.floor(index/columns),col=index%columns;
     const hype=clamp(Number(token.hypeScore??50),0,100);
-    const r=clamp(13+hype*.12,13,25);
+    const r=Math.min(clamp(17+hype*.1,17,27),rowRadius);
     const strength=metrics.get(token.mint)?.strength??0;
-    return {mint:token.mint,x:48+col*colGap,y:rows<=1?(top+bottom)/2:top+row*rowGap,r,strength,endY:scaleY(strength)};
+    const y=rows<=1?(top+bottom)/2:top+row*rowGap;
+    return {mint:token.mint,x:firstX+col*colGap,y,r,strength,endY:scaleY(strength)};
   });
 }
