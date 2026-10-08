@@ -28,6 +28,8 @@ There is no Helius dependency in the active application.
 - `/` - market overview
 - `/token/[mint]` - holder / cluster map
 - `/admin` - database and API status
+- `/market/watchlist` - synchronized personal watchlist and alerts
+- `/market/movers` - ranked market movers
 
 ## Environment variables
 
@@ -100,11 +102,11 @@ FoMo links use its direct `/coin?address=<mint>&chainId=1399811149` route. FoMo 
 
 ## Personal Watchlist and Data Quality
 
-Use ☆ Add to Watchlist in the Token Signal Card, or add a mint on `/market/watchlist`. Favorites (up to 50), search/minimum Hype/maximum Risk/favorites-only filters and per-token alert thresholds are stored in versioned browser localStorage. Existing `solanabubble:wishlist` entries migrate on the first edit. Storage failures are displayed, never silently presented as saved. Browser settings do not sync between devices and are removed if browser storage is cleared.
+Use ☆ Add to Watchlist in the Token Signal Card, or add a mint on `/market/watchlist`. Favorites (up to 50), search/minimum Hype/maximum Risk/favorites-only filters and per-token alert thresholds are stored in versioned browser localStorage. Existing `solanabubble:wishlist` entries migrate on the first edit. Storage failures are displayed, never silently presented as saved. Browser settings remain local-first, but optional Supabase email magic-link account sync can carry Watchlist, alert rules and preferences across devices. Anonymous 256-bit sync remains available as a fallback; clearing browser storage removes only the local copy.
 
 Watchlist reads fresh market cache or the latest persisted snapshot for mints outside the current discovery universe; missing observations remain unknown. A browser-generated 256-bit sync key can synchronize favorites, filters, thresholds and alert history across devices. Only its SHA-256 hash is stored server-side; the raw sync key remains a user secret. Synced threshold rules are also evaluated by the background market worker when their tokens are present in the current market snapshot. GET `/api/market/watchlist?mints=...` validates and bounds requests and never triggers collection. Open a token's holder page to track a token with no observation yet. Filters apply to Map and List and are shared with Watchlist. Drag/pan/zoom and the Map/List modes remain intact.
 
-Personal alerts evaluate cached observations while Map or Watchlist is open. Rules cover Hype, Hype Velocity, roughly-five-minute holder growth, buy count pressure (at least 20 trades) and liquidity drop. Unknown/stale observations cannot fire. Crossings persist once and rearm after the condition clears; edits reset that rule's condition. These are in-app alerts, not server-side subscriptions, push, email or unattended background delivery.
+Personal alerts evaluate cached observations while Map or Watchlist is open. Rules cover Hype, Hype Velocity, roughly-five-minute holder growth, buy count pressure (at least 20 trades) and liquidity drop. Unknown/stale observations cannot fire. Crossings persist once and rearm after the condition clears; edits reset that rule's condition. These rules also participate in the background worker when the synchronized token is present in the market snapshot. Web Push is opt-in and best-effort; delivery failures are observable but notifications are never treated as a guaranteed trading control.
 
 Data Quality exposes actual market and holder observation timestamps and age, recent/stale/unknown status, sampled wallet relationship coverage and available comparison baselines. Market becomes stale at 10 minutes, holders at 60 minutes. It distinguishes upstream/RPC observations, computed scores/deltas, estimated flow and heuristic risk/relationships. Unknown timestamps are never replaced with the current time.
 
@@ -199,3 +201,28 @@ Production can use a dedicated Solana RPC by setting `SOLANA_RPC_URL`. Without i
 ### Release operations
 
 The application package version is `1.0.0`; release notes live in `CHANGELOG.md`. Git-triggered Vercel deployment remains disabled and production still requires an explicit deploy authorization. CI gates security audit, TypeScript, unit tests, worker bundle parity, source budgets, Next.js build, API smoke, Chromium mobile/desktop interaction smoke and a Firefox headless render smoke.
+
+
+## Final production completion
+
+The v1 production line includes a final completion pass focused on data quality, validation and operations rather than new visual effects.
+
+### GOOD Opportunity Engine v2
+
+Each worker snapshot now persists the qualified GOOD Opportunity state, score, tier and observed BUY-strength used at that moment. The intelligence API evaluates bounded GOOD entry signals against later snapshots at 15m, 1h and 6h. It reports sample-shrunk positive rates, +2% hit rates, median terminal return, maximum favorable excursion (MFE) and maximum adverse excursion (MAE). Continuous signals are sampled at most once per hour to reduce correlated duplicate entries.
+
+GOOD v2 historical outcomes can make a small bounded adjustment to Adaptive Opportunity only after enough later observations exist. This calibration never uses future data to score the original snapshot and never converts historical win rates into a guarantee.
+
+### Provider readiness
+
+The server reports sanitized RPC readiness as one of `public-fallback`, `dedicated-shared`, `dedicated-traffic`, `dedicated-holder` or `dedicated-split`. Provider URLs and credentials are never returned to clients. Production currently remains sampled even with a dedicated RPC because the swap collector is bounded by design; `fullFirehose` stays false until a true indexed/firehose source is integrated.
+
+Recommended production configuration is separate `SOLANA_TRAFFIC_RPC_URLS` and `SOLANA_HOLDER_RPC_URLS` failover chains. A paid provider credential is intentionally not fabricated or committed by the application.
+
+### Continuous production monitoring
+
+`.github/workflows/production-monitor.yml` checks the public production root and `/api/health` every 15 minutes, independently of Vercel. The check fails when the worker is unhealthy, market age exceeds 15 minutes or client errors cross the bounded threshold. If GitHub repository secrets `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are configured, failures also send a Telegram notification.
+
+### PWA and release surface
+
+The manifest now includes branded normal and maskable icons, the app exports a branded Open Graph image and a sitemap covers the public product/trust routes. Production still uses explicit deployment authorization and deployment locks are restored after a controlled release.
