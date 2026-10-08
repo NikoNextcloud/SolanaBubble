@@ -10,7 +10,7 @@ import {fetchDexScreenerToken} from '../solana-public';
 import { observeHolders } from './holders';
 import { collapseAlertHistory, deriveSignals, evaluateAlerts, prioritizeAlerts, suppressRepeatedAlerts, type SignalToken, type Intelligence, type SignalAlert } from './signals';
 import { evaluateSyncedWatchlists } from '../watchlist-server';
-import {goodOpportunitySignal,tokenStrength} from './wave-map';
+import {goodOpportunitySignal,opportunityTokenStrength} from './opportunity';
 
 export async function ingestMarket() {
   const ingestionStarted=Date.now();
@@ -93,7 +93,7 @@ export async function ingestMarket() {
         // Directional volume estimate based on trade counts, not measured capital transfers.
         netFlowUsd1h: t.volume1h * (t.buys1h - t.sells1h) / Math.max(1, t.trades1h)};
       const flow5=withSignals.trafficSample?.windows?.['5'];
-      const strength=tokenStrength(flow5?.buys??withSignals.buys1h??0,flow5?.sells??withSignals.sells1h??0,flow5?.buyUsd??null,flow5?.sellUsd??null);
+      const strength=opportunityTokenStrength(flow5?.buys??withSignals.buys1h??0,flow5?.sells??withSignals.sells1h??0,flow5?.buyUsd??null,flow5?.sellUsd??null);
       const good=goodOpportunitySignal(withSignals as any,strength);
       return {...withSignals,goodOpportunityScore:good.score,goodOpportunityTier:good.tier,goodOpportunityActive:good.active,goodOpportunityStrength:strength,goodOpportunityReasons:good.reasons,goodOpportunityBlockers:good.blockers};
     });
