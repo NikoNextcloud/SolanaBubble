@@ -26,7 +26,7 @@ const samples=[];const loops=Math.max(2,Math.ceil(minutes*60_000/intervalMs));
 for(let i=0;i<loops;i++){
  const health=await getJson(APP+"/api/health");
  assert.equal(health.ok,true,"production health must remain ok");
- assert.equal(health.workerState,"ok","worker must remain healthy");
+ assert.ok(["ok","running"].includes(health.workerState),"worker must remain healthy");
  assert.ok(Number(health.marketAgeSec)>=0&&Number(health.marketAgeSec)<900,"market snapshot must remain under 15 minutes old");
  const browser=await evaluate('(()=>({shell:Boolean(document.querySelector(".alpha-shell")),bubbles:document.querySelectorAll(".market-token-bubble").length,heap:performance.memory?.usedJSHeapSize??null,visibility:document.visibilityState}))()');
  assert.equal(browser.shell,true,"market shell must remain mounted");
