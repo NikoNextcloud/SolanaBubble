@@ -226,3 +226,16 @@ Recommended production configuration is separate `SOLANA_TRAFFIC_RPC_URLS` and `
 ### PWA and release surface
 
 The manifest now includes branded normal and maskable icons, the app exports a branded Open Graph image and a sitemap covers the public product/trust routes. Production still uses explicit deployment authorization and deployment locks are restored after a controlled release.
+
+
+## GOOD Opportunity v2 validation
+
+Every market snapshot now persists the current conservative GOOD qualification, including its score, tier, BUY-strength evidence, reasons and blockers. The token detail panel queries the retained seven-day snapshot history through `GET /api/market/opportunity-validation?mint=...` and measures later outcomes at 15m, 1h and 6h.
+
+Validation reports sample-shrunk positive rates plus median terminal return, maximum favorable excursion (MFE) and maximum adverse excursion (MAE). Continuous GOOD states are sampled at most once per hour so a single long-lived setup does not dominate the dataset. The validator never reads future information when qualifying the entry; later snapshots are used only to measure outcomes. Calibration labels remain `insufficient`, `weak`, `developing` or `validated` until enough retained evidence exists.
+
+This historical calibration is evidence about how the current heuristic behaved on retained observations. It is not a prediction, guarantee, backtested trading strategy or substitute for execution/risk controls.
+
+## Production completeness
+
+The repository includes a 15-minute production health monitor, a scheduled/manual browser soak workflow, bounded client-error telemetry, custom recovery/404 states, PWA icons and social preview metadata. The remaining external infrastructure dependency is a dedicated Solana RPC/indexer account. The provider boundary already supports separate comma-separated traffic and holder failover chains through `SOLANA_TRAFFIC_RPC_URLS` and `SOLANA_HOLDER_RPC_URLS`, with `SOLANA_RPC_URL` as the shared fallback. Without external provider credentials the deployment intentionally reports public-fallback / sampled coverage and `fullFirehose:false`.
