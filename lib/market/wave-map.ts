@@ -108,7 +108,7 @@ export function goodOpportunitySignal(token:WaveTokenInput,strength=0):GoodOppor
   if(!hypeConstructive)blockers.push(velocity==null?'Hype direction unconfirmed':'Hype not rising yet');
 
   const active=score>=72&&blockers.length===0;
-  const strong=active&&score>=82&&confidence>=72&&risk<=40&&capital>=65&&strength>=18&&(velocity??0)>=.5;
+  const strong=active&&score>=80&&confidence>=72&&risk<=40&&capital>=65&&strength>=18&&(velocity??0)>=.5;
   const tier:GoodOpportunitySignal['tier']=strong?'strong':active?'good':score>=60&&risk<=65?'watch':'avoid';
   const reasons:string[]=[];
   if(opportunity>=68)reasons.push('Opportunity '+Math.round(opportunity));
