@@ -10,7 +10,7 @@ const validation:ValidationSummary={samples:12,qualifiedSamples:12,calibrationLa
  '60':{minutes:60,samples:10,wins:7,winRate:70,calibratedWinRate:64.3,confidence:42,avgReturnPct:6.1,medianReturnPct:4.9,downsideMedianPct:-2},
  '360':{minutes:360,samples:5,wins:3,winRate:60,calibratedWinRate:55.6,confidence:21,avgReturnPct:8,medianReturnPct:6,downsideMedianPct:-3},
 }};
-const adaptive:AdaptiveOpportunity={baseScore:78,score:86,delta:8,confidence:76,historyAdjustment:4,smartMoneyAdjustment:3,coordinationAdjustment:1,riskAdjustment:0,reasons:['Validated history +4']};
+const adaptive:AdaptiveOpportunity={baseScore:78,score:86,delta:8,confidence:76,historyAdjustment:4,goodOutcomeAdjustment:0,smartMoneyAdjustment:3,coordinationAdjustment:1,riskAdjustment:0,reasons:['Validated history +4']};
 
 test('Decision Terminal produces a strong buy only when score confidence and risk align',()=>{
  const replay=buildReplaySeries([
