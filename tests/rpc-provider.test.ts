@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PublicSolanaRpcProvider,rpcProviderReadiness } from "../lib/rpc-provider";
+import { PublicSolanaRpcProvider } from "../lib/rpc-provider";
+import {rpcProviderReadiness} from "../lib/rpc-readiness";
 
 test("RPC provider fails over after rate limits and cools down the failed endpoint", async () => {
   const originalFetch = globalThis.fetch;
