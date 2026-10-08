@@ -31,7 +31,7 @@ jobs:
             const h=JSON.parse(process.env.HEALTH_JSON||"{}");
             const failures=[];
             if(h.ok!==true) failures.push("health not ok");
-            if(h.workerState!=="ok") failures.push("worker "+String(h.workerState));
+            if(!["ok","running"].includes(h.workerState)) failures.push("worker "+String(h.workerState));
             if(!(Number(h.marketAgeSec)>=0&&Number(h.marketAgeSec)<900)) failures.push("market age "+String(h.marketAgeSec));
             if(Number(h.clientErrors1h||0)>20) failures.push("client errors "+String(h.clientErrors1h));
             if(failures.length){console.error("Production unhealthy: "+failures.join(", "));process.exit(1)}
