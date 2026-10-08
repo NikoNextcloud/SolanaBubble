@@ -20,3 +20,22 @@
 - [ ] `npm test`, `npm run build`, `npm run test:api` pass
 - [ ] Map/List drag and zoom visually verified in a browser
 - [ ] Vercel production deployment is explicitly requested by the user; otherwise do not deploy
+
+## v1 final completion
+
+- [ ] `/api/health` returns `ok:true`, worker age <15m and sanitized RPC readiness
+- [ ] Dedicated traffic/holder RPC credentials configured if a paid provider has been provisioned
+- [ ] GOOD v2 15m/1h/6h historical calibration is visible in Decision Terminal
+- [ ] Production Monitor workflow is green; optional Telegram GitHub secrets configured if failure notifications are desired
+- [ ] Daily Production Soak workflow is green; manual soak can run up to 300 minutes
+- [ ] PWA icon, maskable icon, Open Graph preview and sitemap return HTTP 200
+- [ ] Post-deploy runtime error scan is clean
+- [ ] Deployment lock restored after the controlled production release
+
+### Recovery
+
+1. If production health fails after a release, inspect Vercel runtime/build logs and the GitHub Production Monitor result.
+2. Roll back to the preceding READY Vercel production deployment if the regression is release-specific.
+3. Do not delete Supabase schema to recover application code. Market snapshots and caches are replaceable; service credentials and migrations are not.
+4. If RPC failures spike, reduce `MARKET_TRAFFIC_BUDGET` / `MARKET_HOLDER_BUDGET` or remove the failing dedicated endpoint so the public failover chain can resume.
+5. Re-run CI and production smoke before promoting a repaired commit.
