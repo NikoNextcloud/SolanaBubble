@@ -7,13 +7,17 @@ export type WaveTokenInput={
   trades1h?:number|null;volume1h?:number|null;trafficSample?:TrafficSummary|null;
   opportunityScore?:number|null;signalConfidenceScore?:number|null;manipulationRiskScore?:number|null;riskScore?:number|null;
   capitalFlowScore?:number|null;momentumScore?:number|null;liquidityWarning?:boolean|null;divergenceSignal?:'bullish'|'bearish'|'none'|null;
+  hypeVelocity?:number|null;hypeAcceleration?:number|null;observedBuyPressure15m?:number|null;buyPressure?:number|null;
+  liquidityChangePct?:number|null;trendPersistenceScore?:number|null;holderGrowthPct?:number|null;smartMoneyFlowUsd?:number|null;
+  trafficEvidence?:'warming'|'sparse'|'usable'|'degraded'|null;
 };
 export type WaveMetrics={buys:number;sells:number;buyUsd:number|null;sellUsd:number|null;strength:number;buyIntensity:number;sellIntensity:number;liveCount:number;lastEventAt:string|null};
 export type WaveLayout={mint:string;x:number;y:number;r:number;strength:number;endY:number};
 export type ActiveWaveEvent=Pick<LiveMarketEvent,'mint'|'signature'|'wallet'|'side'|'usd_value'|'evidence'|'whale'|'block_at'|'observed_at'>;
 export type FlowTrailTrade={signature:string;side:'buy'|'sell';usdValue:number|null;at:string;live?:boolean};
 export type FlowTrailPoint={x:number;y:number;side:'buy'|'sell'|null;usdValue:number|null;signature:string|null;live:boolean};
-export type LivingWaveDynamics={amplitude:number;frequency:number;duration:number;activity:number};
+export type LivingWaveDynamics={amplitude:number;frequency:number;duration:number;activity:number;hypeTrend:'rising'|'falling'|'flat'|'unknown';hypeSlope:number};
+export type GoodOpportunitySignal={active:boolean;tier:'avoid'|'watch'|'good'|'strong';score:number;hypeTrend:'rising'|'falling'|'flat'|'unknown';reasons:string[];blockers:string[]};
 export type OpportunityWaveSignal={active:boolean;strength:'none'|'developing'|'strong';score:number;intensity:number;partial:boolean;reasons:string[]};
 
 const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v);
@@ -47,37 +51,84 @@ export function wavePath(x1:number,y1:number,x2:number,y2:number,amplitude:numbe
   }).join(' ');
 }
 
-export function livingWaveDynamics(hypeScore:number|null|undefined,buys:number,sells:number):LivingWaveDynamics{
+export function livingWaveDynamics(hypeScore:number|null|undefined,buys:number,sells:number,hypeVelocity:number|null|undefined=null):LivingWaveDynamics{
   const hype=clamp(Number(hypeScore??0),0,100)/100;
   const trades=Math.max(0,buys)+Math.max(0,sells);
   const activity=clamp(Math.log1p(trades)/Math.log(31),0,1);
+  const velocity=finite(hypeVelocity)?hypeVelocity:null;
+  const hypeSlope=velocity==null?0:clamp(velocity/3.5,-1,1);
+  const hypeTrend:LivingWaveDynamics['hypeTrend']=velocity==null?'unknown':velocity>.25?'rising':velocity<-.25?'falling':'flat';
   return {
     amplitude:6+hype*10+activity*18,
-    frequency:2.4+hype*1.8+activity*4.8,
-    duration:clamp(3.1-hype*.75-activity*1.55,.72,3.1),
+    frequency:2.4+hype*1.8+activity*4.8+Math.max(0,hypeSlope)*.7,
+    duration:clamp(3.1-hype*.75-activity*1.55-Math.max(0,hypeSlope)*.22,.68,3.1),
     activity,
+    hypeTrend,
+    hypeSlope,
   };
 }
 
-export function opportunityWaveSignal(token:WaveTokenInput):OpportunityWaveSignal{
+export function goodOpportunitySignal(token:WaveTokenInput,strength=0):GoodOpportunitySignal{
   const opportunity=finite(token.opportunityScore)?clamp(token.opportunityScore!,0,100):0;
   const confidence=finite(token.signalConfidenceScore)?clamp(token.signalConfidenceScore!,0,100):0;
   const risk=finite(token.manipulationRiskScore)?clamp(token.manipulationRiskScore!,0,100):finite(token.riskScore)?clamp(token.riskScore!,0,100):100;
   const capital=finite(token.capitalFlowScore)?clamp(token.capitalFlowScore!,0,100):50;
   const momentum=finite(token.momentumScore)?clamp(token.momentumScore!,0,100):50;
-  const constructive=capital>=55||token.divergenceSignal==='bullish';
-  const active=opportunity>=75&&confidence>=65&&risk<=55&&constructive&&!token.liquidityWarning;
-  const score=Math.round(clamp(opportunity*.36+confidence*.26+capital*.18+momentum*.10+(100-risk)*.10,0,100));
-  const partial=!finite(token.capitalFlowScore)||!finite(token.momentumScore);
-  const intensity=active?clamp((score-65)/30,.22,1):0;
-  const strength:OpportunityWaveSignal['strength']=!active?'none':score>=78&&confidence>=75&&risk<=40?'strong':'developing';
+  const velocity=finite(token.hypeVelocity)?token.hypeVelocity!:null;
+  const acceleration=finite(token.hypeAcceleration)?token.hypeAcceleration!:0;
+  const hypeTrend:GoodOpportunitySignal['hypeTrend']=velocity==null?'unknown':velocity>.25?'rising':velocity<-.25?'falling':'flat';
+  const pressure=finite(token.observedBuyPressure15m)?clamp(token.observedBuyPressure15m!,0,100):finite(token.buyPressure)?clamp(token.buyPressure!,0,100):clamp(50+strength/2,0,100);
+  const persistence=finite(token.trendPersistenceScore)?clamp(token.trendPersistenceScore!,0,100):50;
+  const liquidityTrend=finite(token.liquidityChangePct)?clamp(token.liquidityChangePct!,-100,100):0;
+  const traffic=token.trafficEvidence??token.trafficSample?.evidence??null;
+  const strengthScore=clamp(50+strength/2,0,100);
+  const velocityScore=velocity==null?45:clamp(50+velocity*9+acceleration*12,0,100);
+  let score=opportunity*.24+confidence*.17+capital*.16+momentum*.12+(100-risk)*.11+strengthScore*.08+velocityScore*.07+persistence*.05;
+  if(token.divergenceSignal==='bullish')score+=4;
+  if(token.divergenceSignal==='bearish')score-=14;
+  if(token.liquidityWarning)score-=24;
+  if(liquidityTrend<=-12)score-=8;
+  if(traffic==='degraded')score-=7;
+  if(strength<0)score-=Math.min(14,Math.abs(strength)*.14);
+  if(velocity!=null&&velocity<0)score-=Math.min(14,Math.abs(velocity)*4);
+  score=Math.round(clamp(score,0,100));
+
+  const blockers:string[]=[];
+  if(opportunity<68)blockers.push('Opportunity below 68');
+  if(confidence<60)blockers.push('Confidence below 60');
+  if(risk>55)blockers.push('Risk above 55');
+  if(capital<55)blockers.push('Capital Flow below 55');
+  if(momentum<58)blockers.push('Momentum below 58');
+  if(strength<8)blockers.push('BUY strength below +8');
+  if(pressure<54)blockers.push('Buy pressure below 54%');
+  if(token.liquidityWarning)blockers.push('Liquidity warning');
+  if(token.divergenceSignal==='bearish')blockers.push('Bearish divergence');
+  if(velocity!=null&&velocity<-.15)blockers.push('Hype is falling');
+  const hypeConstructive=velocity!=null?velocity>=.15:token.divergenceSignal==='bullish'&&momentum>=70;
+  if(!hypeConstructive)blockers.push(velocity==null?'Hype direction unconfirmed':'Hype not rising yet');
+
+  const active=score>=72&&blockers.length===0;
+  const strong=active&&score>=82&&confidence>=72&&risk<=40&&capital>=65&&strength>=18&&(velocity??0)>=.5;
+  const tier:GoodOpportunitySignal['tier']=strong?'strong':active?'good':score>=60&&risk<=65?'watch':'avoid';
   const reasons:string[]=[];
-  if(opportunity>=75)reasons.push('Opportunity '+Math.round(opportunity));
-  if(confidence>=65)reasons.push('Confidence '+Math.round(confidence));
+  if(opportunity>=68)reasons.push('Opportunity '+Math.round(opportunity));
+  if(confidence>=60)reasons.push('Confidence '+Math.round(confidence));
   if(capital>=55)reasons.push('Capital Flow '+Math.round(capital));
+  if(momentum>=58)reasons.push('Momentum '+Math.round(momentum));
+  if(strength>=8)reasons.push('BUY Strength +'+Math.round(strength));
+  if(pressure>=54)reasons.push('Buy Pressure '+Math.round(pressure)+'%');
+  if(velocity!=null&&velocity>=.15)reasons.push('Hype rising '+velocity.toFixed(2)+'/min');
   if(token.divergenceSignal==='bullish')reasons.push('Bullish divergence');
   if(risk<=55)reasons.push('Risk '+Math.round(risk));
-  return {active,strength,score,intensity,partial,reasons};
+  return {active,tier,score,hypeTrend,reasons,blockers};
+}
+
+export function opportunityWaveSignal(token:WaveTokenInput,strength=0):OpportunityWaveSignal{
+  const good=goodOpportunitySignal(token,strength);
+  const partial=!finite(token.capitalFlowScore)||!finite(token.momentumScore)||!finite(token.hypeVelocity);
+  const intensity=good.active?clamp((good.score-68)/28,.22,1):0;
+  const waveStrength:OpportunityWaveSignal['strength']=!good.active?'none':good.tier==='strong'?'strong':'developing';
+  return {active:good.active,strength:waveStrength,score:good.score,intensity,partial,reasons:good.reasons};
 }
 
 export function livingWavePath(x1:number,y1:number,x2:number,y2:number,dynamics:LivingWaveDynamics,phase=0){
@@ -89,7 +140,8 @@ export function livingWavePath(x1:number,y1:number,x2:number,y2:number,dynamics:
     const primary=Math.sin(t*Math.PI*dynamics.frequency*2+phase);
     const nervous=Math.sin(t*Math.PI*dynamics.frequency*4.2+phase*1.55)*(.14+.26*dynamics.activity);
     const micro=Math.sin(t*Math.PI*dynamics.frequency*7.4+phase*.72)*(.04+.12*dynamics.activity);
-    const y=base+(primary+nervous+micro)*envelope*dynamics.amplitude;
+    const directionalEnergy=clamp(1+dynamics.hypeSlope*(t-.5)*.9,.58,1.42);
+    const y=base+(primary+nervous+micro)*envelope*dynamics.amplitude*directionalEnergy;
     return {x,y};
   });
   let path='M'+points[0].x.toFixed(1)+','+points[0].y.toFixed(1);
@@ -159,11 +211,17 @@ export function selectWaveTokens(tokens:WaveTokenInput[],events:LiveMarketEvent[
   }
   const score=(token:WaveTokenInput)=>{
     const recent=recentEventAt.get(token.mint);
-    const liveBonus=recent?120_000-Math.min(60_000,now-recent):0;
-    const strength=Math.abs(metrics.get(token.mint)?.strength??0)*210;
-    const hype=clamp(Number(token.hypeScore??0),0,100)*45;
-    const activity=Math.log10(1+Math.max(0,Number(token.volume1h??0))+Math.max(0,Number(token.trades1h??0))*100)*900;
-    return liveBonus+strength+hype+activity;
+    const strength=metrics.get(token.mint)?.strength??0;
+    const good=goodOpportunitySignal(token,strength);
+    const liveBonus=recent?30_000-Math.min(20_000,(now-recent)/3):0;
+    const qualityBonus=good.score*3_000+(good.active?150_000:good.tier==='watch'?35_000:0);
+    const directionalStrength=strength>=0?strength*520:strength*360;
+    const velocity=finite(token.hypeVelocity)?clamp(token.hypeVelocity!,-4,4):0;
+    const hype=clamp(Number(token.hypeScore??0),0,100)*28;
+    const risk=finite(token.manipulationRiskScore)?token.manipulationRiskScore!:finite(token.riskScore)?token.riskScore!:60;
+    const riskPenalty=Math.max(0,risk-45)*900;
+    const activity=Math.log10(1+Math.max(0,Number(token.volume1h??0))+Math.max(0,Number(token.trades1h??0))*100)*420;
+    return qualityBonus+liveBonus+directionalStrength+velocity*7_000+hype+activity-riskPenalty;
   };
   const ranked=[...tokens].sort((a,b)=>score(b)-score(a));
   const limit=Math.max(1,maxVisible);
