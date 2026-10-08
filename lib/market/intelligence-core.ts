@@ -1,8 +1,15 @@
 import type {TrafficSummary} from './traffic/summary';
+import {goodOpportunitySignal,tokenStrength} from './wave-map';
 
 export type WalletSwap={wallet:string;side:'buy'|'sell';usd_value:number|null;block_at:string;evidence?:'direct'|'routed';program?:string|null;signature?:string|null};
 export type WalletProfile={wallet:string;score:number;label:'Smart'|'Constructive'|'Neutral'|'Risky'|'Bot-like';swaps:number;buys:number;sells:number;buyUsd:number|null;sellUsd:number|null;netUsd:number|null;avgTradeUsd:number|null;repeatEntries:number;quickFlips:number;directSharePct:number;firstSeenAt:string|null;lastSeenAt:string|null;reasons:string[]};
-export type SignalObservation={observed_at:string;payload:{mint?:string;symbol?:string|null;priceUsd?:number|null;opportunityScore?:number|null;signalConfidenceScore?:number|null;manipulationRiskScore?:number|null;capitalFlowScore?:number|null;holderQualityScore?:number|null;divergenceSignal?:'bullish'|'bearish'|'none'|null;whaleExit?:number|null;liquidityWarning?:boolean|null;goodOpportunityScore?:number|null;goodOpportunityTier?:'avoid'|'watch'|'good'|'strong'|null;goodOpportunityActive?:boolean|null;goodOpportunityStrength?:number|null;hypeVelocity?:number|null}};
+export type SignalObservation={observed_at:string;payload:{
+ mint?:string;symbol?:string|null;priceUsd?:number|null;opportunityScore?:number|null;signalConfidenceScore?:number|null;manipulationRiskScore?:number|null;riskScore?:number|null;
+ capitalFlowScore?:number|null;momentumScore?:number|null;holderQualityScore?:number|null;divergenceSignal?:'bullish'|'bearish'|'none'|null;whaleExit?:number|null;liquidityWarning?:boolean|null;
+ goodOpportunityScore?:number|null;goodOpportunityTier?:'avoid'|'watch'|'good'|'strong'|null;goodOpportunityActive?:boolean|null;goodOpportunityStrength?:number|null;
+ hypeScore?:number|null;hypeVelocity?:number|null;hypeAcceleration?:number|null;observedBuyPressure15m?:number|null;buyPressure?:number|null;liquidityChangePct?:number|null;trendPersistenceScore?:number|null;
+ buys1h?:number|null;sells1h?:number|null;trafficEvidence?:'warming'|'sparse'|'usable'|'degraded'|null;trafficSample?:TrafficSummary|null
+}};
 export type ValidationWindow={minutes:number;samples:number;wins:number;winRate:number|null;calibratedWinRate:number|null;confidence:number;avgReturnPct:number|null;medianReturnPct:number|null;downsideMedianPct:number|null};
 export type ValidationSummary={samples:number;qualifiedSamples:number;windows:Record<string,ValidationWindow>;calibrationLabel:'insufficient'|'weak'|'developing'|'validated';note:string};
 export type GoodValidationWindow={minutes:number;signals:number;samples:number;wins:number;positiveRate:number|null;calibratedPositiveRate:number|null;hit2Rate:number|null;confidence:number;medianReturnPct:number|null;medianMfePct:number|null;medianMaePct:number|null};
@@ -125,7 +132,13 @@ export function validateGoodOpportunities(rows:SignalObservation[]):GoodValidati
  let wasActive=false,lastEntryAt=-Infinity;
  for(const row of sorted){
   const p=row.payload,at=Date.parse(row.observed_at);
-  const active=p.goodOpportunityActive===true||((p.goodOpportunityTier==='good'||p.goodOpportunityTier==='strong')&&(p.goodOpportunityScore??0)>=72);
+  const sample=p.trafficSample?.windows?.['5'];
+  const derivedStrength=finite(p.goodOpportunityStrength)
+   ? p.goodOpportunityStrength!
+   : tokenStrength(sample?.buys??Math.max(0,Number(p.buys1h??0)),sample?.sells??Math.max(0,Number(p.sells1h??0)),sample?.buyUsd??null,sample?.sellUsd??null);
+  const recomputed=goodOpportunitySignal(p as any,derivedStrength);
+  const persisted=p.goodOpportunityActive===true||((p.goodOpportunityTier==='good'||p.goodOpportunityTier==='strong')&&(p.goodOpportunityScore??0)>=72);
+  const active=persisted||recomputed.active;
   if(active&&(!wasActive||at-lastEntryAt>=60*60000)){entries.push(row);lastEntryAt=at}
   wasActive=active;
  }
@@ -155,7 +168,7 @@ export function validateGoodOpportunities(rows:SignalObservation[]):GoodValidati
  }
  const samples=Math.max(...Object.values(windows).map(w=>w.samples),0);
  const calibrationLabel:GoodValidationSummary['calibrationLabel']=samples>=20?'validated':samples>=8?'developing':samples>=3?'weak':'insufficient';
- return {entries:entries.length,samples,windows,calibrationLabel,note:'GOOD v2 validation counts bounded entry signals, then measures terminal return plus maximum favorable/adverse excursion at 15m, 1h and 6h. Repeated continuous signals are sampled at most once per hour. Historical outcomes calibrate the heuristic; they do not predict or guarantee future returns.'};
+ return {entries:entries.length,samples,windows,calibrationLabel,note:'GOOD v2 re-evaluates retained snapshots with the current conservative GOOD gate, then measures terminal return plus maximum favorable/adverse excursion at 15m, 1h and 6h. Repeated continuous signals are sampled at most once per hour. Only later snapshots are used for outcomes; historical calibration is evidence, not a prediction or guarantee.'};
 }
 
 export function computeAdaptiveOpportunity(baseScore:number|null|undefined,validation:ValidationSummary,smartMoney:ReturnType<typeof smartMoneySummary>,clusters:CoordinatedCluster[],current?:SignalObservation['payload'],goodValidation?:GoodValidationSummary):AdaptiveOpportunity{
