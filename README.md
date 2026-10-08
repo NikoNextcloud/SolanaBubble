@@ -209,9 +209,9 @@ The v1 production line includes a final completion pass focused on data quality,
 
 ### GOOD Opportunity Engine v2
 
-Each worker snapshot now persists the qualified GOOD Opportunity state, score, tier and observed BUY-strength used at that moment. The intelligence API evaluates bounded GOOD entry signals against later snapshots at 15m, 1h and 6h. It reports sample-shrunk positive rates, +2% hit rates, median terminal return, maximum favorable excursion (MFE) and maximum adverse excursion (MAE). Continuous signals are sampled at most once per hour to reduce correlated duplicate entries.
+The intelligence API re-evaluates retained market snapshots with the current conservative GOOD gate, then evaluates bounded GOOD entry signals against later snapshots at 15m, 1h and 6h. It reports sample-shrunk positive rates, +2% hit rates, median terminal return, maximum favorable excursion (MFE) and maximum adverse excursion (MAE). Continuous signals are sampled at most once per hour to reduce correlated duplicate entries.
 
-GOOD v2 historical outcomes can make a small bounded adjustment to Adaptive Opportunity only after enough later observations exist. This calibration never uses future data to score the original snapshot and never converts historical win rates into a guarantee.
+GOOD v2 historical outcomes can make a small bounded adjustment to Adaptive Opportunity only after enough later observations exist. The original snapshot is scored only from fields that were already present at that snapshot; later prices are used only for outcome measurement, and historical win rates never become a guarantee.
 
 ### Provider readiness
 
