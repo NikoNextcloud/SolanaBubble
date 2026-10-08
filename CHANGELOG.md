@@ -16,6 +16,7 @@ SolanaBubble v1.0 promotes the live Solana market workspace from release candida
 - GOOD Opportunity Engine v2 with bounded 15m/1h/6h forward validation, +2% hit rate and MFE/MAE calibration.
 - Sanitized dedicated-RPC readiness diagnostics and split traffic/holder provider support.
 - Independent 15-minute production health monitoring with optional Telegram failure notification.
+- Scheduled production browser soak for runtime exceptions, health drift and bounded heap-growth regression.
 - Branded PWA icons, social preview metadata and sitemap.
 
 ### Trust model
