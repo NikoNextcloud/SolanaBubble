@@ -1,7 +1,7 @@
 import {NextResponse} from 'next/server';
 import {admin} from '@/lib/db';
 import {publicObservationHeaders} from '@/lib/http-cache';
-import {buildWalletProfiles,computeAdaptiveOpportunity,detectCoordinatedWallets,smartMoneySummary,validateSignals,type SignalObservation,type WalletSwap} from '@/lib/market/intelligence-core';
+import {buildWalletProfiles,computeAdaptiveOpportunity,detectCoordinatedWallets,smartMoneySummary,validateGoodOpportunities,validateSignals,type SignalObservation,type WalletSwap} from '@/lib/market/intelligence-core';
 import {buildReplaySeries,buildWalletNetwork,computeDecisionTerminal} from '@/lib/market/decision-terminal';
 
 export const dynamic='force-dynamic';
@@ -36,8 +36,9 @@ export async function GET(req:Request){
   const smartMoney=smartMoneySummary(profiles);
   const coordinatedClusters=detectCoordinatedWallets(trafficRows);
   const validation=validateSignals(snapshots);
+  const goodValidation=validateGoodOpportunities(snapshots);
   const current=snapshots.at(-1)?.payload??{};
-  const adaptiveOpportunity=computeAdaptiveOpportunity(current.opportunityScore,validation,smartMoney,coordinatedClusters,current);
+  const adaptiveOpportunity=computeAdaptiveOpportunity(current.opportunityScore,validation,smartMoney,coordinatedClusters,current,goodValidation);
   const replay=buildReplaySeries(snapshots);
   const decision=computeDecisionTerminal({current,adaptive:adaptiveOpportunity,validation,smartMoney,clusters:coordinatedClusters,replay,now});
   const walletNetwork=buildWalletNetwork(mint,profiles,coordinatedClusters);
@@ -45,7 +46,7 @@ export async function GET(req:Request){
   return NextResponse.json({
    mint,observedAt:new Date(now).toISOString(),trafficWindowHours:2,
    walletProfiles:profiles.slice(0,12),smartMoney,coordinatedClusters:coordinatedClusters.slice(0,8),
-   adaptiveOpportunity,decision,replay,walletNetwork,validation,
+   adaptiveOpportunity,decision,replay,walletNetwork,validation,goodValidation,
    evidence:{
     recognizedSwaps:traffic.data?.length??0,historicalSnapshots:snapshots.length,
     note:'Wallet scores are heuristic and bounded to retained recognized traffic. Routed swaps remain lower-confidence evidence; no wallet is labelled profitable without realized PnL evidence.'
