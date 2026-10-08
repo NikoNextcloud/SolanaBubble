@@ -16,7 +16,6 @@ export function adaptiveTrafficBudget(
   const duration=Number(previous.durationMs??Infinity);
   const failures=Number(previous.trafficFailures??0)+Number(previous.holderFailures??0);
   if(failures>0||duration>35_000)return Math.max(1,Math.min(max,2));
-  if(duration<7_000)return Math.min(max,6);
   if(duration<10_000)return Math.min(max,5);
   if(duration<16_000)return Math.min(max,4);
   if(duration<24_000)return Math.min(max,3);
