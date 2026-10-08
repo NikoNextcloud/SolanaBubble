@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {buildWalletProfiles,classifyMarketRegime,computeAdaptiveOpportunity,deriveSmartAlerts,detectCoordinatedWallets,smartMoneySummary,validateSignals} from '../lib/market/intelligence-core';
+import {buildWalletProfiles,classifyMarketRegime,computeAdaptiveOpportunity,deriveSmartAlerts,detectCoordinatedWallets,smartMoneySummary,validateGoodOpportunities,validateSignals} from '../lib/market/intelligence-core';
 
 const at=Date.parse('2026-10-06T12:00:00Z');
 const iso=(minutes:number)=>new Date(at+minutes*60000).toISOString();
@@ -112,4 +112,40 @@ test('smart alerts surface coordinated selling and high-confidence opportunity',
  const alerts=deriveSmartAlerts([{mint:'m',symbol:'M',opportunityScore:84,signalConfidenceScore:82,manipulationRiskScore:30,trafficSample:sample}],iso(0));
  assert.ok(alerts.some(a=>a.kind==='smart-opportunity'));
  assert.ok(alerts.some(a=>a.kind==='coordinated-selling'));
+});
+
+
+test('GOOD v2 validation uses bounded entries and measures MFE/MAE without look-ahead',()=>{
+ const rows=[
+  {observed_at:iso(-180),payload:{priceUsd:1,goodOpportunityActive:true,goodOpportunityTier:'strong' as const,goodOpportunityScore:86}},
+  {observed_at:iso(-175),payload:{priceUsd:1.03,goodOpportunityActive:true,goodOpportunityTier:'strong' as const,goodOpportunityScore:87}},
+  {observed_at:iso(-165),payload:{priceUsd:1.02,goodOpportunityActive:true,goodOpportunityTier:'good' as const,goodOpportunityScore:82}},
+  {observed_at:iso(-120),payload:{priceUsd:1.08,goodOpportunityActive:true,goodOpportunityTier:'good' as const,goodOpportunityScore:81}},
+  {observed_at:iso(-105),payload:{priceUsd:1.12,goodOpportunityActive:false,goodOpportunityTier:'watch' as const,goodOpportunityScore:68}},
+  {observed_at:iso(-60),payload:{priceUsd:1.04,goodOpportunityActive:true,goodOpportunityTier:'good' as const,goodOpportunityScore:79}},
+  {observed_at:iso(-45),payload:{priceUsd:1.09,goodOpportunityActive:false,goodOpportunityTier:'watch' as const,goodOpportunityScore:69}},
+  {observed_at:iso(0),payload:{priceUsd:1.15}},
+ ];
+ const v=validateGoodOpportunities(rows);
+ assert.ok(v.entries>=2);
+ assert.ok(v.windows['15'].samples>=2);
+ assert.ok((v.windows['15'].medianMfePct??0)>=0);
+ assert.ok((v.windows['15'].medianMaePct??0)<=0);
+ assert.ok((v.windows['15'].calibratedPositiveRate??0)>50);
+});
+
+test('adaptive opportunity can use GOOD v2 outcome edge conservatively',()=>{
+ const validation=validateSignals([
+  {observed_at:iso(-60),payload:{priceUsd:1,opportunityScore:82,signalConfidenceScore:80,manipulationRiskScore:20}},
+  {observed_at:iso(0),payload:{priceUsd:1.1}},
+ ]);
+ const goodValidation:any={entries:10,samples:10,calibrationLabel:'developing',note:'test',windows:{
+  '15':{minutes:15,signals:10,samples:10,wins:8,positiveRate:80,calibratedPositiveRate:71.4,hit2Rate:75,confidence:50,medianReturnPct:3,medianMfePct:5,medianMaePct:-1.2},
+  '60':{minutes:60,signals:10,samples:10,wins:8,positiveRate:80,calibratedPositiveRate:71.4,hit2Rate:70,confidence:50,medianReturnPct:5,medianMfePct:8,medianMaePct:-2},
+  '360':{minutes:360,signals:10,samples:6,wins:4,positiveRate:66.7,calibratedPositiveRate:60,hit2Rate:62.5,confidence:30,medianReturnPct:7,medianMfePct:12,medianMaePct:-4},
+ }};
+ const smart=smartMoneySummary([]);
+ const adaptive=computeAdaptiveOpportunity(75,validation,smart,[],{manipulationRiskScore:25,signalConfidenceScore:80},goodValidation);
+ assert.ok(adaptive.goodOutcomeAdjustment>0);
+ assert.ok(adaptive.score>=75);
 });
