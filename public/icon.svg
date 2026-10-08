@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="SolanaBubble">
+  <defs>
+    <radialGradient id="bg" cx="35%" cy="25%" r="90%"><stop offset="0" stop-color="#17262f"/><stop offset="1" stop-color="#080d11"/></radialGradient>
+    <linearGradient id="wave" x1="0" x2="1"><stop stop-color="#4de19a"/><stop offset=".52" stop-color="#f5fff9"/><stop offset="1" stop-color="#76a8ff"/></linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <circle cx="156" cy="256" r="72" fill="#102b22" stroke="#6ce7aa" stroke-width="8" filter="url(#glow)"/>
+  <circle cx="156" cy="256" r="40" fill="#14382b" stroke="#dfffee" stroke-width="3"/>
+  <path d="M230 256 C270 184 312 330 352 248 S420 178 458 242" fill="none" stroke="url(#wave)" stroke-width="18" stroke-linecap="round" filter="url(#glow)"/>
+  <circle cx="374" cy="229" r="9" fill="#fff"/>
+</svg>
