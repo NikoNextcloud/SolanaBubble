@@ -179,3 +179,23 @@ Server alert persistence applies a 30-minute cooldown per token and alert kind, 
 - **Production Health:** Database admin now reports worker duration/failures, active bootstrap leases, direct vs routed retained traffic, synced watchlists, snapshot count and runtime metadata.
 - **Node runtime:** local metadata, GitHub CI and Vercel project runtime are aligned on Node 22.
 - **Deployment safety:** `vercel.json` disables unattended Git deployments. Production releases are triggered only after an explicit user request; the project-level Ignored Build Step is cleared for the controlled release and restored after production verification.
+
+
+## SolanaBubble v1.0
+
+Version 1.0 adds production hardening around the live terminal rather than changing the core research semantics.
+
+- Optional Supabase email magic-link accounts sync Watchlist, alert rules and preferences across devices. Anonymous 256-bit sync keys remain available as a fallback and continue to back browser push delivery.
+- Client crashes and unhandled promise rejections are reported through a bounded same-origin telemetry endpoint. Error events are stored service-side for seven days and exposed as an aggregate count in the authenticated production health dashboard.
+- `/api/health` exposes a small operational status payload with application version, worker freshness, RPC mode and the explicit sampled/non-firehose coverage model.
+- `/methodology`, `/risk`, `/privacy` and `/terms` document how observed data differs from heuristic research signals.
+- Global recovery and custom 404 experiences replace framework-default failure screens.
+- `/api/market/status` reports observed traffic and holder coverage percentages. These percentages describe the current bounded observation set; they are not proof of total Solana network coverage.
+
+### Data coverage v2
+
+Production can use a dedicated Solana RPC by setting `SOLANA_RPC_URL`. Without it, the application deliberately reports `public-rpc` mode. The current swap path is still sampled/best-effort and explicitly reports `fullFirehose: false`. A dedicated paid RPC/indexer can be connected through the existing provider abstraction without changing the UI contract. Until such a provider is configured, PARTIAL or quiet flow must never be interpreted as proof that no on-chain trades occurred.
+
+### Release operations
+
+The application package version is `1.0.0`; release notes live in `CHANGELOG.md`. Git-triggered Vercel deployment remains disabled and production still requires an explicit deploy authorization. CI gates security audit, TypeScript, unit tests, worker bundle parity, source budgets, Next.js build, API smoke, Chromium mobile/desktop interaction smoke and a Firefox headless render smoke.
