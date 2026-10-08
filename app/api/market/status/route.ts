@@ -1,7 +1,7 @@
 import {NextResponse} from 'next/server';
 import {admin} from '@/lib/db';
 import {publicObservationHeaders} from '@/lib/http-cache';
-import {rpcProviderReadiness} from '@/lib/rpc-provider';
+import {rpcProviderReadiness} from '@/lib/rpc-readiness';
 export const dynamic='force-dynamic';
 export async function GET(){
  try{
