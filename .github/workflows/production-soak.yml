@@ -1,6 +1,8 @@
 name: Production Soak
 
 on:
+  push:
+    branches: [main]
   schedule:
     - cron: "17 3 * * *"
   workflow_dispatch:
@@ -47,7 +49,7 @@ jobs:
         env:
           CHROME_DEBUG_URL: http://127.0.0.1:9222
           SOAK_URL: https://solanabubble.vercel.app
-          SOAK_MINUTES: ${{ github.event_name == 'workflow_dispatch' && inputs.minutes || '30' }}
+          SOAK_MINUTES: ${{ github.event_name == 'workflow_dispatch' && inputs.minutes || (github.event_name == 'push' && '2' || '30') }}
         run: node tests/production-soak.mjs
       - name: Stop Chromium
         if: always()
