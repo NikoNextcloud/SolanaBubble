@@ -75,6 +75,27 @@ jobs:
           CHROME_PORT="$(head -n 1 "$CHROME_PROFILE/DevToolsActivePort")"
           curl -fsS "http://127.0.0.1:${CHROME_PORT}/json/version" >/dev/null
           CHROME_DEBUG_URL="http://127.0.0.1:${CHROME_PORT}" node tests/browser-smoke.mjs
+      - name: Firefox render smoke
+        run: |
+          set -euo pipefail
+          npm run start -- -H 127.0.0.1 -p 3000 > /tmp/solanabubble-firefox-next.log 2>&1 &
+          APP_PID=$!
+          trap 'kill ${APP_PID:-} 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000 >/dev/null; then break; fi
+            if ! kill -0 "$APP_PID" 2>/dev/null; then cat /tmp/solanabubble-firefox-next.log; exit 1; fi
+            sleep 1
+          done
+          FIREFOX_BIN="$(command -v firefox || command -v firefox-esr || true)"
+          test -n "$FIREFOX_BIN"
+          timeout 45 "$FIREFOX_BIN" --headless --screenshot /tmp/solanabubble-firefox.png http://127.0.0.1:3000
+          test -s /tmp/solanabubble-firefox.png
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
+          SUPABASE_SERVICE_ROLE_KEY: placeholder
+          ADMIN_SECRET: placeholder
+          NEXT_PUBLIC_BROWSER_SMOKE: "1"
       - name: Upload browser smoke screenshots
         if: always()
         uses: actions/upload-artifact@v7
@@ -84,4 +105,5 @@ jobs:
             /tmp/solanabubble-mobile.png
             /tmp/solanabubble-desktop.png
             /tmp/solanabubble-live-impulses.png
+            /tmp/solanabubble-firefox.png
           if-no-files-found: ignore
