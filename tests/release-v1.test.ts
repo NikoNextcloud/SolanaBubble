@@ -63,7 +63,7 @@ test("production monitor independently checks the deployed health endpoint",()=>
 });
 
 test("provider readiness never exposes configured endpoint values",()=>{
- const rpc=read("lib/rpc-provider.ts");
+ const rpc=read("lib/rpc-readiness.ts");
  assert.match(rpc,/rpcProviderReadiness/);
  assert.match(rpc,/public-fallback/);
  assert.match(rpc,/dedicated-split/);
