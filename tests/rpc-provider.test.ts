@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PublicSolanaRpcProvider } from "../lib/rpc-provider";
+import { PublicSolanaRpcProvider,rpcProviderReadiness } from "../lib/rpc-provider";
 
 test("RPC provider fails over after rate limits and cools down the failed endpoint", async () => {
   const originalFetch = globalThis.fetch;
@@ -42,4 +42,26 @@ test("RPC provider falls back on timeout/network failures but not on not-found r
     await assert.rejects(()=>second.request("getHealth",[]),/not_found/);
     assert.deepEqual(calls,["https://rpc/one"]);
   }finally{globalThis.fetch=originalFetch;}
+});
+
+
+test("RPC readiness reports public fallback without configured credentials",()=>{
+ const r=rpcProviderReadiness({});
+ assert.equal(r.mode,"public-fallback");
+ assert.equal(r.dedicated,false);
+ assert.equal(r.fullFirehose,false);
+ assert.equal(r.trafficConfigured,0);
+ assert.equal(r.holderConfigured,0);
+});
+
+test("RPC readiness reports split dedicated routing without exposing URLs",()=>{
+ const r=rpcProviderReadiness({
+  SOLANA_TRAFFIC_RPC_URLS:"https://one.invalid,https://two.invalid",
+  SOLANA_HOLDER_RPC_URL:"https://holders.invalid",
+ });
+ assert.equal(r.mode,"dedicated-split");
+ assert.equal(r.dedicated,true);
+ assert.equal(r.trafficConfigured,2);
+ assert.equal(r.holderConfigured,1);
+ assert.doesNotMatch(JSON.stringify(r),/one\.invalid|holders\.invalid/);
 });
