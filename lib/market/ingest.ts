@@ -10,6 +10,7 @@ import {fetchDexScreenerToken} from '../solana-public';
 import { observeHolders } from './holders';
 import { collapseAlertHistory, deriveSignals, evaluateAlerts, prioritizeAlerts, suppressRepeatedAlerts, type SignalToken, type Intelligence, type SignalAlert } from './signals';
 import { evaluateSyncedWatchlists } from '../watchlist-server';
+import {goodOpportunitySignal,tokenStrength} from './wave-map';
 
 export async function ingestMarket() {
   const ingestionStarted=Date.now();
@@ -85,8 +86,16 @@ export async function ingestMarket() {
       const metrics: Intelligence = fresh ? holder : { holderCount: null, holderGrowth: null, holderGrowthPct: null, freshWallets: null, top10SupplyPct: null, linkedWallets: null, suspiciousWallets: null, whaleEnter: null, whaleExit: null, smartMoneyFlowUsd: null, holderObservedAt: holder?.holderObservedAt ?? null };
       if(!fresh) Object.assign(metrics,{newHolders:null,exitedHolders:null,largestHolderPct:null,whaleConcentrationPct:null,linkedSupplyPct:null,holderWindows:{},topHolderSales:[]});
       const sample=trafficByMint.get(t.mint);
-      const enriched = { ...t, ...metrics,trafficSample:sample?.pools?.includes(t.pairAddress)?sample:sample?.pool===t.pairAddress?sample:null };
-      return { ...enriched, windows:compareMarketWindows(enriched,at,(baselines.data ?? []) as MarketBaseline[]), ...deriveSignals(enriched, prevTokens.get(t.mint), at, previous?.fetchedAt),
+      const trafficSample=sample?.pools?.includes(t.pairAddress)?sample:sample?.pool===t.pairAddress?sample:null;
+      const enriched = { ...t, ...metrics,trafficSample };
+      const windows=compareMarketWindows(enriched,at,(baselines.data ?? []) as MarketBaseline[]);
+      const derived=deriveSignals({...enriched,windows},prevTokens.get(t.mint),at,previous?.fetchedAt);
+      const combined={...enriched,windows,...derived};
+      const flow5=trafficSample?.windows?.['5'];
+      const goodStrength=tokenStrength(flow5?.buys??t.buys1h,flow5?.sells??t.sells1h,flow5?.buyUsd??null,flow5?.sellUsd??null);
+      const good=goodOpportunitySignal(combined,goodStrength);
+      return { ...combined,
+        goodOpportunityScore:good.score,goodOpportunityTier:good.tier,goodOpportunityActive:good.active,goodOpportunityStrength:goodStrength,
         // Directional volume estimate based on trade counts, not measured capital transfers.
         netFlowUsd1h: t.volume1h * (t.buys1h - t.sells1h) / Math.max(1, t.trades1h) };
     });
@@ -100,7 +109,7 @@ export async function ingestMarket() {
     const payload = { ...base, tokens, fetchedAt: at, holderCursor: (cursor+Math.max(0,completed-priority.length))%Math.max(1,rotation.length),
       trafficCursor:(Number(previous?.trafficCursor??0)+1)%Math.max(1,trafficWork.rotation.length), alerts: recentAlerts, recentEvents: base.recentEvents,
       storage: storage.data, ingestion: { trafficCompleted,trafficFailures,trafficUniverse:trafficUniverse.length,trafficBudget,holderCompleted:completed, priorityMints:priority.map(t=>t.mint), holderBudget: budget, holderFailures: failures.length, source: 'server-worker', interval: '5m target; scheduler dependent' },
-      metricNotes: { trafficScheduler: 'adaptive activity + staleness ranking with one fair-rotation slot', flow: 'USD estimate from rolling 1h trade counts', freshWallets: 'newly observed token holders; not wallet creation age', whales: 'owners ≥1% supply; pool/program owners included', smartMoney: 'whale balance change at current price; not verified swap flow', volumeAcceleration: 'acceleration of rolling 1h volume, USD/min²', risk: 'heuristic, not a security audit' } };
+      metricNotes: { trafficScheduler: 'adaptive activity + staleness ranking with one fair-rotation slot', flow: 'USD estimate from rolling 1h trade counts', freshWallets: 'newly observed token holders; not wallet creation age', whales: 'owners ≥1% supply; pool/program owners included', smartMoney: 'whale balance change at current price; not verified swap flow', volumeAcceleration: 'acceleration of rolling 1h volume, USD/min²', risk: 'heuristic, not a security audit', goodOpportunity: 'GOOD v2 persists the qualified bullish setup and strength at each market snapshot so forward outcomes can be calibrated without look-ahead.' } };
     const saved = await db.rpc('commit_market_snapshot', { p_lease: lease, p_payload: payload, p_alerts: alerts });
     if (saved.error) throw saved.error;
     let syncedWatchlists=0;
