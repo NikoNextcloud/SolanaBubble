@@ -77,9 +77,8 @@ test("GOOD v2 historical outcome evidence is exposed in token details",()=>{
  assert.match(route,/limit\(2500\)/);
  const card=read("components/TokenSignalCard.tsx");
  assert.match(card,/OpportunityValidation/);
- const ingest=read("lib/market/ingest.ts");
- assert.match(ingest,/goodOpportunityScore/);
- assert.match(ingest,/goodOpportunityTier/);
+ assert.match(read("lib/market/opportunity.ts"),/goodOpportunitySignal/);
+ assert.match(read("lib/market/intelligence-core.ts"),/validateGoodOpportunities/);
 });
 
 test("release operations document the only remaining external RPC dependency",()=>{
