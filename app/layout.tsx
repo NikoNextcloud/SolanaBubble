@@ -8,7 +8,8 @@ export const metadata: Metadata = {
   applicationName:"SolanaBubble",
   manifest:"/manifest.webmanifest",
   metadataBase:new URL("https://solanabubble.vercel.app"),
-  openGraph:{title:"SolanaBubble",description:"Real-time Solana market intelligence and holder analytics",url:"https://solanabubble.vercel.app",siteName:"SolanaBubble",type:"website"},
+  openGraph:{title:"SolanaBubble",description:"Real-time Solana market intelligence and holder analytics",url:"https://solanabubble.vercel.app",siteName:"SolanaBubble",type:"website",images:[{url:"/opengraph-image",width:1200,height:630,alt:"SolanaBubble live Solana market intelligence"}]},
+  icons:{icon:"/icon.svg",shortcut:"/icon.svg"},
   robots:{index:true,follow:true},
 };
 export const viewport:Viewport={themeColor:"#0b0f14",colorScheme:"dark"};
