@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import LiveReliabilityBadge from "./LiveReliabilityBadge";
 import ProductTour from "./ProductTour";
+import AccountMenu from "./AccountMenu";
+import WorkspaceFooter from "./WorkspaceFooter";
 
 type SearchToken = {
   mint: string;
@@ -260,10 +262,11 @@ export default function WorkspaceShell({
             >{mobileSearchOpen ? "×" : "⌕"}</button>
             <a href="/market/watchlist" title="Watchlist & alerts" aria-label="Watchlist and alerts">♧</a>
             <button type="button" title="Quick start" aria-label="Open quick start" onClick={()=>setTourOpenRequest(v=>v+1)}>?</button>
-            <span className="lovable-top-avatar">SB</span>
+            <AccountMenu />
           </div>
         </header>
         <div className="alpha-shell-content">{children}</div>
+        <WorkspaceFooter />
         <ProductTour forceOpen={tourOpenRequest}/>
       </section>
     </main>

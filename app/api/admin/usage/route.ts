@@ -17,7 +17,7 @@ export async function GET(req: Request) {
   const db = admin();
 
   const since2h = new Date(Date.now() - 2 * 60 * 60_000).toISOString();
-  const [rpcHealth, tokens, dbSize, workerStatus, bootstraps, directTraffic, routedTraffic, syncRows, snapshots, liveEvents] = await Promise.all([
+  const [rpcHealth, tokens, dbSize, workerStatus, bootstraps, directTraffic, routedTraffic, syncRows, snapshots, liveEvents, clientErrors] = await Promise.all([
     getRpcHealth(),
     db.from("tokens").select("mint", { count: "exact", head: true }),
     db.rpc("database_size_bytes"),
@@ -28,6 +28,7 @@ export async function GET(req: Request) {
     db.from("watchlist_sync").select("sync_hash", { count: "exact", head: true }).gt("expires_at", new Date().toISOString()),
     db.from("market_snapshots").select("id", { count: "exact", head: true }),
     db.from("live_market_events").select("block_at,side,evidence").gte("block_at", new Date(Date.now()-20*60_000).toISOString()).order("block_at",{ascending:false}).limit(500),
+    db.from("client_error_events").select("id", { count: "exact", head: true }).gte("created_at", new Date(Date.now()-60*60_000).toISOString()),
   ]);
 
   const databaseBytes = Number(dbSize.data ?? 0);
@@ -50,6 +51,8 @@ export async function GET(req: Request) {
       status: rpcHealth.result,
       trackedTokens: tokens.count ?? 0,
       note: "Solana RPC failover + DexScreener market data.",
+      providerMode: process.env.SOLANA_RPC_URL ? "configured-rpc" : "public-rpc",
+      fullFirehose: false,
     },
     health: {
       worker: workerStatus.data?.payload ?? null,
@@ -65,6 +68,7 @@ export async function GET(req: Request) {
       liveDirect20m: (liveEvents.data??[]).filter((row:any)=>row.evidence==="direct").length,
       liveLatestAt: liveEvents.data?.[0]?.block_at ?? null,
       heliusWebhookConfigured: Boolean(process.env.HELIUS_WEBHOOK_SECRET),
+      clientErrors1h: clientErrors.count ?? 0,
       runtime: {
         environment: process.env.VERCEL_ENV ?? "local",
         gitSha: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
