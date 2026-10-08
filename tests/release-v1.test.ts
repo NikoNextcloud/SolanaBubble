@@ -68,3 +68,22 @@ test("provider readiness never exposes configured endpoint values",()=>{
  assert.match(rpc,/public-fallback/);
  assert.match(rpc,/dedicated-split/);
 });
+
+
+test("GOOD v2 historical outcome evidence is exposed in token details",()=>{
+ const route=read("app/api/market/opportunity-validation/route.ts");
+ assert.match(route,/validateGoodOpportunities/);
+ assert.match(route,/lookbackDays:7/);
+ assert.match(route,/limit\(2500\)/);
+ const card=read("components/TokenSignalCard.tsx");
+ assert.match(card,/OpportunityValidation/);
+ assert.match(read("lib/market/opportunity.ts"),/goodOpportunitySignal/);
+ assert.match(read("lib/market/intelligence-core.ts"),/validateGoodOpportunities/);
+});
+
+test("release operations document the only remaining external RPC dependency",()=>{
+ const readme=read("README.md");
+ assert.match(readme,/GOOD Opportunity v2 validation/);
+ assert.match(readme,/SOLANA_TRAFFIC_RPC_URLS/);
+ assert.match(readme,/fullFirehose:false/);
+});
