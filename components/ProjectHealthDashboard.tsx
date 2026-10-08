@@ -47,6 +47,10 @@ export default function ProjectHealthDashboard({usage}:{usage:any}){
        <small>{h?.heliusWebhookConfigured?"Helius webhook ready":"Supabase/public Solana live path"}</small>
      </article>
      <article className="health-card">
+       <span>Client errors · 1h</span><strong>{value(h?.clientErrors1h,"0")}</strong>
+       <small>bounded production telemetry · 7d retention</small>
+     </article>
+     <article className="health-card">
        <span>Runtime</span><strong>{h?.runtime?.environment??"local"} · Node {String(h?.runtime?.node??"").replace(/^v/,"")||"—"}</strong>
        <small>{h?.runtime?.gitSha?String(h.runtime.gitSha).slice(0,10):"no Vercel SHA"}{h?.runtime?.region?` · ${h.runtime.region}`:""}</small>
      </article>
