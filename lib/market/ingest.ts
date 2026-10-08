@@ -87,7 +87,7 @@ export async function ingestMarket() {
       if(!fresh) Object.assign(metrics,{newHolders:null,exitedHolders:null,largestHolderPct:null,whaleConcentrationPct:null,linkedSupplyPct:null,holderWindows:{},topHolderSales:[]});
       const sample=trafficByMint.get(t.mint);
       const enriched = { ...t, ...metrics,trafficSample:sample?.pools?.includes(t.pairAddress)?sample:sample?.pool===t.pairAddress?sample:null };
-      const windows=compareMarketWindows(enriched,at,(baselines.data ?? []) as MarketBaseline[];
+      const windows=compareMarketWindows(enriched,at,(baselines.data ?? []) as MarketBaseline[]);
       const derived=deriveSignals({...enriched,windows}, prevTokens.get(t.mint), at, previous?.fetchedAt);
       const withSignals={...enriched,windows,...derived,
         // Directional volume estimate based on trade counts, not measured capital transfers.
