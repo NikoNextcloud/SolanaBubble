@@ -13,6 +13,10 @@ SolanaBubble v1.0 promotes the live Solana market workspace from release candida
 - Production observability for client crashes and unhandled promise rejections.
 - Dedicated error, 404, privacy, terms, risk and methodology experiences.
 - Installable PWA metadata and production release hardening.
+- GOOD Opportunity Engine v2 with bounded 15m/1h/6h forward validation, +2% hit rate and MFE/MAE calibration.
+- Sanitized dedicated-RPC readiness diagnostics and split traffic/holder provider support.
+- Independent 15-minute production health monitoring with optional Telegram failure notification.
+- Branded PWA icons, social preview metadata and sitemap.
 
 ### Trust model
 SolanaBubble distinguishes observed swaps and market data from heuristic scores. Opportunity, Risk, Smart Money and relationship indicators are research signals, not guarantees, audited security conclusions or investment advice.
