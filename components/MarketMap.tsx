@@ -729,7 +729,7 @@ export default function MarketMap() {
 
       <section className="market-workspace reference-market-workspace">
         <div className="market-map" ref={wrap}>
-          {viewMode === "map" && <div className="lovable-map-hint">Клик: FoMo/GmGn · Двоен клик: Holders · BUY/SELL точките следват живата вълна · Zoom out показва до 30 focus tokens · Drag · Scroll zoom</div>}
+          {viewMode === "map" && <div className="lovable-map-hint">Клик: FoMo/GmGn · Двоен клик: Holders · GOOD setup-ите са с приоритет · Hype ↑ усилва вълната към края, Hype ↓ я затихва · Zoom out до 30 токена</div>}
           {watch.ready && (viewMode === "list" ? !filteredTokens.length : !renderedNodes.length) && tokens.length > 0 && <div className="pause-banner">No tokens match your saved filters. Reset filters or add favorites.</div>}
           {streamLive === false && <div className="pause-banner">
             {autoPaused ? "Автоматична пауза след 2 мин. без активност" : "Live режимът е на пауза"} · данните са от кеша
@@ -785,7 +785,7 @@ export default function MarketMap() {
           </div>}
           <details className="market-legend map-signal-legend">
             <summary>Как да четеш импулсите</summary>
-            <div><span><i className="market-buy-dot"/>Зелен импулс = нов BUY</span><span><i className="market-sell-dot"/>Червен импулс = нов SELL</span><span>Бяла вълна = по-силен opportunity setup (Opportunity + Confidence + нисък Risk), не гаранция за печалба</span><span>По-силно сияние на токена = по-висок Hype</span><span>Strength: +100 силен buy pressure · 0 баланс · −100 силен sell pressure</span><span className="comet-trust-legend"><i className="direct"/>Движеща точка = live Solana сделка <i className="routed"/>Cyan = routed</span><small>BUY/SELL точките са реални observed swaps. Бялата opportunity вълна е моделна индикация и се показва само при достатъчно confidence и контролиран risk.</small></div>
+            <div><span><i className="market-buy-dot"/>Зелен импулс = нов BUY</span><span><i className="market-sell-dot"/>Червен импулс = нов SELL</span><span>GOOD = Opportunity + Confidence + Capital Flow + Momentum + BUY Strength + растящ Hype + контролиран Risk</span><span>Бяла вълна = GOOD setup, минал всички филтри; не е BUY команда и не гарантира печалба</span><span>Hype ↑ = вълната набира енергия към десния край · Hype ↓ = затихва · → = стабилен</span><span>По-силно сияние на токена = по-високо текущо Hype</span><span>Strength: +100 силен buy pressure · 0 баланс · −100 силен sell pressure</span><span className="comet-trust-legend"><i className="direct"/>Движеща точка = live Solana сделка <i className="routed"/>Cyan = routed</span><small>Картата вече ранква конструктивните bullish setup-и пред екстремния sell pressure. BUY/SELL точките остават реални observed swaps. GOOD/бялата вълна са моделна индикация, не финансов съвет.</small></div>
           </details>
         </div>
 
