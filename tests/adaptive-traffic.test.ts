@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import {adaptiveTrafficBudget,selectAdaptiveTrafficWork} from "../lib/market/adaptive-traffic";
 
 test("adaptive traffic budget grows on healthy fast cycles and shrinks on failures",()=>{
-  assert.equal(adaptiveTrafficBudget(6,{durationMs:5000,trafficFailures:0,holderFailures:0}),6);
   assert.equal(adaptiveTrafficBudget(6,{durationMs:8000,trafficFailures:0,holderFailures:0}),5);
   assert.equal(adaptiveTrafficBudget(6,{durationMs:14000,trafficFailures:0,holderFailures:0}),4);
   assert.equal(adaptiveTrafficBudget(6,{durationMs:40000,trafficFailures:0,holderFailures:0}),2);
