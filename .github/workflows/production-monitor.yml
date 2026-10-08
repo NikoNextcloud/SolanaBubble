@@ -1,0 +1,51 @@
+name: Production Monitor
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: solanabubble-production-monitor
+  cancel-in-progress: true
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verify production health
+        env:
+          BASE_URL: https://solanabubble.vercel.app
+        run: |
+          set -euo pipefail
+          root_status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$BASE_URL/")"
+          test "$root_status" = "200"
+          health="$(curl -fsS --max-time 15 "$BASE_URL/api/health")"
+          HEALTH_JSON="$health" node --input-type=module -e '
+            const h=JSON.parse(process.env.HEALTH_JSON||"{}");
+            const failures=[];
+            if(h.ok!==true) failures.push("health not ok");
+            if(h.workerState!=="ok") failures.push("worker "+String(h.workerState));
+            if(!(Number(h.marketAgeSec)>=0&&Number(h.marketAgeSec)<900)) failures.push("market age "+String(h.marketAgeSec));
+            if(Number(h.clientErrors1h||0)>20) failures.push("client errors "+String(h.clientErrors1h));
+            if(failures.length){console.error("Production unhealthy: "+failures.join(", "));process.exit(1)}
+            console.log("Production healthy",JSON.stringify({marketAgeSec:h.marketAgeSec,workerState:h.workerState,rpcMode:h.rpcMode,clientErrors1h:h.clientErrors1h}));
+          '
+      - name: Notify Telegram when configured
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_CHAT_ID:-}" ]; then
+            echo "Telegram monitor secrets are not configured; workflow failure remains visible in GitHub Actions."
+            exit 0
+          fi
+          curl -fsS --max-time 15             -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage"             --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}"             --data-urlencode "text=SolanaBubble production health check failed. Check GitHub Actions and https://solanabubble.vercel.app/api/health" >/dev/null

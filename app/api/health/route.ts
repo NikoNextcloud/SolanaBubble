@@ -1,9 +1,10 @@
 import {NextResponse} from "next/server";
 import {admin} from "@/lib/db";
+import {rpcProviderReadiness} from "@/lib/rpc-readiness";
 export const dynamic="force-dynamic";
 
 export async function GET(){
- const now=Date.now();
+ const now=Date.now(),rpc=rpcProviderReadiness();
  try{
   const db=admin();
   const [worker,errors]=await Promise.all([
@@ -21,9 +22,10 @@ export async function GET(){
    marketAgeSec:ageSec,
    workerState:w?.state??"unknown",
    clientErrors1h:errors.error?null:(errors.count??0),
-   rpcMode:process.env.SOLANA_RPC_URL?"configured-rpc":"public-rpc",
+   rpcMode:rpc.mode,
+   rpc,
    swapCoverage:"sampled",
-   fullFirehose:false,
+   fullFirehose:rpc.fullFirehose,
    checkedAt:new Date(now).toISOString(),
   },{status:ok?200:503,headers:{"cache-control":"no-store"}});
  }catch{

@@ -1,12 +1,21 @@
 import type {TrafficSummary} from './traffic/summary';
+import {goodOpportunitySignal,tokenStrength} from './wave-map';
 
 export type WalletSwap={wallet:string;side:'buy'|'sell';usd_value:number|null;block_at:string;evidence?:'direct'|'routed';program?:string|null;signature?:string|null};
 export type WalletProfile={wallet:string;score:number;label:'Smart'|'Constructive'|'Neutral'|'Risky'|'Bot-like';swaps:number;buys:number;sells:number;buyUsd:number|null;sellUsd:number|null;netUsd:number|null;avgTradeUsd:number|null;repeatEntries:number;quickFlips:number;directSharePct:number;firstSeenAt:string|null;lastSeenAt:string|null;reasons:string[]};
-export type SignalObservation={observed_at:string;payload:{mint?:string;symbol?:string|null;priceUsd?:number|null;opportunityScore?:number|null;signalConfidenceScore?:number|null;manipulationRiskScore?:number|null;capitalFlowScore?:number|null;holderQualityScore?:number|null;divergenceSignal?:'bullish'|'bearish'|'none'|null;whaleExit?:number|null;liquidityWarning?:boolean|null}};
+export type SignalObservation={observed_at:string;payload:{
+ mint?:string;symbol?:string|null;priceUsd?:number|null;opportunityScore?:number|null;signalConfidenceScore?:number|null;manipulationRiskScore?:number|null;riskScore?:number|null;
+ capitalFlowScore?:number|null;momentumScore?:number|null;holderQualityScore?:number|null;divergenceSignal?:'bullish'|'bearish'|'none'|null;whaleExit?:number|null;liquidityWarning?:boolean|null;
+ goodOpportunityScore?:number|null;goodOpportunityTier?:'avoid'|'watch'|'good'|'strong'|null;goodOpportunityActive?:boolean|null;goodOpportunityStrength?:number|null;
+ hypeScore?:number|null;hypeVelocity?:number|null;hypeAcceleration?:number|null;observedBuyPressure15m?:number|null;buyPressure?:number|null;liquidityChangePct?:number|null;trendPersistenceScore?:number|null;
+ buys1h?:number|null;sells1h?:number|null;trafficEvidence?:'warming'|'sparse'|'usable'|'degraded'|null;trafficSample?:TrafficSummary|null
+}};
 export type ValidationWindow={minutes:number;samples:number;wins:number;winRate:number|null;calibratedWinRate:number|null;confidence:number;avgReturnPct:number|null;medianReturnPct:number|null;downsideMedianPct:number|null};
 export type ValidationSummary={samples:number;qualifiedSamples:number;windows:Record<string,ValidationWindow>;calibrationLabel:'insufficient'|'weak'|'developing'|'validated';note:string};
+export type GoodValidationWindow={minutes:number;signals:number;samples:number;wins:number;positiveRate:number|null;calibratedPositiveRate:number|null;hit2Rate:number|null;confidence:number;medianReturnPct:number|null;medianMfePct:number|null;medianMaePct:number|null};
+export type GoodValidationSummary={entries:number;samples:number;windows:Record<string,GoodValidationWindow>;calibrationLabel:'insufficient'|'weak'|'developing'|'validated';note:string};
 export type CoordinatedCluster={id:string;side:'buy'|'sell';wallets:string[];swaps:number;totalUsd:number|null;directSharePct:number;startAt:string;endAt:string;score:number;confidence:'low'|'medium'|'high'};
-export type AdaptiveOpportunity={baseScore:number;score:number;delta:number;confidence:number;historyAdjustment:number;smartMoneyAdjustment:number;coordinationAdjustment:number;riskAdjustment:number;reasons:string[]};
+export type AdaptiveOpportunity={baseScore:number;score:number;delta:number;confidence:number;historyAdjustment:number;goodOutcomeAdjustment:number;smartMoneyAdjustment:number;coordinationAdjustment:number;riskAdjustment:number;reasons:string[]};
 export type SmartSignalAlert={id:string;mint:string;symbol:string|null;kind:string;severity:'info'|'warning'|'critical';value:number;message:string;at:string;deltaTrades:number;deltaVolume:number;hypeDelta:number};
 export type SmartAlertToken={mint:string;symbol?:string|null;opportunityScore?:number|null;signalConfidenceScore?:number|null;manipulationRiskScore?:number|null;divergenceSignal?:'bullish'|'bearish'|'none'|null;trafficSample?:TrafficSummary|null;volumeDelta?:number|null;hypeDelta?:number|null};
 
@@ -116,7 +125,53 @@ export function validateSignals(rows:SignalObservation[]):ValidationSummary{
  return {samples,qualifiedSamples:qualified.length,windows,calibrationLabel,note:'Historical calibration uses sample-shrunk win rates and bounded forward windows. It is evidence, not a prediction or guarantee.'};
 }
 
-export function computeAdaptiveOpportunity(baseScore:number|null|undefined,validation:ValidationSummary,smartMoney:ReturnType<typeof smartMoneySummary>,clusters:CoordinatedCluster[],current?:SignalObservation['payload']):AdaptiveOpportunity{
+
+export function validateGoodOpportunities(rows:SignalObservation[]):GoodValidationSummary{
+ const sorted=[...rows].filter(r=>Number.isFinite(Date.parse(r.observed_at))&&finite(r.payload?.priceUsd)&&r.payload.priceUsd!>0).sort((a,b)=>Date.parse(a.observed_at)-Date.parse(b.observed_at));
+ const entries:SignalObservation[]=[];
+ let wasActive=false,lastEntryAt=-Infinity;
+ for(const row of sorted){
+  const p=row.payload,at=Date.parse(row.observed_at);
+  const sample=p.trafficSample?.windows?.['5'];
+  const derivedStrength=finite(p.goodOpportunityStrength)
+   ? p.goodOpportunityStrength!
+   : tokenStrength(sample?.buys??Math.max(0,Number(p.buys1h??0)),sample?.sells??Math.max(0,Number(p.sells1h??0)),sample?.buyUsd??null,sample?.sellUsd??null);
+  const recomputed=goodOpportunitySignal(p as any,derivedStrength);
+  const persisted=p.goodOpportunityActive===true||((p.goodOpportunityTier==='good'||p.goodOpportunityTier==='strong')&&(p.goodOpportunityScore??0)>=72);
+  const active=persisted||recomputed.active;
+  if(active&&(!wasActive||at-lastEntryAt>=60*60000)){entries.push(row);lastEntryAt=at}
+  wasActive=active;
+ }
+ const windows:Record<string,GoodValidationWindow>={};
+ for(const minutes of [15,60,360]){
+  const returns:number[]=[],mfes:number[]=[],maes:number[]=[];
+  for(const entry of entries){
+   const start=Date.parse(entry.observed_at),target=start+minutes*60000,tolerance=Math.max(6,minutes*.2)*60000;
+   const future=sorted.find(r=>{const at=Date.parse(r.observed_at);return at>=target&&at<=target+tolerance});
+   if(!future)continue;
+   const base=entry.payload.priceUsd!,next=future.payload.priceUsd!;
+   if(!(base>0&&finite(next)))continue;
+   const path=sorted.filter(r=>{const at=Date.parse(r.observed_at);return at>start&&at<=Date.parse(future.observed_at)&&finite(r.payload.priceUsd)});
+   const prices=[base,...path.map(r=>r.payload.priceUsd!).filter(finite),next];
+   const ret=(next-base)/base*100,mfe=(Math.max(...prices)-base)/base*100,mae=(Math.min(...prices)-base)/base*100;
+   returns.push(ret);mfes.push(mfe);maes.push(mae);
+  }
+  const samples=returns.length,wins=returns.filter(v=>v>0).length,hit2=returns.filter(v=>v>=2).length;
+  windows[String(minutes)]={
+   minutes,signals:entries.length,samples,wins,
+   positiveRate:samples?wins/samples*100:null,
+   calibratedPositiveRate:samples?(wins+2)/(samples+4)*100:null,
+   hit2Rate:samples?(hit2+1)/(samples+2)*100:null,
+   confidence:Math.round(clamp(samples/20*100)),
+   medianReturnPct:median(returns),medianMfePct:median(mfes),medianMaePct:median(maes)
+  };
+ }
+ const samples=Math.max(...Object.values(windows).map(w=>w.samples),0);
+ const calibrationLabel:GoodValidationSummary['calibrationLabel']=samples>=20?'validated':samples>=8?'developing':samples>=3?'weak':'insufficient';
+ return {entries:entries.length,samples,windows,calibrationLabel,note:'GOOD v2 re-evaluates retained snapshots with the current conservative GOOD gate, then measures terminal return plus maximum favorable/adverse excursion at 15m, 1h and 6h. Repeated continuous signals are sampled at most once per hour. Only later snapshots are used for outcomes; historical calibration is evidence, not a prediction or guarantee.'};
+}
+
+export function computeAdaptiveOpportunity(baseScore:number|null|undefined,validation:ValidationSummary,smartMoney:ReturnType<typeof smartMoneySummary>,clusters:CoordinatedCluster[],current?:SignalObservation['payload'],goodValidation?:GoodValidationSummary):AdaptiveOpportunity{
  const base=clamp(Math.round(finite(baseScore)?baseScore:50));
  const calibrationWeight={insufficient:0,weak:.25,developing:.6,validated:1}[validation.calibrationLabel];
  const windowWeights:Record<string,number>={'15':.25,'60':.5,'360':.25};
@@ -129,6 +184,12 @@ export function computeAdaptiveOpportunity(baseScore:number|null|undefined,valid
   edgeSum+=edge*weight;edgeWeight+=weight;
  }
  const historyAdjustment=edgeWeight?Math.round(clamp(edgeSum/edgeWeight*calibrationWeight,-12,12)):0;
+ const goodWindow=goodValidation?.windows?.['60'];
+ const goodCalibrationWeight=goodValidation?{insufficient:0,weak:.3,developing:.65,validated:1}[goodValidation.calibrationLabel]:0;
+ const goodEdge=goodWindow&&goodWindow.samples>=2&&goodWindow.calibratedPositiveRate!=null
+  ? (goodWindow.calibratedPositiveRate-50)*.10+clamp(goodWindow.medianReturnPct??0,-12,12)*.34+clamp(goodWindow.medianMfePct??0,0,20)*.07-Math.abs(Math.min(0,goodWindow.medianMaePct??0))*.16
+  : 0;
+ const goodOutcomeAdjustment=Math.round(clamp(goodEdge*goodCalibrationWeight,-8,8));
  const smartSignal=smartMoney.netUsd==null?0:Math.tanh(smartMoney.netUsd/7000)*7*(smartMoney.confidence/100);
  const smartMoneyAdjustment=Math.round(clamp(smartSignal+(smartMoney.entering-smartMoney.exiting)*.7,-8,8));
  const bestBuy=clusters.find(c=>c.side==='buy'&&c.confidence!=='low'),bestSell=clusters.find(c=>c.side==='sell'&&c.confidence!=='low');
@@ -137,14 +198,15 @@ export function computeAdaptiveOpportunity(baseScore:number|null|undefined,valid
  let riskAdjustment=risk>70?-Math.min(7,Math.round((risk-70)*.23)):0;
  if(current?.divergenceSignal==='bearish')riskAdjustment-=3;
  else if(current?.divergenceSignal==='bullish')riskAdjustment+=2;
- const score=clamp(Math.round(base+historyAdjustment+smartMoneyAdjustment+coordinationAdjustment+riskAdjustment));
+ const score=clamp(Math.round(base+historyAdjustment+goodOutcomeAdjustment+smartMoneyAdjustment+coordinationAdjustment+riskAdjustment));
  const reasons:string[]=[];
  if(historyAdjustment)reasons.push('Validated history '+(historyAdjustment>0?'+':'')+historyAdjustment);
+ if(goodOutcomeAdjustment)reasons.push('GOOD v2 outcomes '+(goodOutcomeAdjustment>0?'+':'')+goodOutcomeAdjustment);
  if(smartMoneyAdjustment)reasons.push('Smart Money '+(smartMoneyAdjustment>0?'+':'')+smartMoneyAdjustment);
  if(coordinationAdjustment)reasons.push('Coordinated flow '+(coordinationAdjustment>0?'+':'')+coordinationAdjustment);
  if(riskAdjustment)reasons.push('Risk/divergence '+(riskAdjustment>0?'+':'')+riskAdjustment);
- const confidence=clamp(Math.round(30+Math.min(30,validation.samples*2)+smartMoney.confidence*.22+(current?.signalConfidenceScore??50)*.25));
- return {baseScore:base,score,delta:score-base,confidence,historyAdjustment,smartMoneyAdjustment,coordinationAdjustment,riskAdjustment,reasons};
+ const confidence=clamp(Math.round(30+Math.min(24,validation.samples*1.6)+Math.min(12,(goodValidation?.samples??0)*1.5)+smartMoney.confidence*.22+(current?.signalConfidenceScore??50)*.25));
+ return {baseScore:base,score,delta:score-base,confidence,historyAdjustment,goodOutcomeAdjustment,smartMoneyAdjustment,coordinationAdjustment,riskAdjustment,reasons};
 }
 
 export function deriveSmartAlerts(tokens:SmartAlertToken[],at:string):SmartSignalAlert[]{

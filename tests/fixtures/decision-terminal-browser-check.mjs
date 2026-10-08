@@ -19,7 +19,9 @@ export async function checkWalletCometProfile(page){
 
 export async function checkDecisionTerminal(page){
  await page.waitFor("document.querySelector('[aria-label=\"Decision Terminal v5\"]')?.textContent?.includes('STRONG BUY')");
- assert.match(await page.evaluate("document.querySelector('[aria-label=\"Decision Terminal v5\"]')?.textContent || ''"),/Why now|Strong setup/);
+ const terminalText=await page.evaluate("document.querySelector('[aria-label=\"Decision Terminal v5\"]')?.textContent || ''");
+ assert.match(terminalText,/Why now|Strong setup/);
+ assert.match(terminalText,/GOOD v2/);
  assert.ok(await page.evaluate("Boolean(document.querySelector('[aria-label=\"Time Machine replay\"]'))"),"Decision Terminal must expose Time Machine replay");
  assert.ok(await page.evaluate("Boolean(document.querySelector('input[aria-label=\"Time Machine position\"]'))"),"Time Machine must expose a replay slider");
 }

@@ -22,6 +22,10 @@ export default function ProjectHealthDashboard({usage}:{usage:any}){
        <span>RPC diagnostics</span><strong>{Number(Object.values((w?.trafficDiagnostics??{}) as Record<string,unknown>).reduce((sum:number,item)=>sum+Number(item||0),0))}</strong>
        <small>{Object.entries(w?.trafficDiagnostics??{}).slice(0,3).map(([k,v])=>`${k}: ${v}`).join(" · ")||"no classified failures"}</small>
      </article>
+     <article className={`health-card ${usage?.publicRpc?.readiness?.dedicated?"health-healthy":"health-warning"}`}>
+       <span>RPC provider mode</span><strong>{usage?.publicRpc?.readiness?.mode??"unknown"}</strong>
+       <small>{usage?.publicRpc?.readiness?`${usage.publicRpc.readiness.trafficConfigured} traffic · ${usage.publicRpc.readiness.holderConfigured} holder configured`:"provider readiness unavailable"}</small>
+     </article>
      <article className="health-card">
        <span>Bootstrap queue</span><strong>{value(h?.activeBootstraps, "0")}</strong>
        <small>active leases · global ceiling 3</small>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="SolanaBubble">
+  <rect width="512" height="512" fill="#0b0f14"/>
+  <circle cx="170" cy="256" r="82" fill="#123329" stroke="#70e5aa" stroke-width="10"/>
+  <circle cx="170" cy="256" r="45" fill="#1b4937" stroke="#edfff5" stroke-width="4"/>
+  <path d="M252 256 C286 201 322 305 356 250 S414 205 448 250" fill="none" stroke="#eafff4" stroke-width="20" stroke-linecap="round"/>
+  <path d="M252 256 C286 201 322 305 356 250 S414 205 448 250" fill="none" stroke="#55e49a" stroke-width="8" stroke-linecap="round"/>
+</svg>

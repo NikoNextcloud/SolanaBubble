@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { admin } from "@/lib/db";
 import { getRpcHealth } from "@/lib/solana-public";
+import {rpcProviderReadiness} from "@/lib/rpc-readiness";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +16,7 @@ export async function GET(req: Request) {
   if (!authorized(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const db = admin();
+  const rpcReadiness=rpcProviderReadiness();
 
   const since2h = new Date(Date.now() - 2 * 60 * 60_000).toISOString();
   const [rpcHealth, tokens, dbSize, workerStatus, bootstraps, directTraffic, routedTraffic, syncRows, snapshots, liveEvents, clientErrors] = await Promise.all([
@@ -51,8 +53,9 @@ export async function GET(req: Request) {
       status: rpcHealth.result,
       trackedTokens: tokens.count ?? 0,
       note: "Solana RPC failover + DexScreener market data.",
-      providerMode: process.env.SOLANA_RPC_URL ? "configured-rpc" : "public-rpc",
-      fullFirehose: false,
+      providerMode: rpcReadiness.mode,
+      readiness: rpcReadiness,
+      fullFirehose: rpcReadiness.fullFirehose,
     },
     health: {
       worker: workerStatus.data?.payload ?? null,

@@ -38,8 +38,33 @@ test("optional account sync uses authenticated Supabase session",()=>{
 });
 
 test("health and coverage explicitly declare sampled non-firehose data",()=>{
- assert.match(read("app/api/market/status/route.ts"),/fullFirehose:false/);
+ assert.match(read("app/api/market/status/route.ts"),/fullFirehose:rpc\.fullFirehose/);
  assert.match(read("app/api/market/status/route.ts"),/trafficCoveragePct/);
  assert.match(read("app/api/health/route.ts"),/swapCoverage:"sampled"/);
  assert.match(read("components/LiveReliabilityBadge.tsx"),/not a blockchain firehose/);
+});
+
+
+test("PWA and social metadata are production-ready",()=>{
+ const manifest=read("app/manifest.ts");
+ assert.match(manifest,/\/icon\.svg/);
+ assert.match(manifest,/maskable/);
+ assert.match(read("app/layout.tsx"),/opengraph-image/);
+ assert.match(read("app/opengraph-image.tsx"),/GOOD Opportunity/);
+ assert.match(read("app/sitemap.ts"),/market\/movers/);
+});
+
+test("production monitor independently checks the deployed health endpoint",()=>{
+ const workflow=read(".github/workflows/production-monitor.yml");
+ assert.match(workflow,/cron: "\*\/15 \* \* \* \*"/);
+ assert.match(workflow,/solanabubble\.vercel\.app\/api\/health/);
+ assert.match(workflow,/marketAgeSec/);
+ assert.match(workflow,/TELEGRAM_BOT_TOKEN/);
+});
+
+test("provider readiness never exposes configured endpoint values",()=>{
+ const rpc=read("lib/rpc-readiness.ts");
+ assert.match(rpc,/rpcProviderReadiness/);
+ assert.match(rpc,/public-fallback/);
+ assert.match(rpc,/dedicated-split/);
 });

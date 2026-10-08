@@ -1,0 +1,56 @@
+name: Production Soak
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "Soak duration in minutes (1-300)"
+        required: false
+        default: "60"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: solanabubble-production-soak
+  cancel-in-progress: true
+
+jobs:
+  soak:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Start headless Chromium
+        run: |
+          set -euo pipefail
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          test -n "$CHROME_BIN"
+          PROFILE=/tmp/solanabubble-soak-chrome
+          rm -rf "$PROFILE"
+          "$CHROME_BIN" --headless=new --no-sandbox --disable-gpu --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --user-data-dir="$PROFILE" about:blank >/tmp/solanabubble-soak-chrome.log 2>&1 &
+          echo "$!" > /tmp/solanabubble-soak-chrome.pid
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:9222/json/version >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/solanabubble-soak-chrome.log
+          exit 1
+      - name: Run production browser soak
+        env:
+          CHROME_DEBUG_URL: http://127.0.0.1:9222
+          SOAK_URL: https://solanabubble.vercel.app
+          SOAK_MINUTES: ${{ github.event_name == 'workflow_dispatch' && inputs.minutes || (github.event_name == 'push' && '2' || '30') }}
+        run: node tests/production-soak.mjs
+      - name: Stop Chromium
+        if: always()
+        run: kill "$(cat /tmp/solanabubble-soak-chrome.pid 2>/dev/null)" 2>/dev/null || true

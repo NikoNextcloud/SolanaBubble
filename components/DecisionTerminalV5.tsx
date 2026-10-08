@@ -1,11 +1,11 @@
 "use client";
 import {useEffect,useMemo,useState} from "react";
-import type {CoordinatedCluster,ValidationSummary,WalletProfile,AdaptiveOpportunity} from "@/lib/market/intelligence-core";
+import type {CoordinatedCluster,ValidationSummary,GoodValidationSummary,WalletProfile,AdaptiveOpportunity} from "@/lib/market/intelligence-core";
 import type {DecisionTerminal,ReplayPoint,WalletNetwork} from "@/lib/market/decision-terminal";
 
 type Payload={
  observedAt:string;walletProfiles:WalletProfile[];coordinatedClusters:CoordinatedCluster[];adaptiveOpportunity:AdaptiveOpportunity;
- validation:ValidationSummary;decision:DecisionTerminal;replay:ReplayPoint[];walletNetwork:WalletNetwork;
+ validation:ValidationSummary;goodValidation:GoodValidationSummary;decision:DecisionTerminal;replay:ReplayPoint[];walletNetwork:WalletNetwork;
  smartMoney:{smartWalletCount:number;entering:number;exiting:number;netUsd:number|null;confidence:number};
  evidence:{recognizedSwaps:number;historicalSnapshots:number;note:string};
 };
@@ -60,7 +60,7 @@ export default function DecisionTerminalV5({mint}:{mint:string}){
     <div><span>Adaptive</span><strong>{data.adaptiveOpportunity.score}</strong></div>
     <div><span>Smart wallets</span><strong>{data.smartMoney.smartWalletCount}</strong></div>
     <div><span>Smart flow</span><strong className={(data.smartMoney.netUsd??0)>=0?"buy":"sell"}>{usd(data.smartMoney.netUsd)}</strong></div>
-    <div><span>Validation</span><strong>{data.validation.calibrationLabel}</strong></div>
+    <div><span>GOOD v2</span><strong>{data.goodValidation.calibrationLabel}</strong></div>
    </div>
    {!!d.whyNow.length&&<div className="signal-thesis buy"><b>Why now</b><p>{d.whyNow.slice(0,3).join(" · ")}</p></div>}
    {!!d.risks.length&&<div className="signal-thesis sell"><b>Watch risk</b><p>{d.risks.slice(0,2).join(" · ")}</p></div>}
@@ -80,10 +80,11 @@ export default function DecisionTerminalV5({mint}:{mint:string}){
   <details className="signal-disclosure">
    <summary>Backtest & wallet network</summary>
    <dl className="market-token-stats">
-    {(["15","60","360"] as const).map(k=>{const w=data.validation.windows[k];return <div key={k}><dt>{k==="15"?"15m":k==="60"?"1h":"6h"} validation</dt><dd>{w?.samples?Math.round(w.calibratedWinRate??w.winRate??0)+"% calibrated · "+fmt(w.medianReturnPct,"% median")+" · "+w.confidence+"% confidence":"—"}</dd></div>})}
+    {(["15","60","360"] as const).map(k=>{const w=data.goodValidation.windows[k];return <div key={"good-"+k}><dt>{k==="15"?"15m":k==="60"?"1h":"6h"} GOOD v2</dt><dd>{w?.samples?Math.round(w.calibratedPositiveRate??w.positiveRate??0)+"% positive · "+Math.round(w.hit2Rate??0)+"% hit +2% · "+fmt(w.medianReturnPct,"% median")+" · MFE "+fmt(w.medianMfePct,"%")+" / MAE "+fmt(w.medianMaePct,"%"):"warming"}</dd></div>})}
+    <div><dt>Legacy calibration</dt><dd>{data.validation.calibrationLabel} · {data.validation.samples} forward samples</dd></div>
    </dl>
    <WalletNetworkView network={data.walletNetwork}/>
-   <small className="signal-note">{data.evidence.recognizedSwaps} recognized swaps · {data.evidence.historicalSnapshots} snapshots. Historical outcomes are calibration evidence, not a guarantee.</small>
+   <small className="signal-note">{data.evidence.recognizedSwaps} recognized swaps · {data.evidence.historicalSnapshots} snapshots · {data.goodValidation.entries} bounded GOOD entries. MFE/MAE and forward returns use only later snapshots; no look-ahead. Historical outcomes are calibration evidence, not a guarantee.</small>
   </details>
  </section>;
 }
