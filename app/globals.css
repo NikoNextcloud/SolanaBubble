@@ -1789,3 +1789,11 @@ button.market-section-row:hover{background:#121f2b}
 .insight-stage .data-table th{
   opacity:.82;
 }
+
+.good-validation{margin-top:10px;padding:10px;border:1px solid rgba(93,218,153,.18);border-radius:9px;background:rgba(20,36,29,.28);display:grid;gap:8px}
+.good-validation-head{display:flex;justify-content:space-between;gap:10px;align-items:center}.good-validation-head span,.good-validation>span{font-size:10px;font-weight:800;color:#dce9e2;letter-spacing:.04em}.good-validation-head b{font-size:8px;letter-spacing:.08em}
+.validation-validated{color:#61e8a1}.validation-developing{color:#dce47a}.validation-weak{color:#e6b16c}.validation-insufficient{color:#8d9aa3}
+.good-validation>small{font-size:8px;line-height:1.45;color:#75838d}
+.good-validation-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.good-validation-grid>div{display:grid;gap:2px;padding:7px;border:1px solid rgba(120,139,151,.13);border-radius:7px;background:rgba(10,15,19,.42)}
+.good-validation-grid span{font-size:8px;color:#7e8c96}.good-validation-grid strong{font-size:13px;color:#eaf4ef}.good-validation-grid small,.good-validation-grid em{font-size:7px;color:#75838d;font-style:normal;line-height:1.35}
+@media(max-width:700px){.good-validation-grid{grid-template-columns:1fr}}
