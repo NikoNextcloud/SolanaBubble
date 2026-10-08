@@ -64,6 +64,12 @@ export type Intelligence = {
   divergenceSignal?: 'bullish' | 'bearish' | 'none';
   divergenceReasons?: string[];
   signalThesis?: string;
+  goodOpportunityScore?: number | null;
+  goodOpportunityTier?: 'avoid' | 'watch' | 'good' | 'strong' | null;
+  goodOpportunityActive?: boolean | null;
+  goodOpportunityStrength?: number | null;
+  goodOpportunityReasons?: string[];
+  goodOpportunityBlockers?: string[];
   baselineAt?: string | null;
 };
 export type SignalToken = Intelligence & {
