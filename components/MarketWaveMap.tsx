@@ -5,7 +5,7 @@ import type {TrafficSummary} from "@/lib/market/traffic/summary";
 import {buildWalletProfiles,detectCoordinatedWallets,trafficSampleRows} from "@/lib/market/intelligence-core";
 import {positionQuickActions} from "@/lib/market/quick-actions";
 import {fomoTokenUrl,gmgnTokenUrl} from "@/lib/token-links";
-import {activeWaveEvents,buildFlowTrail,livingWaveDynamics,livingWavePath,opportunityWaveSignal,selectWaveTokens,waveAmplitude,waveMapLayout,waveMetrics,wavePath,type FlowTrailTrade,type WaveMetrics} from "@/lib/market/wave-map";
+import {activeWaveEvents,buildFlowTrail,goodOpportunitySignal,livingWaveDynamics,livingWavePath,opportunityWaveSignal,selectWaveTokens,waveAmplitude,waveMapLayout,waveMetrics,wavePath,type FlowTrailTrade,type WaveMetrics} from "@/lib/market/wave-map";
 import styles from "./MarketWaveMap.module.css";
 
 export type MarketWaveToken={
@@ -13,6 +13,9 @@ export type MarketWaveToken={
  buys1h?:number|null;sells1h?:number|null;trades1h?:number|null;volume1h?:number|null;trafficSample?:TrafficSummary|null;
  opportunityScore?:number|null;signalConfidenceScore?:number|null;manipulationRiskScore?:number|null;riskScore?:number|null;
  capitalFlowScore?:number|null;momentumScore?:number|null;liquidityWarning?:boolean|null;divergenceSignal?:'bullish'|'bearish'|'none'|null;
+ hypeVelocity?:number|null;hypeAcceleration?:number|null;observedBuyPressure15m?:number|null;buyPressure?:number|null;
+ liquidityChangePct?:number|null;trendPersistenceScore?:number|null;holderGrowthPct?:number|null;smartMoneyFlowUsd?:number|null;
+ trafficEvidence?:'warming'|'sparse'|'usable'|'degraded'|null;
 };
 type Particle={id:string;mint:string;side:"buy"|"sell";wallet:string;evidence:"direct"|"routed";whale:boolean;usdValue:number|null};
 
@@ -88,9 +91,10 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
  const livingWaves=useMemo(()=>layout.map((point,index)=>{
    const m=metrics.get(point.mint);
    const token=visibleTokenByMint.get(point.mint);
-   const dynamics=livingWaveDynamics(token?.hypeScore,m?.buys??0,m?.sells??0);
+   const dynamics=livingWaveDynamics(token?.hypeScore,m?.buys??0,m?.sells??0,token?.hypeVelocity);
    const side=point.strength>4?"buy":point.strength<-4?"sell":"neutral";
-   const opportunity=opportunityWaveSignal(token??{mint:point.mint});
+   const opportunity=opportunityWaveSignal(token??{mint:point.mint},point.strength);
+   const goodOpportunity=goodOpportunitySignal(token??{mint:point.mint},point.strength);
    const phase=index*.73;
    const x1=point.x+point.r+12;
    const frames=[
@@ -109,6 +113,7 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
      y:point.endY,
      dynamics,
      opportunity,
+     goodOpportunity,
    };
  }),[layout,metrics,visibleTokenByMint,scaleX]);
  const livingWaveByMint=useMemo(()=>new Map(livingWaves.map(wave=>[wave.mint,wave])),[livingWaves]);
@@ -158,7 +163,10 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
       const fill=point.strength>8?"url(#waveCoinBuy)":point.strength<-8?"url(#waveCoinSell)":"url(#waveCoinFlat)";
       const label=(token.symbol||token.name||token.mint.slice(0,6)).slice(0,12);
       const hype=Math.max(0,Math.min(100,Number(token.hypeScore??0)));
+      const hypeVelocity=typeof token.hypeVelocity==="number"&&Number.isFinite(token.hypeVelocity)?token.hypeVelocity:null;
+      const hypeArrow=hypeVelocity==null?"?":hypeVelocity>.25?"↑":hypeVelocity<-.25?"↓":"→";
       const hypeClass=hype>=92?styles.coinHypeExtreme:hype>=85?styles.coinHypeHot:hype>=65?styles.coinHypeWarm:"";
+      const good=goodOpportunitySignal(token,point.strength);
       return <g key={token.mint} className="market-node-group" data-flow-rank={index+1}>
        <g className={styles.token} data-hype={Math.round(hype)} role="button" tabIndex={0} aria-label={(token.symbol||token.name||token.mint)+": strength "+point.strength} onPointerDown={e=>e.stopPropagation()} onClick={e=>{if(e.detail>=2)handleTokenDoubleClick(token);else handleTokenClick(token)}} onDoubleClick={()=>handleTokenDoubleClick(token)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onSelect(token);onQuickAction(token.mint)}}}>
         {hype>=85&&<circle cx={point.x} cy={point.y} r={point.r+30} fill="url(#hypeFlareFill)" className={[styles.hypeFlare,hype>=92?styles.hypeFlareExtreme:styles.hypeFlareHot,"token-hype-flare"].join(" ")} style={{animationDuration:(2.55-hype*.014)+"s"}}/>}
@@ -166,12 +174,12 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
         {hype>=85&&<circle cx={point.x} cy={point.y} r={point.r+18} className={[styles.hypeAura,styles.hypeAuraSecondary,hype>=92?styles.hypeAuraExtreme:styles.hypeAuraHot,"token-hype-aura-secondary"].join(" ")} style={{animationDuration:(3.15-hype*.017)+"s"}}/>}
         <circle cx={point.x} cy={point.y} r={point.r+8} className={[styles.pulseHalo,haloClass,"token-pulse-halo"].join(" ")}/>
         <circle cx={point.x} cy={point.y} r={point.r+8} className={[styles.pulseHalo,styles.pulseHaloSecondary,haloClass,"token-pulse-halo"].join(" ")}/>
-        <circle cx={point.x} cy={point.y} r={point.r} fill={fill} aria-label={(token.symbol||token.name||token.mint)+": strength "+point.strength} className={["market-token-bubble",styles.coin,flowClass,hypeClass,selected?styles.coinSelected:""].filter(Boolean).join(" ")}><title>{(token.symbol||token.name||token.mint)+" · Hype "+Math.round(hype)+" · strength "+point.strength+" · "+m.buys+" buys / "+m.sells+" sells"}</title></circle>
+        <circle cx={point.x} cy={point.y} r={point.r} fill={fill} aria-label={(token.symbol||token.name||token.mint)+": strength "+point.strength} className={["market-token-bubble",styles.coin,flowClass,hypeClass,good.active?styles.coinGoodOpportunity:"",selected?styles.coinSelected:""].filter(Boolean).join(" ")}><title>{(token.symbol||token.name||token.mint)+" · Hype "+Math.round(hype)+" "+hypeArrow+(hypeVelocity!=null?" "+hypeVelocity.toFixed(2)+"/min":"")+" · strength "+point.strength+" · opportunity "+good.score+"/100 · "+m.buys+" buys / "+m.sells+" sells"}</title></circle>
         {token.imageUrl&&<><clipPath id={"wave-clip-"+token.mint}><circle cx={point.x} cy={point.y} r={Math.max(9,point.r-4)}/></clipPath><image href={token.imageUrl} x={point.x-point.r+4} y={point.y-point.r+4} width={(point.r-4)*2} height={(point.r-4)*2} preserveAspectRatio="xMidYMid slice" clipPath={"url(#wave-clip-"+token.mint+")"} className={styles.icon}/></>}
-        {denseFocus?<text x={point.x} y={point.y+point.r+13} textAnchor="middle" className={styles.symbolDense}>{label}</text>:<>
-          <text x={point.x+point.r+14} y={point.y-8} className={styles.symbol}>{label}</text>
-          <text x={point.x+point.r+14} y={point.y+6} className={styles.meta}>B {m.buys} · S {m.sells}</text>
-          <text x={point.x+point.r+14} y={point.y+21} className={[styles.strength,point.strength>0?styles.buyText:point.strength<0?styles.sellText:styles.neutralText].join(" ")}>Strength {point.strength>0?"+":""}{point.strength}</text>
+        {denseFocus?<><text x={point.x} y={point.y+point.r+13} textAnchor="middle" className={styles.symbolDense}>{label}</text>{good.active&&<text x={point.x} y={point.y-point.r-10} textAnchor="middle" className={styles.goodDense}>GOOD {good.score}</text>}</>:<>
+          <text x={point.x+point.r+14} y={point.y-11} className={styles.symbol}>{label}{good.active?" · GOOD "+good.score:""}</text>
+          <text x={point.x+point.r+14} y={point.y+4} className={styles.meta}>Hype {Math.round(hype)} {hypeArrow}{hypeVelocity!=null?" "+hypeVelocity.toFixed(2)+"/m":""}</text>
+          <text x={point.x+point.r+14} y={point.y+19} className={[styles.strength,point.strength>0?styles.buyText:point.strength<0?styles.sellText:styles.neutralText].join(" ")}>Strength {point.strength>0?"+":""}{point.strength} · B {m.buys}/S {m.sells}</text>
         </>}
        </g>
       </g>;
@@ -181,7 +189,7 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
      {livingWaves.map(wave=>{
        const stroke=wave.side==="buy"?"url(#waveFlowBuy)":wave.side==="sell"?"url(#waveFlowSell)":"url(#waveFlowNeutral)";
        const opportunity=wave.opportunity;
-       return <g key={"live-wave-"+wave.mint} className="living-wave-group" data-mint={wave.mint} data-opportunity={opportunity.strength}>
+       return <g key={"live-wave-"+wave.mint} className="living-wave-group" data-mint={wave.mint} data-opportunity={opportunity.strength} data-good-opportunity={wave.goodOpportunity.tier} data-hype-trend={wave.dynamics.hypeTrend}>
        <path d={wave.d} className={styles.livingWaveBase} stroke={stroke} style={{opacity:.24+wave.dynamics.activity*.22}}>
          {animated&&<animate attributeName="d" dur={wave.morphDuration+"s"} values={wave.morphValues} keyTimes="0;0.33;0.66;1" calcMode="spline" keySplines=".42 0 .58 1;.42 0 .58 1;.42 0 .58 1" repeatCount="indefinite"/>}
        </path>
@@ -247,11 +255,11 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
    </g>
   </svg>
 
-  <div className={styles.focusInfo}><b>{visibleTokens.length} focus tokens</b><span> · {Math.round(mapView.k*100)}% zoom</span>{hiddenCount>0?<span> · {hiddenCount} more available in List</span>:null}<small>{lod==="far"?"zoom out reveals more market coverage":lod==="near"?"detail mode prioritizes the strongest tokens":"live trades are automatically prioritized"}</small></div>
+  <div className={styles.focusInfo}><b>{visibleTokens.length} opportunity-ranked tokens</b><span> · {Math.round(mapView.k*100)}% zoom</span>{hiddenCount>0?<span> · {hiddenCount} more available in List</span>:null}<small>{lod==="far"?"zoom out reveals more candidates":lod==="near"?"detail mode keeps the strongest setups":"GOOD setups, rising Hype and BUY pressure are prioritized"}</small></div>
   {quick&&quickToken&&quickLayout&&<div className={styles.quick+" token-quick-actions token-quick-actions-overlay"} style={{left:quickLayout.left,top:quickLayout.top,width:quickLayout.width}} onPointerDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()} onDoubleClick={e=>e.stopPropagation()}>
     <a href={fomoTokenUrl(quickToken.mint)} target="_blank" rel="noreferrer">FoMo ↗</a><a href={gmgnTokenUrl(quickToken.mint)} target="_blank" rel="noreferrer">GmGn ↗</a><button className="quick-detail-action" onClick={()=>onDetails(quickToken)}>Details</button><button className="quick-holder-action" onClick={()=>onOpen(quickToken)}>Holders</button>
   </div>}
   {activeParticle&&<div className={styles.detail+" targeted-comet-detail"}><button className="detail-close" onClick={()=>setActiveParticleId(null)} aria-label="Close wallet profile">×</button><strong>{activeParticleProfile?.label??(activeParticle.whale?"Whale":"Wallet")} · {activeParticle.side.toUpperCase()}</strong><span>{activeParticle.wallet.slice(0,6)}…{activeParticle.wallet.slice(-5)}</span><small>{activeParticleProfile?`Wallet score ${activeParticleProfile.score}/100 · Wallet net ${activeParticleProfile.netUsd==null?"—":Math.round(activeParticleProfile.netUsd).toLocaleString()+" USD"}`:"Wallet score unavailable"}{activeParticleCoordinated?" · Coordinated":""}</small></div>}
-  <div className={styles.status}><b>LIVE</b> · fluid morphing flow · real BUY/SELL dots ride each live path · Hype 85+ flashes harder · white wave = opportunity setup, not a guarantee</div>
+  <div className={styles.status}><b>LIVE</b> · wave shape shows Hype direction: ↑ gains energy, ↓ fades · GOOD = bullish quality filter · white wave = qualified opportunity, never a guarantee</div>
  </div>;
 }
