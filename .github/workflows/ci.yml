@@ -27,6 +27,8 @@ jobs:
       - run: npm test
       - run: npm run worker:check
       - run: npm run check:budgets
+      - name: Check production soak harness
+        run: node --check tests/production-soak.mjs
       - name: Build (with dummy env so build doesn't fail on missing vars)
         run: npm run build
         env:
