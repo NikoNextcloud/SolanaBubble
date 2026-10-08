@@ -132,6 +132,7 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
  const quickToken=quickActionMint?visibleTokenByMint.get(quickActionMint):null;
  const quickLayout=quick?positionQuickActions({nodeX:quick.x,nodeY:quick.y,nodeRadius:quick.r,viewX:mapView.x,viewY:mapView.y,scale:mapView.k,viewportWidth:safeWidth,viewportHeight:safeHeight,preferredWidth:safeWidth<=640?236:224,panelHeight:42}):null;
  const hiddenCount=Math.max(0,tokens.length-visibleTokens.length);
+ const goodCount=visibleTokens.reduce((count,token)=>count+(goodOpportunitySignal(token,metrics.get(token.mint)?.strength??0).active?1:0),0);
 
  return <div className={[styles.root,!animated?styles.paused:""].filter(Boolean).join(" ")}>
   <svg className={"market-pan-surface "+styles.svg} data-lod={lod} data-focus-capacity={maxVisible} data-zoom={mapView.k.toFixed(2)} data-capital-flow-only={capitalFlowOnly?"true":"false"} data-active-pulses={particles.length} data-visible-tokens={visibleTokens.length} viewBox={"0 0 "+safeWidth+" "+safeHeight} preserveAspectRatio="none" onWheel={onWheel} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} role="img" aria-label="Live Solana trade impulses toward token strength scale">
@@ -255,7 +256,7 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
    </g>
   </svg>
 
-  <div className={styles.focusInfo}><b>{visibleTokens.length} opportunity-ranked tokens</b><span> · {Math.round(mapView.k*100)}% zoom</span>{hiddenCount>0?<span> · {hiddenCount} more available in List</span>:null}<small>{lod==="far"?"zoom out reveals more candidates":lod==="near"?"detail mode keeps the strongest setups":"GOOD setups, rising Hype and BUY pressure are prioritized"}</small></div>
+  <div className={styles.focusInfo}><b>{visibleTokens.length} opportunity-ranked tokens</b><span> · {goodCount} GOOD</span><span> · {Math.round(mapView.k*100)}% zoom</span>{hiddenCount>0?<span> · {hiddenCount} more available in List</span>:null}<small>{lod==="far"?"zoom out reveals more candidates":lod==="near"?"detail mode keeps the strongest setups":"GOOD setups, rising Hype and BUY pressure are prioritized"}</small></div>
   {quick&&quickToken&&quickLayout&&<div className={styles.quick+" token-quick-actions token-quick-actions-overlay"} style={{left:quickLayout.left,top:quickLayout.top,width:quickLayout.width}} onPointerDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()} onDoubleClick={e=>e.stopPropagation()}>
     <a href={fomoTokenUrl(quickToken.mint)} target="_blank" rel="noreferrer">FoMo ↗</a><a href={gmgnTokenUrl(quickToken.mint)} target="_blank" rel="noreferrer">GmGn ↗</a><button className="quick-detail-action" onClick={()=>onDetails(quickToken)}>Details</button><button className="quick-holder-action" onClick={()=>onOpen(quickToken)}>Holders</button>
   </div>}
