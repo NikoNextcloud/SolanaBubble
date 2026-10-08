@@ -28,6 +28,11 @@ export async function checkFlowTrajectoryUi(page) {
       movingParticleCount: document.querySelectorAll(".moving-flow-particle animateMotion").length,
       opportunityWaveCount: document.querySelectorAll(".opportunity-wave-path").length,
       strongOpportunityCount: document.querySelectorAll('.opportunity-wave-group[data-strength="strong"]').length,
+      goodOpportunityCount: document.querySelectorAll('.living-wave-group[data-good-opportunity="good"], .living-wave-group[data-good-opportunity="strong"]').length,
+      risingHypeWaveCount: document.querySelectorAll('.living-wave-group[data-hype-trend="rising"]').length,
+      fallingHypeWaveCount: document.querySelectorAll('.living-wave-group[data-hype-trend="falling"]').length,
+      focusCopy: document.querySelector("[class*=focusInfo]")?.textContent || "",
+      statusCopy: document.querySelector("[class*=status]")?.textContent || "",
       hypeAuraCount: document.querySelectorAll(".token-hype-aura").length,
       hypeFlareCount: document.querySelectorAll(".token-hype-flare").length,
       morphAnimationCount: document.querySelectorAll(".living-wave-path > animate").length,
@@ -62,7 +67,12 @@ export async function checkFlowTrajectoryUi(page) {
   assert.ok(ui.animationStates.every((row) => row.name !== "none" && row.state === "running"), "all focus-token waves must be actively animated");
   assert.ok(ui.movingParticleCount >= 4, "retained real BUY/SELL samples must travel along the living waves");
   assert.ok(ui.opportunityWaveCount >= 1, "qualified token must render a white opportunity wave");
-  assert.ok(ui.strongOpportunityCount >= 1, "high-confidence low-risk fixture must render a strong opportunity wave");
+  assert.ok(ui.strongOpportunityCount >= 1, "high-confidence low-risk rising-Hype fixture must render a strong opportunity wave");
+  assert.ok(ui.goodOpportunityCount >= 1, "map must expose at least one qualified GOOD opportunity");
+  assert.ok(ui.risingHypeWaveCount >= 1, "rising Hype must be encoded on the living wave");
+  assert.ok(ui.fallingHypeWaveCount >= 1, "falling Hype must be encoded on the living wave");
+  assert.match(ui.focusCopy,/opportunity-ranked/);
+  assert.match(ui.statusCopy,/Hype direction/);
   assert.ok(ui.hypeAuraCount >= 1, "high-hype token must render a stronger hype aura");
   assert.ok(ui.hypeFlareCount >= 1, "high-hype token must render a bright flare");
   assert.equal(ui.morphAnimationCount, ui.visibleTokenCount, "every visible wave must morph its SVG shape");

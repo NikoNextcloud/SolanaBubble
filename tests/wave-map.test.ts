@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {activeWaveEvents,buildFlowTrail,livingWaveDynamics,livingWavePath,opportunityWaveSignal,selectWaveTokens,tokenStrength,waveAmplitude,waveMapLayout,waveMetrics,wavePath} from '../lib/market/wave-map';
+import {activeWaveEvents,buildFlowTrail,goodOpportunitySignal,livingWaveDynamics,livingWavePath,opportunityWaveSignal,selectWaveTokens,tokenStrength,waveAmplitude,waveMapLayout,waveMetrics,wavePath} from '../lib/market/wave-map';
 
 test('wave amplitude grows with stronger order flow',()=>{
   assert.ok(waveAmplitude(80,100)>waveAmplitude(20,100));
@@ -121,7 +121,7 @@ test('focus selection caps visual density and prioritizes selected and fresh-liv
 
 
 test('opportunity wave stays conservative',()=>{
-  const signal=opportunityWaveSignal({mint:'11111111111111111111111111111111',opportunityScore:86,signalConfidenceScore:82,manipulationRiskScore:28,capitalFlowScore:72,momentumScore:69,divergenceSignal:'bullish'});
+  const signal=opportunityWaveSignal({mint:'11111111111111111111111111111111',opportunityScore:86,signalConfidenceScore:82,manipulationRiskScore:28,capitalFlowScore:72,momentumScore:76,hypeVelocity:1.4,observedBuyPressure15m:72,trendPersistenceScore:82,divergenceSignal:'bullish'},42);
   assert.equal(signal.active,true);
   assert.equal(signal.strength,'strong');
   const risky=opportunityWaveSignal({mint:'22222222222222222222222222222222',opportunityScore:92,signalConfidenceScore:90,manipulationRiskScore:78,capitalFlowScore:80,momentumScore:76});
@@ -138,4 +138,55 @@ test('living wave phase frames remain morph-compatible but visually distinct',()
   assert.equal((a.match(/ L/g)||[]).length,(b.match(/ L/g)||[]).length);
   assert.match(a,/^M120\.0,210\.0/);
   assert.match(b,/L640\.0,170\.0$/);
+});
+
+
+test('good opportunity requires rising hype, buy strength and controlled risk',()=>{
+  const good=goodOpportunitySignal({
+    mint:'good',
+    opportunityScore:84,signalConfidenceScore:78,manipulationRiskScore:31,
+    capitalFlowScore:74,momentumScore:76,hypeVelocity:1.2,hypeAcceleration:.18,
+    observedBuyPressure15m:68,trendPersistenceScore:80,liquidityChangePct:4,
+    trafficEvidence:'usable',divergenceSignal:'none'
+  },36);
+  assert.equal(good.active,true);
+  assert.ok(good.score>=72);
+  assert.equal(good.hypeTrend,'rising');
+
+  const falling=goodOpportunitySignal({
+    mint:'falling',
+    opportunityScore:91,signalConfidenceScore:86,manipulationRiskScore:24,
+    capitalFlowScore:79,momentumScore:82,hypeVelocity:-1.1,
+    observedBuyPressure15m:72,trendPersistenceScore:84,trafficEvidence:'usable'
+  },48);
+  assert.equal(falling.active,false);
+  assert.equal(falling.hypeTrend,'falling');
+  assert.ok(falling.blockers.some(reason=>reason.includes('Hype')));
+});
+
+test('focus ranking prefers constructive bullish setup over extreme sell pressure',()=>{
+  const now=Date.parse('2026-10-08T10:00:00Z');
+  const good:any={mint:'good',hypeScore:78,hypeVelocity:1.5,volume1h:18000,trades1h:60,opportunityScore:84,signalConfidenceScore:79,manipulationRiskScore:28,capitalFlowScore:76,momentumScore:78,observedBuyPressure15m:70,trendPersistenceScore:82,trafficEvidence:'usable'};
+  const toxic:any={mint:'toxic',hypeScore:96,hypeVelocity:-1.8,volume1h:90000,trades1h:180,opportunityScore:42,signalConfidenceScore:74,manipulationRiskScore:76,capitalFlowScore:29,momentumScore:44,observedBuyPressure15m:22,trendPersistenceScore:88,trafficEvidence:'usable'};
+  const quiet:any={mint:'quiet',hypeScore:45,hypeVelocity:.1,volume1h:4000,trades1h:14,opportunityScore:58,signalConfidenceScore:55,manipulationRiskScore:40,capitalFlowScore:52,momentumScore:51};
+  const metrics=new Map([
+    ['good',{buys:14,sells:6,buyUsd:9000,sellUsd:3000,strength:48,buyIntensity:20,sellIntensity:8,liveCount:0,lastEventAt:null}],
+    ['toxic',{buys:3,sells:21,buyUsd:1000,sellUsd:14000,strength:-86,buyIntensity:4,sellIntensity:28,liveCount:0,lastEventAt:null}],
+    ['quiet',{buys:5,sells:4,buyUsd:null,sellUsd:null,strength:11,buyIntensity:5,sellIntensity:4,liveCount:0,lastEventAt:null}],
+  ]);
+  const selected=selectWaveTokens([toxic,quiet,good],[],metrics as any,null,1,now);
+  assert.equal(selected[0]?.mint,'good');
+});
+
+test('living wave exposes Hype direction and changes directional energy',()=>{
+  const rising=livingWaveDynamics(80,12,6,1.8);
+  const falling=livingWaveDynamics(80,12,6,-1.8);
+  assert.equal(rising.hypeTrend,'rising');
+  assert.equal(falling.hypeTrend,'falling');
+  assert.ok(rising.hypeSlope>0);
+  assert.ok(falling.hypeSlope<0);
+  assert.notEqual(
+    livingWavePath(100,200,600,180,rising,0),
+    livingWavePath(100,200,600,180,falling,0)
+  );
 });
