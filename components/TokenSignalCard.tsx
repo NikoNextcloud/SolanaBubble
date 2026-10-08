@@ -5,6 +5,7 @@ import TrafficCard from "./TrafficCard";
 import TokenSparkline from "./TokenSparkline";
 import DecisionTerminalV5 from "./DecisionTerminalV5";
 import TokenFlowChart from "./TokenFlowChart";
+import OpportunityValidation from "./OpportunityValidation";
 import type { WatchToken } from "@/lib/watchlist";
 
 const number = (value: number | null | undefined, suffix = "") =>
@@ -46,6 +47,7 @@ export default function TokenSignalCard({ token }: { token: WatchToken }) {
     <DecisionTerminalV5 mint={token.mint}/>
     <TokenSparkline token={token}/>
     <TokenFlowChart token={token}/>
+    <OpportunityValidation mint={token.mint}/>
 
     {token.liquidityWarning&&<p className="signal-warning" role="alert">⚠ Liquidity disappearing: {number(token.liquidityChangePct,"%")}</p>}
 
