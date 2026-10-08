@@ -9,7 +9,7 @@
 .token{cursor:pointer;outline:none}
 .token:focus-visible .coin{stroke:#fff;stroke-width:2.6}
 .coin{fill:#102b22;stroke:#53d693;stroke-width:1.45;filter:drop-shadow(0 0 6px rgba(83,214,147,.18));transition:filter .2s ease,stroke-width .2s ease}
-.coinBuy{stroke:#5ddd98}.coinSell{stroke:#ed6d78}.coinSelected{stroke:#fff;stroke-width:2.3}
+.coinBuy{stroke:#5ddd98}.coinSell{stroke:#ed6d78}.coinGoodOpportunity{stroke:#f4fff8;stroke-width:2.25;filter:drop-shadow(0 0 8px rgba(255,255,255,.72)) drop-shadow(0 0 18px rgba(88,239,163,.26))}.coinSelected{stroke:#fff;stroke-width:2.3}
 .coinHypeWarm{stroke-width:1.8;filter:drop-shadow(0 0 7px rgba(100,237,169,.42)) drop-shadow(0 0 15px rgba(90,210,155,.18))}
 .coinHypeHot{stroke-width:2.1;filter:drop-shadow(0 0 9px rgba(159,255,207,.78)) drop-shadow(0 0 22px rgba(76,239,166,.42))}
 .coinHypeExtreme{stroke-width:2.35;filter:drop-shadow(0 0 11px rgba(235,255,244,1)) drop-shadow(0 0 27px rgba(95,255,180,.78)) drop-shadow(0 0 44px rgba(54,235,153,.38));transform-box:fill-box;transform-origin:center;animation:hypeCoreFlash 1.18s ease-in-out infinite}
@@ -26,6 +26,7 @@
 .icon{pointer-events:none}
 .symbol{fill:#f1f5f7;font-size:10px;font-weight:800;letter-spacing:.015em;paint-order:stroke;stroke:#0d1217;stroke-width:2px;pointer-events:none}
 .symbolDense{fill:#eef4f7;font-size:8px;font-weight:800;letter-spacing:.02em;paint-order:stroke;stroke:#0b1014;stroke-width:2.2px;pointer-events:none}
+.goodDense{fill:#f5fff9;font-size:6.8px;font-weight:900;letter-spacing:.08em;paint-order:stroke;stroke:#0a0f12;stroke-width:2.2px;filter:drop-shadow(0 0 4px rgba(255,255,255,.56));pointer-events:none}
 .meta{fill:#8d99a4;font-size:8px;font-weight:600;paint-order:stroke;stroke:#0d1217;stroke-width:2px;pointer-events:none}
 .strength{font-size:8px;font-weight:800;paint-order:stroke;stroke:#0d1217;stroke-width:2px;pointer-events:none}
 .buyText{fill:#69e0a1}.sellText{fill:#f47b84}.neutralText{fill:#bdc6ce}
