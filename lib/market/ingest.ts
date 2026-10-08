@@ -10,7 +10,6 @@ import {fetchDexScreenerToken} from '../solana-public';
 import { observeHolders } from './holders';
 import { collapseAlertHistory, deriveSignals, evaluateAlerts, prioritizeAlerts, suppressRepeatedAlerts, type SignalToken, type Intelligence, type SignalAlert } from './signals';
 import { evaluateSyncedWatchlists } from '../watchlist-server';
-import {goodOpportunitySignal,opportunityTokenStrength} from './opportunity';
 
 export async function ingestMarket() {
   const ingestionStarted=Date.now();
@@ -87,15 +86,9 @@ export async function ingestMarket() {
       if(!fresh) Object.assign(metrics,{newHolders:null,exitedHolders:null,largestHolderPct:null,whaleConcentrationPct:null,linkedSupplyPct:null,holderWindows:{},topHolderSales:[]});
       const sample=trafficByMint.get(t.mint);
       const enriched = { ...t, ...metrics,trafficSample:sample?.pools?.includes(t.pairAddress)?sample:sample?.pool===t.pairAddress?sample:null };
-      const windows=compareMarketWindows(enriched,at,(baselines.data ?? []) as MarketBaseline[]);
-      const derived=deriveSignals({...enriched,windows}, prevTokens.get(t.mint), at, previous?.fetchedAt);
-      const withSignals={...enriched,windows,...derived,
+      return { ...enriched, windows:compareMarketWindows(enriched,at,(baselines.data ?? []) as MarketBaseline[]), ...deriveSignals(enriched, prevTokens.get(t.mint), at, previous?.fetchedAt),
         // Directional volume estimate based on trade counts, not measured capital transfers.
-        netFlowUsd1h: t.volume1h * (t.buys1h - t.sells1h) / Math.max(1, t.trades1h)};
-      const flow5=withSignals.trafficSample?.windows?.['5'];
-      const strength=opportunityTokenStrength(flow5?.buys??withSignals.buys1h??0,flow5?.sells??withSignals.sells1h??0,flow5?.buyUsd??null,flow5?.sellUsd??null);
-      const good=goodOpportunitySignal(withSignals as any,strength);
-      return {...withSignals,goodOpportunityScore:good.score,goodOpportunityTier:good.tier,goodOpportunityActive:good.active,goodOpportunityStrength:strength,goodOpportunityReasons:good.reasons,goodOpportunityBlockers:good.blockers};
+        netFlowUsd1h: t.volume1h * (t.buys1h - t.sells1h) / Math.max(1, t.trades1h) };
     });
     const [history,cooldownHistory]=await Promise.all([
       db.from('market_alerts').select('payload').gte('observed_at',new Date(Date.now()-24*60*60_000).toISOString()).order('observed_at',{ascending:false}).limit(80),
