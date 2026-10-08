@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { admin } from "@/lib/db";
 import { getRpcHealth } from "@/lib/solana-public";
-import {rpcProviderReadiness} from "@/lib/rpc-provider";
+import {rpcProviderReadiness} from "@/lib/rpc-readiness";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
