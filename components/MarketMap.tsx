@@ -733,7 +733,7 @@ export default function MarketMap() {
       <section className="market-workspace reference-market-workspace">
         <div className="market-map" ref={wrap}>
           {viewMode === "map" && <div style={{position:"absolute",left:16,top:12,zIndex:7,display:"flex",gap:7}}><button type="button" aria-pressed={dualMap} onClick={()=>setDualMap(true)} style={{padding:"7px 11px",borderRadius:8,border:"1px solid #5b8d73",background:dualMap?"#245a40":"#172721",color:"#d5ffe4",cursor:"pointer"}}>◈ DUAL MAP</button><button type="button" aria-pressed={!dualMap} onClick={()=>setDualMap(false)} style={{padding:"7px 11px",borderRadius:8,border:"1px solid #5b8d73",background:!dualMap?"#245a40":"#172721",color:"#d5ffe4",cursor:"pointer"}}>≋ Live waves</button></div>}
-          {viewMode === "map" && dualMap && <DualOpportunityMap tokens={filteredTokens}/> }
+          {viewMode === "map" && dualMap && <DualOpportunityMap tokens={filteredTokens} events={liveMarketEvents}/> }
           {viewMode === "map" && !dualMap && <div className="lovable-map-hint">Клик: FoMo/GmGn · Двоен клик: Holders · GOOD setup-ите са с приоритет · Hype ↑ усилва вълната към края, Hype ↓ я затихва · Zoom out до 30 токена</div>}
           {watch.ready && (viewMode === "list" ? !filteredTokens.length : !renderedNodes.length) && tokens.length > 0 && <div className="pause-banner">No tokens match your saved filters. Reset filters or add favorites.</div>}
           {streamLive === false && <div className="pause-banner">
