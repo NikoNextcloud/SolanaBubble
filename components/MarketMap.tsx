@@ -702,7 +702,10 @@ export default function MarketMap() {
         onClick={() => setMobileToolsOpen((value) => !value)}
       >{mobileToolsOpen ? "Скрий филтрите" : "Филтри и качество"} {mobileToolsOpen ? "↑" : "↓"}</button>
       <div className={`market-tools-drawer ${mobileToolsOpen ? "is-open" : ""}`}>
-        <SavedMarketFilters/>
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:16,flexWrap:"wrap"}}>
+          <div style={{flex:"1 1 550px",minWidth:0}}><SavedMarketFilters/></div>
+          {viewMode === "map" && <EarlyPoolBubbles/>}
+        </div>
         <DataQuality marketAt={updated}/>
       </div>
       <section className="market-stats reference-market-stats">
@@ -730,7 +733,6 @@ export default function MarketMap() {
 
       <section className="market-workspace reference-market-workspace">
         <div className="market-map" ref={wrap}>
-           {viewMode === "map" && <EarlyPoolBubbles/>}
           {viewMode === "map" && <div className="lovable-map-hint">Клик: FoMo/GmGn · Двоен клик: Holders · GOOD setup-ите са с приоритет · Hype ↑ усилва вълната към края, Hype ↓ я затихва · Zoom out до 30 токена</div>}
           {watch.ready && (viewMode === "list" ? !filteredTokens.length : !renderedNodes.length) && tokens.length > 0 && <div className="pause-banner">No tokens match your saved filters. Reset filters or add favorites.</div>}
           {streamLive === false && <div className="pause-banner">
