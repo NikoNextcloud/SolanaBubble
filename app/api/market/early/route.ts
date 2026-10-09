@@ -1,6 +1,6 @@
 import {NextResponse} from "next/server";
 export const dynamic="force-dynamic";
-type Pool={id:string;name:string;createdAt:string|null;ageMinutes:number|null;liquidityUsd:number|null;volume5m:number|null;buys5m:number|null;sells5m:number|null;priceChange5m:number|null;priceChange1h:number|null;sourceUrl:string;stage:"early-watch"|"insufficient-data"|"late-risk"|"liquidity-risk";reasons:string[]};
+type Pool={id:string;mint:string|null;name:string;createdAt:string|null;ageMinutes:number|null;liquidityUsd:number|null;volume5m:number|null;buys5m:number|null;sells5m:number|null;priceChange5m:number|null;priceChange1h:number|null;sourceUrl:string;stage:"early-watch"|"insufficient-data"|"late-risk"|"liquidity-risk";reasons:string[]};
 const finite=(v:unknown):number|null=>{const n=Number(v);return v===null||v===undefined||v===""||!Number.isFinite(n)?null:n};
 const nonnegative=(v:unknown)=>{const n=finite(v);return n===null?null:Math.max(0,n)};
 function classifyEarlyPool(p:Pick<Pool,"ageMinutes"|"liquidityUsd"|"buys5m"|"sells5m"|"priceChange5m"|"priceChange1h">):Pick<Pool,"stage"|"reasons">{
@@ -31,10 +31,14 @@ export async function GET(){
    const change=(a.price_change_percentage??{}) as Record<string,unknown>;
    const volume=(a.volume_usd??{}) as Record<string,unknown>;
    const poolId=String(raw.id??"");
+   const relation=raw.relationships?.base_token as {data?:{id?:string}}|undefined;
+   const tokenId=relation?.data?.id??"";
+   const mintCandidate=tokenId.startsWith("solana_")?tokenId.slice(7):"";
+   const mint=/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mintCandidate)?mintCandidate:null;
    const address=typeof a.address==="string"?a.address:"";
    const sourceUrl=address&&/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)?"https://www.geckoterminal.com/solana/pools/"+address:"https://www.geckoterminal.com/solana/pools";
    const common={ageMinutes,liquidityUsd:nonnegative(a.reserve_in_usd),buys5m:nonnegative(tx.m5?.buys),sells5m:nonnegative(tx.m5?.sells),priceChange5m:finite(change.m5),priceChange1h:finite(change.h1)};
-   return {id:poolId,name:String(a.name??"Unknown pool").slice(0,90),createdAt:timestamp,...common,volume5m:nonnegative(volume.m5),sourceUrl,...classifyEarlyPool(common)};
+   return {id:poolId,mint,name:String(a.name??"Unknown pool").slice(0,90),createdAt:timestamp,...common,volume5m:nonnegative(volume.m5),sourceUrl,...classifyEarlyPool(common)};
   }).filter(p=>p.id&&p.ageMinutes!==null&&p.ageMinutes<=120).sort((a,b)=>(a.ageMinutes??9999)-(b.ageMinutes??9999));
   return NextResponse.json({ok:true,source:"GeckoTerminal new pools (public discovery, incomplete coverage)",observedAt:new Date(now).toISOString(),verifiedSwaps:false,independentBuyersVerified:false,safetyVerified:false,goodSignals:0,pools},{headers:{"cache-control":"no-store, max-age=0"}});
  }catch{return NextResponse.json({ok:false,error:"early_discovery_upstream_unavailable",pools:[],observedAt:new Date().toISOString()},{status:503,headers:{"cache-control":"no-store"}})}

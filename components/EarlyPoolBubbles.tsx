@@ -1,13 +1,14 @@
 "use client";
 import {useEffect,useState} from "react";
-type Pool={id:string;name:string;ageMinutes:number|null;liquidityUsd:number|null;buys5m:number|null;sells5m:number|null;priceChange5m:number|null;sourceUrl:string;stage:string;reasons:string[]};
+import {fomoTokenUrl,gmgnTokenUrl} from "@/lib/token-links";
+type Pool={id:string;mint:string|null;name:string;ageMinutes:number|null;liquidityUsd:number|null;buys5m:number|null;sells5m:number|null;priceChange5m:number|null;sourceUrl:string;stage:string;reasons:string[]};
 type Feed={ok:boolean;pools:Pool[];observedAt:string};
 const money=(v:number|null)=>v==null?"unknown":"$"+Math.round(v).toLocaleString("en-US");
 export default function EarlyPoolBubbles(){
  const [enabled,setEnabled]=useState(true),[feed,setFeed]=useState<Feed|null>(null),[failed,setFailed]=useState(false),[active,setActive]=useState<string|null>(null);
  useEffect(()=>{let mounted=true;const load=async()=>{try{const r=await fetch("/api/market/early",{cache:"no-store"});if(!r.ok)throw Error("upstream");const j:Feed=await r.json();if(mounted){setFeed(j);setFailed(false)}}catch{if(mounted)setFailed(true)}};void load();const id=setInterval(()=>{if(document.visibilityState==="visible")void load()},60000);return()=>{mounted=false;clearInterval(id)}},[]);
  const pools=(feed?.pools??[]).filter(p=>p.ageMinutes!==null&&p.ageMinutes<=60).slice(0,8);
- return <aside aria-label="Early pool discovery inside market map" style={{position:"absolute",top:64,right:12,zIndex:8,width:"min(310px,calc(100% - 24px))",maxHeight:"45%",overflowY:"auto",background:"rgba(8,21,19,.93)",border:"1px solid #3e6656",borderRadius:14,padding:12,boxShadow:"0 8px 28px #0009"}}>
+ return <aside aria-label="Early pool discovery inside market map" style={{position:"relative",zIndex:2,width:"min(340px,100%)",maxHeight:320,flex:"0 1 340px",overflowY:"auto",background:"rgba(8,21,19,.93)",border:"1px solid #3e6656",borderRadius:14,padding:12,boxShadow:"0 8px 28px #0009"}}>
   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
    <strong style={{fontSize:13,color:"#a4f2c7"}}>◎ EARLY · New pool bubbles</strong>
    <button type="button" onClick={()=>setEnabled(v=>!v)} aria-expanded={enabled} style={{color:"#d6eee1",background:"transparent",border:"1px solid #426556",borderRadius:7,padding:"4px 8px",cursor:"pointer"}}>{enabled?"Hide":"Show"}</button>
@@ -27,7 +28,10 @@ export default function EarlyPoolBubbles(){
       <strong>{p.name}</strong><div>Pool age: {p.ageMinutes}m · Liquidity: {money(p.liquidityUsd)}</div>
       <div>5m BUY share: {(()=>{const n=(p.buys5m??0)+(p.sells5m??0);return n?Math.round((p.buys5m??0)/n*100)+"%":"unknown"})()}</div>
       <div style={{color:"#e8c6a0",margin:"6px 0"}}>{p.reasons.join(" · ")}</div>
-      <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" style={{color:"#8deac1"}}>Inspect pool ↗</a>
+      <div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:9}}>
+       {p.mint?<><a href={fomoTokenUrl(p.mint)} target="_blank" rel="noopener noreferrer" style={{color:"#8deac1",fontWeight:700}}>FoMo ↗</a><a href={gmgnTokenUrl(p.mint)} target="_blank" rel="noopener noreferrer" style={{color:"#8deac1",fontWeight:700}}>GmGn ↗</a></>:<span style={{color:"#ffc2a9"}}>Token mint not verified — links disabled</span>}
+       <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" style={{color:"#8deac1"}}>Pool ↗</a>
+      </div>
     </div>)}
   </>}
  </aside>
