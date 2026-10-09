@@ -1,0 +1,42 @@
+name: Verify deployed wave motion
+on:
+  push:
+    branches: [verify/production-wave-motion-20261009]
+    paths: [.github/workflows/verify-production-wave-motion.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: b6c5ba6a4069ed7f99e3de1fb197491bfdcd4244
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Real production motion
+        run: |
+          set -euo pipefail
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          test -n "$CHROME_BIN"
+          PROFILE=/tmp/solanabubble-production-browser
+          "$CHROME_BIN" --headless=new --no-sandbox --disable-gpu --remote-debugging-address=127.0.0.1 --remote-debugging-port=0 --user-data-dir="$PROFILE" about:blank > /tmp/production-chrome.log 2>&1 &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 100); do
+            if [ -s "$PROFILE/DevToolsActivePort" ]; then break; fi
+            if ! kill -0 "$PID" 2>/dev/null; then cat /tmp/production-chrome.log; exit 1; fi
+            sleep 0.2
+          done
+          test -s "$PROFILE/DevToolsActivePort"
+          PORT="$(head -n 1 "$PROFILE/DevToolsActivePort")"
+          CHROME_DEBUG_URL="http://127.0.0.1:${PORT}" node tests/production-motion.mjs
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: production-motion-proof
+          path: /tmp/solanabubble-production-*.png
+          if-no-files-found: ignore
