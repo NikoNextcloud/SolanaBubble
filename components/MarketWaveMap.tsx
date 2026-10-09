@@ -17,17 +17,44 @@ export type MarketWaveToken={
  liquidityChangePct?:number|null;trendPersistenceScore?:number|null;holderGrowthPct?:number|null;smartMoneyFlowUsd?:number|null;
  trafficEvidence?:'warming'|'sparse'|'usable'|'degraded'|null;
 };
+type EarlyPool={id:string;mint:string|null;name:string;ageMinutes:number|null;liquidityUsd:number|null;buys5m:number|null;sells5m:number|null;stage:"early-watch"|"insufficient-data"|"late-risk"|"liquidity-risk";reasons:string[];sourceUrl:string};
+type EarlyFeed={ok:boolean;observedAt:string;pools:EarlyPool[]};
+const earlyMoney=(usd:number|null)=>usd===null?"?":"$"+new Intl.NumberFormat("en-US",{notation:"compact",maximumFractionDigits:1}).format(usd);
 type Particle={id:string;mint:string;side:"buy"|"sell";wallet:string;evidence:"direct"|"routed";whale:boolean;usdValue:number|null};
 
-export default function MarketWaveMap({tokens,events,width,height,now,selectedMint,quickActionMint,mapView,lod,capitalFlowOnly,animated,maxComets,onSelect,onQuickAction,onDetails,onOpen,onWheel,onPointerDown,onPointerMove,onPointerUp,onPointerCancel}:{
+export default function MarketWaveMap({tokens,events,width,height,now,selectedMint,quickActionMint,mapView,lod,capitalFlowOnly,animated,liveEnabled,maxComets,onSelect,onQuickAction,onDetails,onOpen,onWheel,onPointerDown,onPointerMove,onPointerUp,onPointerCancel}:{
  tokens:MarketWaveToken[];events:LiveMarketEvent[];width:number;height:number;now:number;selectedMint:string|null;quickActionMint:string|null;
- mapView:{x:number;y:number;k:number};lod:"far"|"mid"|"near";capitalFlowOnly:boolean;animated:boolean;maxComets:number;
+ mapView:{x:number;y:number;k:number};lod:"far"|"mid"|"near";capitalFlowOnly:boolean;animated:boolean;liveEnabled:boolean;maxComets:number;
  onSelect:(token:MarketWaveToken)=>void;onQuickAction:(mint:string|null)=>void;onDetails:(token:MarketWaveToken)=>void;onOpen:(token:MarketWaveToken)=>void;
  onWheel:WheelEventHandler<SVGSVGElement>;onPointerDown:PointerEventHandler<SVGSVGElement>;onPointerMove:PointerEventHandler<SVGSVGElement>;onPointerUp:PointerEventHandler<SVGSVGElement>;onPointerCancel:PointerEventHandler<SVGSVGElement>;
 }){
  const safeWidth=Math.max(520,width||900),safeHeight=Math.max(420,height||560);
  const [clock,setClock]=useState(()=>Date.now());
  const [activeParticleId,setActiveParticleId]=useState<string|null>(null);
+ const [earlyPools,setEarlyPools]=useState<EarlyPool[]>([]);
+ const [earlySelected,setEarlySelected]=useState<string|null>(null);
+ const [earlyError,setEarlyError]=useState(false);
+ const [earlyObservedAt,setEarlyObservedAt]=useState<string|null>(null);
+ const [earlyReload,setEarlyReload]=useState(0);
+ useEffect(()=>{
+   if(!liveEnabled)return;
+   let alive=true;
+   let controller:AbortController|null=null;
+   const fetchEarly=async()=>{
+     controller?.abort();
+     const request=new AbortController();controller=request;
+     try{
+       const response=await fetch("/api/market/early",{cache:"no-store",signal:request.signal});
+       if(!response.ok)throw new Error("early feed failed");
+       const data=await response.json() as EarlyFeed;
+       if(!data.ok||!Array.isArray(data.pools))throw new Error("invalid early feed");
+       if(alive){setEarlyPools(data.pools);setEarlyObservedAt(data.observedAt);setEarlyError(false);}
+     }catch(e){if(alive&&!(e instanceof Error&&e.name==="AbortError"))setEarlyError(true);}
+   };
+   void fetchEarly();
+   const timer=window.setInterval(()=>{if(document.visibilityState==="visible")void fetchEarly()},60000);
+   return()=>{alive=false;controller?.abort();window.clearInterval(timer)};
+ },[liveEnabled,earlyReload]);
  const clickTimer=useRef<number|null>(null);
  useEffect(()=>{
    const started=Date.now();setClock(started);
@@ -53,11 +80,24 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
            : 12;
  const visibleTokens=useMemo(()=>selectWaveTokens(tokens,events,metrics,selectedMint,maxVisible,clock),[tokens,events,metrics,selectedMint,maxVisible,clock]);
  const visibleTokenByMint=useMemo(()=>new Map(visibleTokens.map(t=>[t.mint,t])),[visibleTokens]);
+ const combinedCenter=safeWidth<700?Math.round(safeWidth*.53):Math.min(Math.round(safeWidth*.54),safeWidth-190);
+ const earlyMaxCount=Math.max(2,Math.min(5,Math.floor((safeHeight-155)/100)));
+ const earlyVisible=useMemo(()=>{
+   const seen=new Set<string>(tokens.map(t=>t.mint));
+   const quality=(p:EarlyPool)=>{
+     const trades=(p.buys5m??0)+(p.sells5m??0);
+     const pressure=trades>0?(p.buys5m??0)/trades:0;
+     const qualified=p.stage==="early-watch"&&p.liquidityUsd!==null&&p.liquidityUsd>=30000&&trades>=15&&pressure>=.6;
+     return (qualified?1000:0)+(p.stage==="late-risk"?-500:0)+(p.stage==="liquidity-risk"?-400:0)+Math.min(150,p.liquidityUsd??0)/1000+pressure*40;
+   };
+   return [...earlyPools].filter(p=>p.id&&p.ageMinutes!==null&&p.ageMinutes<=60&&(!p.mint||!seen.has(p.mint)))
+      .sort((a,b)=>quality(b)-quality(a)).slice(0,earlyMaxCount);
+ },[earlyPools,tokens,earlyMaxCount]);
  const layout=useMemo(()=>waveMapLayout(visibleTokens,metrics,safeWidth,safeHeight),[visibleTokens,metrics,safeWidth,safeHeight]);
  const layoutByMint=useMemo(()=>new Map(layout.map(p=>[p.mint,p])),[layout]);
  const layoutIndex=useMemo(()=>new Map(layout.map((p,i)=>[p.mint,i])),[layout]);
  const denseFocus=safeWidth>=700&&visibleTokens.length>12;
- const scaleX=safeWidth-88,flowStart=safeWidth<700?280:denseFocus?Math.min(370,Math.max(330,safeWidth*.34)):Math.min(330,Math.max(300,safeWidth*.30)),top=92,bottom=safeHeight-78,usable=Math.max(1,bottom-top);
+ const scaleX=combinedCenter,flowStart=Math.min(scaleX-50,safeWidth<700?115:denseFocus?Math.min(370,Math.max(270,safeWidth*.30)):Math.min(315,Math.max(235,safeWidth*.28))),top=92,bottom=safeHeight-78,usable=Math.max(1,bottom-top);
  const scaleY=(score:number)=>top+(100-Math.max(-100,Math.min(100,score)))/200*usable;
 
  const walletIntel=useMemo(()=>{
@@ -117,6 +157,20 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
    };
  }),[layout,metrics,visibleTokenByMint,scaleX]);
  const livingWaveByMint=useMemo(()=>new Map(livingWaves.map(wave=>[wave.mint,wave])),[livingWaves]);
+ const earlyLayout=useMemo(()=>{
+   const start=111,end=Math.max(120,safeHeight-106),gap=earlyVisible.length>1?(end-start)/(earlyVisible.length-1):0;
+   return earlyVisible.map((pool,index)=>{
+     const buys=pool.buys5m??0,sells=pool.sells5m??0,total=buys+sells;
+     const pressure=total>0?buys/total:null;
+     const activity=livingWaveDynamics(null,buys,sells,null);
+     const startX=safeWidth-69-31;
+     const endX=scaleX+43;
+     const y=earlyVisible.length===1?(start+end)/2:start+gap*index;
+     const endY=scaleY(pressure===null?0:(pressure-.5)*120);
+     const frames=[0,1.7,3.4,0].map(phase=>livingWavePath(startX,y,endX,endY,activity,index*.72+phase));
+     return {pool,x:safeWidth-69,y,r:30,endY,pressure,activity,frames,d:frames[0],morphValues:frames.join(";"),duration:Math.max(1.8,activity.duration*1.7)};
+   });
+ },[earlyVisible,safeWidth,safeHeight,scaleX]);
  const particles=useMemo<Particle[]>(()=>{
    if(!animated)return [];
    return activeWaveEvents(events,visibleMints,clock,4200,maxComets).map(event=>({
@@ -131,11 +185,13 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
  const quick=quickActionMint?layoutByMint.get(quickActionMint):null;
  const quickToken=quickActionMint?visibleTokenByMint.get(quickActionMint):null;
  const quickLayout=quick?positionQuickActions({nodeX:quick.x,nodeY:quick.y,nodeRadius:quick.r,viewX:mapView.x,viewY:mapView.y,scale:mapView.k,viewportWidth:safeWidth,viewportHeight:safeHeight,preferredWidth:safeWidth<=640?236:224,panelHeight:42}):null;
+ const chosenEarly=earlySelected?earlyLayout.find(p=>p.pool.id===earlySelected):null;
+ const earlyQuickLayout=chosenEarly?positionQuickActions({nodeX:chosenEarly.x,nodeY:chosenEarly.y,nodeRadius:chosenEarly.r,viewX:mapView.x,viewY:mapView.y,scale:mapView.k,viewportWidth:safeWidth,viewportHeight:safeHeight,preferredWidth:safeWidth<=640?225:270,panelHeight:75}):null;
  const hiddenCount=Math.max(0,tokens.length-visibleTokens.length);
  const goodCount=visibleTokens.reduce((count,token)=>count+(goodOpportunitySignal(token,metrics.get(token.mint)?.strength??0).active?1:0),0);
 
  return <div className={[styles.root,!animated?styles.paused:""].filter(Boolean).join(" ")}>
-  <svg className={"market-pan-surface "+styles.svg} data-lod={lod} data-focus-capacity={maxVisible} data-zoom={mapView.k.toFixed(2)} data-capital-flow-only={capitalFlowOnly?"true":"false"} data-active-pulses={particles.length} data-visible-tokens={visibleTokens.length} viewBox={"0 0 "+safeWidth+" "+safeHeight} preserveAspectRatio="none" onWheel={onWheel} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} role="img" aria-label="Live Solana trade impulses toward token strength scale">
+  <svg className={"market-pan-surface "+styles.svg} data-lod={lod} data-focus-capacity={maxVisible} data-zoom={mapView.k.toFixed(2)} data-capital-flow-only={capitalFlowOnly?"true":"false"} data-active-pulses={particles.length} data-visible-tokens={visibleTokens.length} data-map-mode="unified" data-early-visible={earlyVisible.length} viewBox={"0 0 "+safeWidth+" "+safeHeight} preserveAspectRatio="none" onWheel={onWheel} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} role="img" aria-label="Live Solana trade impulses toward token strength scale">
    <defs>
     <radialGradient id="waveCoinBuy" cx="34%" cy="27%" r="78%"><stop offset="0%" stopColor="#dffff1"/><stop offset="48%" stopColor="#42c989"/><stop offset="100%" stopColor="#184836"/></radialGradient>
     <radialGradient id="waveCoinSell" cx="34%" cy="27%" r="78%"><stop offset="0%" stopColor="#ffe7ea"/><stop offset="48%" stopColor="#df5d69"/><stop offset="100%" stopColor="#56242d"/></radialGradient>
@@ -147,14 +203,15 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
     <radialGradient id="hypeFlareFill" cx="50%" cy="50%" r="50%"><stop offset="0%" stopColor="#effff6" stopOpacity=".26"/><stop offset="34%" stopColor="#8dffc0" stopOpacity=".16"/><stop offset="72%" stopColor="#54e99d" stopOpacity=".07"/><stop offset="100%" stopColor="#54e99d" stopOpacity="0"/></radialGradient>
    </defs>
    <g transform={"translate("+mapView.x+" "+mapView.y+") scale("+mapView.k+")"} className="market-pan-layer">
-    <text x="32" y="34" className={styles.axis+" wave-axis-title"}>TOKENS</text>
-    <text x={Math.max(flowStart+110,safeWidth*.45)} y="34" className={styles.axis+" wave-axis-title"}>ORDER FLOW</text>
-    <text x={scaleX-30} y="34" className={styles.axis+" wave-axis-title"}>STRENGTH</text>
+    <text x="32" y="34" className={styles.axis+" wave-axis-title"}>GOOD / BULLISH</text>
+    <text x={scaleX+Math.max(55,(safeWidth-scaleX)*.35)} y="34" className={styles.axis+" wave-axis-title"}>EARLY RADAR</text>
+    <text x={scaleX-24} y="34" className={styles.axis+" wave-axis-title"}>FLOW</text>
     {[100,75,50,25,0,-25,-50,-75,-100].map(score=><g key={score}>
       <line x1={flowStart} x2={scaleX} y1={scaleY(score)} y2={scaleY(score)} className={score===0?styles.zero:styles.grid}/>
       <text x={scaleX+14} y={scaleY(score)+3} className={[styles.tick,"wave-strength-tick",score>0?styles.tickBuy:score<0?styles.tickSell:""].join(" ")}>{score>0?"+":""}{score}</text>
     </g>)}
-    <line x1={scaleX} x2={scaleX} y1={top} y2={bottom} className={styles.scale}/>
+    <line x1={scaleX} x2={scaleX} y1={top} y2={bottom} className={styles.scale} strokeDasharray="8 8"/>
+    <text x={safeWidth-69} y="66" textAnchor="middle" className={styles.earlyLegend}>NEW / UNVERIFIED</text>
 
     {layout.map((point,index)=>{
       const token=visibleTokenByMint.get(point.mint)!;const m=metrics.get(point.mint)!;
@@ -217,6 +274,28 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
      </g>})}
     </g>
 
+    <g className="early-wave-layer" data-wave-motion={animated?"continuous":"paused"} data-coverage={earlyError?"degraded":"sampled"}>
+      {earlyLayout.map(({pool,x,y,r,endY,pressure,activity,frames,d,morphValues,duration})=>{
+        const color=pool.stage==="liquidity-risk"?"#f89a9a":pool.stage==="late-risk"?"#f2a76e":pool.stage==="insufficient-data"?"#a5aaae":"#edc47d";
+        const uncertain=pressure===null||pool.stage==="insufficient-data";
+        return <g key={pool.id} className="early-wave-group" data-pool={pool.id} data-stage={pool.stage}>
+          <path d={d} className={styles.earlyWaveAura} stroke={color} opacity={uncertain?.16:.33}>
+            {animated&&<animate attributeName="d" dur={duration+"s"} values={morphValues} keyTimes="0;0.33;0.66;1" repeatCount="indefinite"/>}
+          </path>
+          <path d={d} className={styles.earlyLivingWave+" early-living-wave"} stroke={color} strokeDasharray={uncertain?"5 13":"13 11"} data-shape-motion={animated?"morph":"static"} style={{animationDuration:activity.duration+"s",opacity:uncertain?.38:.9}}>
+            {animated&&<animate attributeName="d" dur={duration+"s"} values={morphValues} keyTimes="0;0.33;0.66;1" repeatCount="indefinite"/>}
+          </path>
+          <g role="button" tabIndex={0} aria-label={"EARLY "+pool.name+": "+pool.stage} className={styles.earlyToken} onPointerDown={ev=>ev.stopPropagation()} onClick={ev=>{ev.stopPropagation();setEarlySelected(v=>v===pool.id?null:pool.id);onQuickAction(null)}} onKeyDown={ev=>{if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();setEarlySelected(pool.id);onQuickAction(null)}}}>
+            <circle cx={x} cy={y} r={r+5} className={styles.earlyHalo} stroke={color}/>
+            <circle cx={x} cy={y} r={r} className={styles.earlyCoin} stroke={color}/>
+            <text x={x} y={y+4} className={styles.earlySymbol} textAnchor="middle">{pool.name.split(" / ")[0].slice(0,8)}</text>
+            <text x={x} y={y-r-12} className={styles.earlyMeta} textAnchor="middle">{pool.ageMinutes}m · {earlyMoney(pool.liquidityUsd)}</text>
+            <title>{pool.name+" · "+(pool.reasons.join(" · ")||"EARLY; not verified GOOD")}</title>
+          </g>
+        </g>;
+      })}
+    </g>
+
     <g className="flow-history-layer" data-real-swaps-only="true" data-particles-follow-wave="true">
      {layout.map(point=>{
        const trail=flowTrails.get(point.mint)??[];
@@ -256,11 +335,17 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
    </g>
   </svg>
 
-  <div className={styles.focusInfo}><b>{visibleTokens.length} opportunity-ranked tokens</b><span> · {goodCount} GOOD</span><span> · {Math.round(mapView.k*100)}% zoom</span>{hiddenCount>0?<span> · {hiddenCount} more available in List</span>:null}<small>{lod==="far"?"zoom out reveals more candidates":lod==="near"?"detail mode keeps the strongest setups":"GOOD setups, rising Hype and BUY pressure are prioritized"}</small></div>
+  <div className={styles.focusInfo}><b>{visibleTokens.length} bullish-ranked · {earlyVisible.length} EARLY</b><span> · {goodCount} GOOD</span><span> · {Math.round(mapView.k*100)}% zoom</span>{hiddenCount>0?<span> · {hiddenCount} more available in List</span>:null}<small>{lod==="far"?"zoom out reveals more candidates":lod==="near"?"detail mode keeps the strongest setups":"GOOD setups, rising Hype and BUY pressure are prioritized"}</small></div>
   {quick&&quickToken&&quickLayout&&<div className={styles.quick+" token-quick-actions token-quick-actions-overlay"} style={{left:quickLayout.left,top:quickLayout.top,width:quickLayout.width}} onPointerDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()} onDoubleClick={e=>e.stopPropagation()}>
     <a href={fomoTokenUrl(quickToken.mint)} target="_blank" rel="noreferrer">FoMo ↗</a><a href={gmgnTokenUrl(quickToken.mint)} target="_blank" rel="noreferrer">GmGn ↗</a><button className="quick-detail-action" onClick={()=>onDetails(quickToken)}>Details</button><button className="quick-holder-action" onClick={()=>onOpen(quickToken)}>Holders</button>
   </div>}
+  {chosenEarly&&earlyQuickLayout&&<div className={styles.quick+" early-token-quick-actions"} style={{left:earlyQuickLayout.left,top:earlyQuickLayout.top,width:earlyQuickLayout.width,flexWrap:"wrap"}} onPointerDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}>
+    <strong style={{width:"100%",fontSize:11,color:"#f2d4a3"}}>{chosenEarly.pool.name.slice(0,55)} · {chosenEarly.pool.stage==="early-watch"?"Ранен интерес":"Непотвърден / риск"}</strong>
+    {chosenEarly.pool.mint?<><a href={fomoTokenUrl(chosenEarly.pool.mint)} target="_blank" rel="noopener noreferrer">FoMo ↗</a><a href={gmgnTokenUrl(chosenEarly.pool.mint)} target="_blank" rel="noopener noreferrer">GmGn ↗</a></>:<span style={{fontSize:10}}>Mint not verified</span>}
+    <a href={chosenEarly.pool.sourceUrl} target="_blank" rel="noopener noreferrer">Pool ↗</a><button onClick={()=>setEarlySelected(null)} aria-label="Затвори EARLY меню">×</button>
+    <small style={{width:"100%",fontSize:9,color:"#d5b8a4"}}>Агрегирани сделки · без проверка на token security</small>
+  </div>}
   {activeParticle&&<div className={styles.detail+" targeted-comet-detail"}><button className="detail-close" onClick={()=>setActiveParticleId(null)} aria-label="Close wallet profile">×</button><strong>{activeParticleProfile?.label??(activeParticle.whale?"Whale":"Wallet")} · {activeParticle.side.toUpperCase()}</strong><span>{activeParticle.wallet.slice(0,6)}…{activeParticle.wallet.slice(-5)}</span><small>{activeParticleProfile?`Wallet score ${activeParticleProfile.score}/100 · Wallet net ${activeParticleProfile.netUsd==null?"—":Math.round(activeParticleProfile.netUsd).toLocaleString()+" USD"}`:"Wallet score unavailable"}{activeParticleCoordinated?" · Coordinated":""}</small></div>}
-  <div className={styles.status}><b>LIVE</b> · wave shape shows Hype direction: ↑ gains energy, ↓ fades · GOOD = bullish quality filter · white wave = qualified opportunity, never a guarantee</div>
+  <div className={styles.status}><b>{liveEnabled?"LIVE · sampled":"DATA PAUSED · visual motion"}</b> · GOOD = observed swaps · EARLY = aggregate discovery · wave shape shows Hype direction: ↑ gains energy, ↓ fades · GOOD = bullish quality filter · white wave = qualified opportunity, never a guarantee</div>
  </div>;
 }
