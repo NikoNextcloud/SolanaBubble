@@ -3,7 +3,7 @@ export const dynamic="force-dynamic";
 type Pool={id:string;name:string;createdAt:string|null;ageMinutes:number|null;liquidityUsd:number|null;volume5m:number|null;buys5m:number|null;sells5m:number|null;priceChange5m:number|null;priceChange1h:number|null;sourceUrl:string;stage:"early-watch"|"insufficient-data"|"late-risk"|"liquidity-risk";reasons:string[]};
 const finite=(v:unknown):number|null=>{const n=Number(v);return v===null||v===undefined||v===""||!Number.isFinite(n)?null:n};
 const nonnegative=(v:unknown)=>{const n=finite(v);return n===null?null:Math.max(0,n)};
-export function classifyEarlyPool(p:Pick<Pool,"ageMinutes"|"liquidityUsd"|"buys5m"|"sells5m"|"priceChange5m"|"priceChange1h">):Pick<Pool,"stage"|"reasons">{
+function classifyEarlyPool(p:Pick<Pool,"ageMinutes"|"liquidityUsd"|"buys5m"|"sells5m"|"priceChange5m"|"priceChange1h">):Pick<Pool,"stage"|"reasons">{
  const reasons:string[]=[];
  if(p.ageMinutes===null||p.liquidityUsd===null||p.buys5m===null||p.sells5m===null)reasons.push("Missing age, liquidity or trade evidence");
  if(p.liquidityUsd!==null&&p.liquidityUsd<30000)reasons.push("Liquidity under $30k");
