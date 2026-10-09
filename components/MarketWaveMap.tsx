@@ -205,7 +205,7 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
    <g transform={"translate("+mapView.x+" "+mapView.y+") scale("+mapView.k+")"} className="market-pan-layer">
     <text x="32" y="34" className={styles.axis+" wave-axis-title"}>GOOD / ORDER FLOW</text>
     <text x={scaleX+Math.max(55,(safeWidth-scaleX)*.35)} y="34" className={styles.axis+" wave-axis-title"}>EARLY RADAR</text>
-    <text x={scaleX-24} y="34" className={styles.axis+" wave-axis-title"}>FLOW</text>
+    <text x={scaleX-24} y="34" className={styles.axis+" wave-axis-title"}>STRENGTH</text>
     {[100,75,50,25,0,-25,-50,-75,-100].map(score=><g key={score}>
       <line x1={flowStart} x2={scaleX} y1={scaleY(score)} y2={scaleY(score)} className={score===0?styles.zero:styles.grid}/>
       <text x={scaleX+14} y={scaleY(score)+3} className={[styles.tick,"wave-strength-tick",score>0?styles.tickBuy:score<0?styles.tickSell:""].join(" ")}>{score>0?"+":""}{score}</text>
