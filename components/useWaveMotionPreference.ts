@@ -12,16 +12,17 @@ export function useWaveMotionPreference(){
     try{
       const stored=localStorage.getItem(KEY);
       if(stored==='auto'||stored==='live'||stored==='off')setModeState(stored);
-      else if(localStorage.getItem('solanabubble:map-pulses')==='off')setModeState('off');
+      // The old impulses-only flag could silently freeze the whole map.
+      // Migrate that obsolete control to Auto; retain new explicit Pause choices.
     }catch{}
     return ()=>media.removeEventListener('change',sync);
   },[]);
   const setMode=(value:WaveMotionMode)=>{
     if(!['auto','live','off'].includes(value))return;
     setModeState(value);
-    try{localStorage.setItem(KEY,value);localStorage.setItem('solanabubble:map-pulses',value==='off'?'off':'on');}catch{}
+    try{localStorage.setItem(KEY,value);}catch{}
   };
-  // Reduced motion uses slow, low-amplitude movement, not a misleading ON label
-  // over a completely frozen map. A direct user choice can opt into full motion.
+  // Auto reduces speed/amplitude when requested by the OS. A direct user choice
+  // can enable full movement; Pause stops the renderer completely.
   return {mode,setMode,reduced,enabled:mode!=='off',gentle:mode==='auto'&&reduced};
 }
