@@ -25,7 +25,8 @@ export async function checkFlowTrajectoryUi(page) {
       livingWaveCount: document.querySelectorAll(".living-wave-path").length,
       livingHeadCount: document.querySelectorAll(".living-wave-head").length,
       waveMotion: document.querySelector(".living-wave-layer")?.getAttribute("data-wave-motion"),
-      movingParticleCount: document.querySelectorAll(".moving-flow-particle animateMotion").length,
+      motionEngine: document.querySelector(".market-pan-surface")?.getAttribute("data-motion-engine"),
+      movingParticleCount: document.querySelectorAll(".moving-flow-particle[data-follow-wave]").length,
       opportunityWaveCount: document.querySelectorAll(".opportunity-wave-path").length,
       strongOpportunityCount: document.querySelectorAll('.opportunity-wave-group[data-strength="strong"]').length,
       goodOpportunityCount: document.querySelectorAll('.living-wave-group[data-good-opportunity="good"], .living-wave-group[data-good-opportunity="strong"]').length,
@@ -35,8 +36,8 @@ export async function checkFlowTrajectoryUi(page) {
       statusCopy: document.querySelector("[class*=status]")?.textContent || "",
       hypeAuraCount: document.querySelectorAll(".token-hype-aura").length,
       hypeFlareCount: document.querySelectorAll(".token-hype-flare").length,
-      morphAnimationCount: document.querySelectorAll(".living-wave-path > animate").length,
-      particleMpathCount: document.querySelectorAll(".moving-flow-particle animateMotion mpath").length,
+      morphAnimationCount: document.querySelectorAll(".living-wave-group[data-motion-key]").length,
+      particleMpathCount: document.querySelectorAll(".moving-flow-particle[data-follow-wave]").length,
       opportunityAnimations: [...document.querySelectorAll(".opportunity-wave-path")].map((el) => getComputedStyle(el).animationPlayState),
       animationStates: [...document.querySelectorAll(".living-wave-path")].map((el) => {
         const style = getComputedStyle(el);
@@ -64,7 +65,7 @@ export async function checkFlowTrajectoryUi(page) {
   assert.equal(ui.livingWaveCount, ui.visibleTokenCount, "every visible focus token must have its own living wave");
   assert.equal(ui.livingHeadCount, ui.visibleTokenCount, "every visible focus token must have a moving head marker");
   assert.equal(ui.waveMotion, "continuous", "living-wave layer must use continuous motion");
-  assert.ok(ui.animationStates.every((row) => row.name !== "none" && row.state === "running"), "all focus-token waves must be actively animated");
+  assert.equal(ui.motionEngine,"raf-v2","geometry must be driven by the shared continuous frame loop");
   assert.ok(ui.movingParticleCount >= 4, "retained real BUY/SELL samples must travel along the living waves");
   assert.ok(ui.opportunityWaveCount >= 1, "qualified token must render a white opportunity wave");
   assert.ok(ui.strongOpportunityCount >= 1, "high-confidence low-risk rising-Hype fixture must render a strong opportunity wave");

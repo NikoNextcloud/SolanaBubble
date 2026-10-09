@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased - continuous wave renderer
+
+- One requestAnimationFrame geometry engine for both GOOD and EARLY, with bounded frame rate and synchronized observed-trade markers.
+- Explicit Auto / Live / Pause motion controls. Reduced-motion Auto is gentle instead of a hidden hard stop.
+- Visible idle viewing no longer stops market updates after two minutes; hidden tabs still suspend polling and drawing.
+- Browser regressions measure real path changes, pause/resume, reduced motion and visibility recovery.
+- EARLY remains sampled/unverified; animation is not an execution feed or a profit guarantee.
+
+
 ## 1.0.0 — 2026-10-08
 
 SolanaBubble v1.0 promotes the live Solana market workspace from release candidate to production release.

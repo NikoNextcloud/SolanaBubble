@@ -6,6 +6,7 @@ import {proveObservedAtImpulses} from "./fixtures/live-impulse-browser.mjs";
 import {checkFlowTrajectoryUi} from "./fixtures/flow-trajectory-browser.mjs";
 import {checkAdaptiveZoomDensity} from "./fixtures/adaptive-zoom-browser.mjs";
 import {checkUnifiedWaveMap} from "./fixtures/unified-map-browser-check.mjs";
+import {checkContinuousMotion} from "./fixtures/continuous-motion-browser.mjs";
 
 const CHROME = process.env.CHROME_DEBUG_URL || "http://127.0.0.1:9222";
 const APP = process.env.BROWSER_SMOKE_URL || "http://127.0.0.1:3000";
@@ -578,6 +579,7 @@ try {
   assert.equal(desktopQuickInside, true, "desktop quick actions must stay within the map");
 
   await checkUnifiedWaveMap(page);
+  await checkContinuousMotion(page);
   await page.screenshot("/tmp/solanabubble-desktop.png");
   console.log("Browser smoke passed: event-only trade impulses + pulsing token circles + v5 flows.");
 } finally {

@@ -65,7 +65,8 @@ test("Wave Core preserves LOD, capital-flow mode, pulsing tokens and server live
   assert.match(wave,/data-lod/);
   assert.match(market,/capital-flow-toggle/);
   assert.match(market,/market-live-latency/);
-  assert.match(wave,/animateMotion/);
+  assert.match(wave,/startContinuousWaves/);
+  assert.match(wave,/data-follow-wave/);
   assert.match(wave,/token-pulse-halo/);
   assert.doesNotMatch(wave,/recentBuys\.map/);
   assert.match(helius,/HELIUS_WEBHOOK_SECRET/);

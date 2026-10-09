@@ -239,3 +239,8 @@ This historical calibration is evidence about how the current heuristic behaved 
 ## Production completeness
 
 The repository includes a 15-minute production health monitor, a scheduled/manual browser soak workflow, bounded client-error telemetry, custom recovery/404 states, PWA icons and social preview metadata. The remaining external infrastructure dependency is a dedicated Solana RPC/indexer account. The provider boundary already supports separate comma-separated traffic and holder failover chains through `SOLANA_TRAFFIC_RPC_URLS` and `SOLANA_HOLDER_RPC_URLS`, with `SOLANA_RPC_URL` as the shared fallback. Without external provider credentials the deployment intentionally reports public-fallback / sampled coverage and `fullFirehose:false`.
+
+
+### Live wave motion
+
+The Map uses one frame-driven SVG renderer for both sides. Choose Auto (gentle when the system requests reduced motion), Live, or Pause in the motion control. Motion does not depend on new RPC messages; data freshness is shown separately. Returning to a visible tab resumes the same animation clock without duplicate loops. Historical BUY/SELL markers are visual replays of observed samples; new impulse markers expire after 4.2 seconds. EARLY waves never fabricate individual swaps.
