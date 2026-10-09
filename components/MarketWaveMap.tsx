@@ -279,10 +279,10 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
         const color=pool.stage==="liquidity-risk"?"#f89a9a":pool.stage==="late-risk"?"#f2a76e":pool.stage==="insufficient-data"?"#a5aaae":"#edc47d";
         const uncertain=pressure===null||pool.stage==="insufficient-data";
         return <g key={pool.id} className="early-wave-group" data-pool={pool.id} data-stage={pool.stage}>
-          <path d={d} className={styles.earlyWaveAura} stroke={color} opacity={uncertain?.16:.33}>
+          <path d={d} className={styles.earlyWaveAura} stroke={color} opacity={uncertain?0.16:0.33}>
             {animated&&<animate attributeName="d" dur={duration+"s"} values={morphValues} keyTimes="0;0.33;0.66;1" repeatCount="indefinite"/>}
           </path>
-          <path d={d} className={styles.earlyLivingWave+" early-living-wave"} stroke={color} strokeDasharray={uncertain?"5 13":"13 11"} data-shape-motion={animated?"morph":"static"} style={{animationDuration:activity.duration+"s",opacity:uncertain?.38:.9}}>
+          <path d={d} className={styles.earlyLivingWave+" early-living-wave"} stroke={color} strokeDasharray={uncertain?"5 13":"13 11"} data-shape-motion={animated?"morph":"static"} style={{animationDuration:activity.duration+"s",opacity:uncertain?0.38:0.9}}>
             {animated&&<animate attributeName="d" dur={duration+"s"} values={morphValues} keyTimes="0;0.33;0.66;1" repeatCount="indefinite"/>}
           </path>
           <g role="button" tabIndex={0} aria-label={"EARLY "+pool.name+": "+pool.stage} className={styles.earlyToken} onPointerDown={ev=>ev.stopPropagation()} onClick={ev=>{ev.stopPropagation();setEarlySelected(v=>v===pool.id?null:pool.id);onQuickAction(null)}} onKeyDown={ev=>{if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();setEarlySelected(pool.id);onQuickAction(null)}}}>
@@ -335,6 +335,10 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
    </g>
   </svg>
 
+  <div className={styles.earlyInfo} data-early-source={earlyError?"degraded":earlyObservedAt?"sampled":"warming"}>
+    <span>EARLY · {earlyError?"данните са забавени":earlyObservedAt?earlyVisible.length+" нови пула":"зареждане"} · sampled</span>
+    <button type="button" aria-label="Обнови EARLY" title="Обнови новите пулове" disabled={!liveEnabled} onClick={()=>setEarlyReload(v=>v+1)}>↻</button>
+  </div>
   <div className={styles.focusInfo}><b>{visibleTokens.length} bullish-ranked · {earlyVisible.length} EARLY</b><span> · {goodCount} GOOD</span><span> · {Math.round(mapView.k*100)}% zoom</span>{hiddenCount>0?<span> · {hiddenCount} more available in List</span>:null}<small>{lod==="far"?"zoom out reveals more candidates":lod==="near"?"detail mode keeps the strongest setups":"GOOD setups, rising Hype and BUY pressure are prioritized"}</small></div>
   {quick&&quickToken&&quickLayout&&<div className={styles.quick+" token-quick-actions token-quick-actions-overlay"} style={{left:quickLayout.left,top:quickLayout.top,width:quickLayout.width}} onPointerDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()} onDoubleClick={e=>e.stopPropagation()}>
     <a href={fomoTokenUrl(quickToken.mint)} target="_blank" rel="noreferrer">FoMo ↗</a><a href={gmgnTokenUrl(quickToken.mint)} target="_blank" rel="noreferrer">GmGn ↗</a><button className="quick-detail-action" onClick={()=>onDetails(quickToken)}>Details</button><button className="quick-holder-action" onClick={()=>onOpen(quickToken)}>Holders</button>
