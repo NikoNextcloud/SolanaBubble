@@ -21,7 +21,7 @@ export default function EarlyPoolBubbles(){
   button:{border:"1px solid #526f60",borderRadius:9,background:"#21362e",color:"#e7f6e9",padding:"7px 11px",cursor:"pointer",fontSize:12},
   badge:{border:"1px solid #76644a",borderRadius:25,color:"#f4d18d",padding:"3px 8px",fontSize:10,fontWeight:700}
  };
- return <section aria-label="Early Radar в SolanaBubble" style={{...s.card,width:"100%",minWidth:0}}>
+ return <section aria-label="Early Radar в SolanaBubble" style={{...s.card,width:"min(340px,100%)",flex:"0 1 340px",maxHeight:320,overflowY:"auto",minWidth:0}}>
  <div style={{padding:"12px 15px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",background:"linear-gradient(90deg,#24352d,#192723)"}}>
   <div><strong style={{fontSize:16,color:"#c2f5d4"}}>◉ EARLY RADAR</strong><div style={{fontSize:12,color:"#b5c9bd"}}>Открий младите токени, преди да станат шумни</div></div>
   <div style={{display:"flex",gap:8,alignItems:"center"}}><span style={s.badge}>НАБЛЮДЕНИЕ · НЕ GOOD</span><button type="button" style={s.button} aria-expanded={expanded} onClick={()=>setExpanded(v=>!v)}>{expanded?"Скрий":"Покажи"} {expanded?"⌃":"⌄"}</button></div>
