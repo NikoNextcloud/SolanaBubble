@@ -209,8 +209,6 @@ export default function MarketMap() {
   const [streamLive, setStreamLive] = useState(true);
   const [tabVisible, setTabVisible] = useState(true);
   const motion=useWaveMotionPreference();
-  const pulsesEnabled=motion.enabled;
-  const reducedMotion=motion.reduced;
   const [signalNow,setSignalNow]=useState<number|null>(null);
   useEffect(()=>{
     setSignalNow(Date.now());
