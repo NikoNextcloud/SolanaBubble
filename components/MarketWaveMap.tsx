@@ -203,7 +203,7 @@ export default function MarketWaveMap({tokens,events,width,height,now,selectedMi
     <radialGradient id="hypeFlareFill" cx="50%" cy="50%" r="50%"><stop offset="0%" stopColor="#effff6" stopOpacity=".26"/><stop offset="34%" stopColor="#8dffc0" stopOpacity=".16"/><stop offset="72%" stopColor="#54e99d" stopOpacity=".07"/><stop offset="100%" stopColor="#54e99d" stopOpacity="0"/></radialGradient>
    </defs>
    <g transform={"translate("+mapView.x+" "+mapView.y+") scale("+mapView.k+")"} className="market-pan-layer">
-    <text x="32" y="34" className={styles.axis+" wave-axis-title"}>GOOD / BULLISH</text>
+    <text x="32" y="34" className={styles.axis+" wave-axis-title"}>GOOD / ORDER FLOW</text>
     <text x={scaleX+Math.max(55,(safeWidth-scaleX)*.35)} y="34" className={styles.axis+" wave-axis-title"}>EARLY RADAR</text>
     <text x={scaleX-24} y="34" className={styles.axis+" wave-axis-title"}>FLOW</text>
     {[100,75,50,25,0,-25,-50,-75,-100].map(score=><g key={score}>
