@@ -702,7 +702,7 @@ export default function MarketMap() {
         onClick={() => setMobileToolsOpen((value) => !value)}
       >{mobileToolsOpen ? "Скрий филтрите" : "Филтри и качество"} {mobileToolsOpen ? "↑" : "↓"}</button>
       <div className={`market-tools-drawer ${mobileToolsOpen ? "is-open" : ""}`}>
-        <SavedMarketFilters/>
+        <div style={{display:"flex",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}><div style={{flex:"1 1 550px",minWidth:0}}><SavedMarketFilters/></div>{viewMode === "map" && <EarlyPoolBubbles/>}</div>
         <DataQuality marketAt={updated}/>
       </div>
       <section className="market-stats reference-market-stats">
@@ -728,7 +728,6 @@ export default function MarketMap() {
         </div>
       </section>
 
-      {viewMode === "map" && <div style={{margin:"10px 0 14px"}}><div style={{display:"flex",justifyContent:"space-between",gap:10,flexWrap:"wrap",alignItems:"center",padding:"9px 2px"}}><strong style={{fontSize:14}}>Две гледни точки към пазара</strong><span style={{fontSize:12,opacity:.8}}>EARLY = нови кандидати · GOOD = потвърдени bullish setups</span></div><EarlyPoolBubbles/></div>}
       <section className="market-workspace reference-market-workspace">
         <div className="market-map" ref={wrap}>
           {viewMode === "map" && <div className="lovable-map-hint">Клик: FoMo/GmGn · Двоен клик: Holders · GOOD setup-ите са с приоритет · Hype ↑ усилва вълната към края, Hype ↓ я затихва · Zoom out до 30 токена</div>}
