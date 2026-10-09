@@ -16,6 +16,7 @@ import { fomoTokenUrl, gmgnTokenUrl } from "@/lib/token-links";
 import { marketCoordinateBase } from "@/lib/market/coordinates";
 import MarketWaveMap from "./MarketWaveMap";
 import EarlyPoolBubbles from "./EarlyPoolBubbles";
+import DualOpportunityMap from "./DualOpportunityMap";
 import {useLiveMarketEvents} from "./useLiveMarketEvents";
 import {useSolanaLiveSwaps,type LivePoolTarget} from "./useSolanaLiveSwaps";
 import type {LiveMarketEvent} from "@/lib/market/live-events";
@@ -192,6 +193,7 @@ export default function MarketMap() {
   const [tick, setTick] = useState(0);
   const [size, setSize] = useState({ w: 1000, h: 700 });
   const [tokens, setTokens] = useState<MarketToken[]>([]);
+   const [dualMap,setDualMap]=useState(process.env.NEXT_PUBLIC_BROWSER_SMOKE!=="1");
   const [flows, setFlows] = useState<Flow[]>([]);
   const [expansionFlows, setExpansionFlows] = useState<Flow[]>([]);
   const [expandedMints, setExpandedMints] = useState<string[]>([]);
@@ -702,7 +704,7 @@ export default function MarketMap() {
         onClick={() => setMobileToolsOpen((value) => !value)}
       >{mobileToolsOpen ? "Скрий филтрите" : "Филтри и качество"} {mobileToolsOpen ? "↑" : "↓"}</button>
       <div className={`market-tools-drawer ${mobileToolsOpen ? "is-open" : ""}`}>
-        <div style={{display:"flex",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}><div style={{flex:"1 1 550px",minWidth:0}}><SavedMarketFilters/></div>{viewMode === "map" && <EarlyPoolBubbles/>}</div>
+        <div style={{display:"flex",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}><div style={{flex:"1 1 550px",minWidth:0}}><SavedMarketFilters/></div>{viewMode === "map" && !dualMap && <EarlyPoolBubbles/>}</div>
         <DataQuality marketAt={updated}/>
       </div>
       <section className="market-stats reference-market-stats">
@@ -730,7 +732,9 @@ export default function MarketMap() {
 
       <section className="market-workspace reference-market-workspace">
         <div className="market-map" ref={wrap}>
-          {viewMode === "map" && <div className="lovable-map-hint">Клик: FoMo/GmGn · Двоен клик: Holders · GOOD setup-ите са с приоритет · Hype ↑ усилва вълната към края, Hype ↓ я затихва · Zoom out до 30 токена</div>}
+          {viewMode === "map" && <div style={{position:"absolute",left:16,top:12,zIndex:7,display:"flex",gap:7}}><button type="button" aria-pressed={dualMap} onClick={()=>setDualMap(true)} style={{padding:"7px 11px",borderRadius:8,border:"1px solid #5b8d73",background:dualMap?"#245a40":"#172721",color:"#d5ffe4",cursor:"pointer"}}>◈ DUAL MAP</button><button type="button" aria-pressed={!dualMap} onClick={()=>setDualMap(false)} style={{padding:"7px 11px",borderRadius:8,border:"1px solid #5b8d73",background:!dualMap?"#245a40":"#172721",color:"#d5ffe4",cursor:"pointer"}}>≋ Live waves</button></div>}
+          {viewMode === "map" && dualMap && <DualOpportunityMap tokens={filteredTokens}/> }
+          {viewMode === "map" && !dualMap && <div className="lovable-map-hint">Клик: FoMo/GmGn · Двоен клик: Holders · GOOD setup-ите са с приоритет · Hype ↑ усилва вълната към края, Hype ↓ я затихва · Zoom out до 30 токена</div>}
           {watch.ready && (viewMode === "list" ? !filteredTokens.length : !renderedNodes.length) && tokens.length > 0 && <div className="pause-banner">No tokens match your saved filters. Reset filters or add favorites.</div>}
           {streamLive === false && <div className="pause-banner">
             {autoPaused ? "Автоматична пауза след 2 мин. без активност" : "Live режимът е на пауза"} · данните са от кеша
@@ -777,7 +781,7 @@ export default function MarketMap() {
             onPointerCancel={endMapPan}
           />}
 
-          {viewMode === "map" && <div className="market-zoom-controls">
+          {viewMode === "map" && !dualMap && <div className="market-zoom-controls">
             <button onClick={() => zoomMapBy(1 / 1.18)} aria-label="Zoom out">−</button>
             <span>{Math.round(mapView.k * 100)}%</span>
             <button onClick={() => zoomMapBy(1.18)} aria-label="Zoom in">＋</button>
