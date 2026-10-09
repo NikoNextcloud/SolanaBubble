@@ -1,0 +1,21 @@
+name: Finish wave styles
+on:
+  push:
+    branches: [fix/continuous-wave-renderer-20261009]
+    paths: [scripts/finish_wave_styles.py, .github/workflows/finish-wave-styles.yml]
+permissions:
+  contents: write
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - run: python3 scripts/finish_wave_styles.py
+      - name: Commit scoped styles and remove one-shot installer
+        run: |
+          git config user.name 'SolanaBubble automation'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add components/MarketMap.tsx components/MarketWaveMap.module.css app/globals.css .github/workflows/ci.yml scripts/finish_wave_styles.py .github/workflows/finish-wave-styles.yml
+          git commit -m "fix: scope motion styles and retain browser motion proof artifact"
+          git push origin HEAD:fix/continuous-wave-renderer-20261009
