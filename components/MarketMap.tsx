@@ -702,10 +702,7 @@ export default function MarketMap() {
         onClick={() => setMobileToolsOpen((value) => !value)}
       >{mobileToolsOpen ? "Скрий филтрите" : "Филтри и качество"} {mobileToolsOpen ? "↑" : "↓"}</button>
       <div className={`market-tools-drawer ${mobileToolsOpen ? "is-open" : ""}`}>
-        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:16,flexWrap:"wrap"}}>
-          <div style={{flex:"1 1 550px",minWidth:0}}><SavedMarketFilters/></div>
-          {viewMode === "map" && <EarlyPoolBubbles/>}
-        </div>
+        <div style={{display:"flex",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}><div style={{flex:"1 1 550px",minWidth:0}}><SavedMarketFilters/></div>{viewMode === "map" && <EarlyPoolBubbles/>}</div>
         <DataQuality marketAt={updated}/>
       </div>
       <section className="market-stats reference-market-stats">
