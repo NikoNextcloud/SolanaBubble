@@ -15,6 +15,7 @@ import {matchesWatchFilters} from "@/lib/watchlist";
 import { fomoTokenUrl, gmgnTokenUrl } from "@/lib/token-links";
 import { marketCoordinateBase } from "@/lib/market/coordinates";
 import MarketWaveMap from "./MarketWaveMap";
+import EarlyPoolBubbles from "./EarlyPoolBubbles";
 import {useLiveMarketEvents} from "./useLiveMarketEvents";
 import {useSolanaLiveSwaps,type LivePoolTarget} from "./useSolanaLiveSwaps";
 import type {LiveMarketEvent} from "@/lib/market/live-events";
@@ -729,6 +730,7 @@ export default function MarketMap() {
 
       <section className="market-workspace reference-market-workspace">
         <div className="market-map" ref={wrap}>
+           {viewMode === "map" && <EarlyPoolBubbles/>}
           {viewMode === "map" && <div className="lovable-map-hint">Клик: FoMo/GmGn · Двоен клик: Holders · GOOD setup-ите са с приоритет · Hype ↑ усилва вълната към края, Hype ↓ я затихва · Zoom out до 30 токена</div>}
           {watch.ready && (viewMode === "list" ? !filteredTokens.length : !renderedNodes.length) && tokens.length > 0 && <div className="pause-banner">No tokens match your saved filters. Reset filters or add favorites.</div>}
           {streamLive === false && <div className="pause-banner">
