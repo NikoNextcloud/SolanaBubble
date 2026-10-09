@@ -96,3 +96,20 @@
 .earlyInfo button{background:#403321;border:1px solid #8c704a;color:#f5dfb2;border-radius:5px;cursor:pointer;padding:3px 8px;font-size:13px}
 .earlyInfo button:disabled{opacity:.4;cursor:not-allowed}
 @media(max-width:700px){.earlyInfo{font-size:8px;bottom:40px;right:8px;padding:4px 5px}.earlyLegend{font-size:7px}}
+
+/* The drawing loop owns geometry and dash phase; CSS/SMIL cannot override it. */
+.svg[data-motion-engine="raf-v2"] .livingWave,.svg[data-motion-engine="raf-v2"] .earlyLivingWave,.svg[data-motion-engine="raf-v2"] .opportunityWave{animation:none!important;will-change:auto}
+.svg[data-motion-state="background"] *,.paused *{animation-play-state:paused!important}
+.svg[data-motion-style="gentle"] .pulseHalo,.svg[data-motion-style="gentle"] .hypeAura,.svg[data-motion-style="gentle"] .hypeFlare,.svg[data-motion-style="gentle"] .coinHypeExtreme,.svg[data-motion-style="gentle"] .earlyHalo,.svg[data-motion-style="gentle"] .flowDotLive{animation:none!important}
+.root{background:radial-gradient(ellipse at 5% 40%,rgba(28,83,61,.20),transparent 52%),radial-gradient(ellipse at 95% 35%,rgba(125,88,31,.13),transparent 48%),#0e1817;border-color:#344c42;border-radius:12px}
+.livingWaveBase{stroke-width:5;filter:blur(1px)}
+.livingWave{stroke-width:2.25;opacity:.92}
+.livingWaveNeutral{opacity:.62}
+.earlyLivingWave{stroke-width:2.5}
+.earlyCoin{fill:#352e20;stroke-width:2.75}
+.earlyInfo{bottom:36px}
+.status{right:12px;left:12px;max-width:none;white-space:normal;font-size:9px;line-height:1.4;border-color:#354b42;padding:6px 9px}
+.quick a,.quick button{font-size:11px;padding:7px 8px}
+@media(max-width:700px){.status{font-size:8px}.quick a,.quick button{font-size:10px;padding:6px}.earlyInfo{bottom:57px}}
+:global(.wave-motion-control){display:inline-flex;align-items:center;gap:8px;color:#bcd6c9;font:600 12px/1.3 system-ui}
+:global(.wave-motion-control select){min-height:32px;padding:5px 10px;border-radius:7px;border:1px solid #527a65;background:#152d23;color:#dcfbe9;cursor:pointer}

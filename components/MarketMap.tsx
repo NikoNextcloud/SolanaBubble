@@ -15,6 +15,7 @@ import {matchesWatchFilters} from "@/lib/watchlist";
 import { fomoTokenUrl, gmgnTokenUrl } from "@/lib/token-links";
 import { marketCoordinateBase } from "@/lib/market/coordinates";
 import MarketWaveMap from "./MarketWaveMap";
+import {useWaveMotionPreference,type WaveMotionMode} from "./useWaveMotionPreference";
 import {useLiveMarketEvents} from "./useLiveMarketEvents";
 import {useSolanaLiveSwaps,type LivePoolTarget} from "./useSolanaLiveSwaps";
 import type {LiveMarketEvent} from "@/lib/market/live-events";
@@ -207,19 +208,17 @@ export default function MarketMap() {
   const [networkSwaps1h, setNetworkSwaps1h] = useState(0);
   const [streamLive, setStreamLive] = useState(true);
   const [tabVisible, setTabVisible] = useState(true);
-  const [pulsesEnabled,setPulsesEnabled]=useState(true);
-  const [reducedMotion,setReducedMotion]=useState(false);
+  const motion=useWaveMotionPreference();
+  const pulsesEnabled=motion.enabled;
+  const reducedMotion=motion.reduced;
   const [signalNow,setSignalNow]=useState<number|null>(null);
   useEffect(()=>{
-    try {setPulsesEnabled(localStorage.getItem('solanabubble:map-pulses')!=='off');}catch{}
-    const media=window.matchMedia('(prefers-reduced-motion: reduce)');
-    const sync=()=>setReducedMotion(media.matches);sync();media.addEventListener('change',sync);
-    setSignalNow(Date.now());const timer=setInterval(()=>setSignalNow(Date.now()),30000);
-    return()=>{media.removeEventListener('change',sync);clearInterval(timer);};
+    setSignalNow(Date.now());
+    const timer=setInterval(()=>setSignalNow(Date.now()),30000);
+    return()=>clearInterval(timer);
   },[]);
   // Rendering motion is user-controlled; stale/paused live data must not freeze the map.
-  const animateSignals=pulsesEnabled&&!reducedMotion;
-  function togglePulses(){setPulsesEnabled(v=>{try{localStorage.setItem('solanabubble:map-pulses',v?'off':'on');}catch{}return !v;});}
+  const animateSignals=motion.enabled;
 
   const liveTargets=useMemo<LivePoolTarget[]>(()=>{
     const ranked=[...tokens].sort((a,b)=>(Number(b.hypeScore??0)+Math.log10(Math.max(1,b.volume1h))*8)-(Number(a.hypeScore??0)+Math.log10(Math.max(1,a.volume1h))*8));
@@ -545,25 +544,9 @@ export default function MarketMap() {
     lastActivity.current = Date.now();
   }
 
-  useEffect(() => {
-    const activity = () => {
-      lastActivity.current = Date.now();
-      if (autoPaused) setAutoPaused(false);
-    };
-    const events = ["pointerdown", "keydown", "wheel", "touchstart"] as const;
-    for (const name of events) window.addEventListener(name, activity, { passive: true });
+  // Visibility already suspends provider hooks and polling. Watching the map
+  // without touching it must not turn off live data after two minutes.
 
-    const timer = window.setInterval(() => {
-      if (streamLive === true && Date.now() - lastActivity.current >= 2 * 60 * 1000) {
-        changeLive(false, true);
-      }
-    }, 10000);
-
-    return () => {
-      for (const name of events) window.removeEventListener(name, activity);
-      window.clearInterval(timer);
-    };
-  }, [streamLive, autoPaused]);
 
   async function expandToken(t: Node) {
     const currentDepth = t.depth ?? 0;
@@ -691,7 +674,7 @@ export default function MarketMap() {
             onClick={() => setAutoGraph((v) => !v)}
             title="Автоматично разгръща токени със surge или buy pressure, най-много веднъж на 45 секунди."
           >{autoGraph ? "✦ Auto graph" : "○ Auto graph"}</button>
-          <button type="button" aria-pressed={pulsesEnabled} onClick={togglePulses} title={reducedMotion?'Reduced motion: импулсите остават видими, но CSS движението е ограничено.':'Спира визуалните ефекти; обновяването на данните остава активно.'}>◌ Анимации: {pulsesEnabled?'Вкл':'Изкл'}</button>
+          <label className="wave-motion-control"><span>Движение</span><select aria-label="Wave motion" value={motion.mode} onChange={e=>motion.setMode(e.target.value as WaveMotionMode)}><option value="auto">{motion.gentle?"Авто · спокойно":"Авто · живо"}</option><option value="live">Живо</option><option value="off">Пауза</option></select></label>
           <button type="button" onClick={resetMarketView}>↺ Нулирай изгледа</button>
         </div>
       </div>
@@ -765,6 +748,7 @@ export default function MarketMap() {
             lod={mapLod}
             capitalFlowOnly={capitalFlowOnly}
             animated={animateSignals}
+            gentleMotion={motion.gentle}
             liveEnabled={streamLive&&tabVisible}
             maxComets={size.w<=700?10:15}
             onSelect={token=>{const node=nodeMap.current.get(token.mint);if(node){setSelected(node);setMobileDetailOpen(false);void expandToken(node);}}}
