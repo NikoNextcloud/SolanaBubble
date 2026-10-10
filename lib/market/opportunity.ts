@@ -45,6 +45,7 @@ export function goodOpportunitySignal(token:any,strength=0):GoodOpportunitySigna
   if(strength<8)blockers.push('BUY strength below +8');
   if(pressure<54)blockers.push('Buy pressure below 54%');
   if(token.liquidityWarning)blockers.push('Liquidity warning');
+  if(traffic==='degraded')blockers.push('Live trade coverage degraded');
   if(token.divergenceSignal==='bearish')blockers.push('Bearish divergence');
   if(velocity!=null&&velocity<-.15)blockers.push('Hype is falling');
   const hypeConstructive=velocity!=null?velocity>=.15:token.divergenceSignal==='bullish'&&momentum>=70;

@@ -190,3 +190,16 @@ test('living wave exposes Hype direction and changes directional energy',()=>{
     livingWavePath(100,200,600,180,falling,0)
   );
 });
+
+
+test('degraded trade coverage never qualifies GOOD even when bullish metrics are strong',()=>{
+  const candidate={mint:'quality-with-bad-rpc',opportunityScore:96,signalConfidenceScore:96,
+    manipulationRiskScore:12,capitalFlowScore:91,momentumScore:92,hypeVelocity:2.4,
+    observedBuyPressure15m:85,trendPersistenceScore:94,trafficEvidence:'usable'};
+  const trusted=goodOpportunitySignal(candidate,65);
+  assert.equal(trusted.active,true);
+  const degraded=goodOpportunitySignal({...candidate,trafficEvidence:'degraded'},65);
+  assert.equal(degraded.active,false);
+  assert.ok(degraded.blockers.includes('Live trade coverage degraded'));
+  assert.notEqual(degraded.tier,'strong');
+});
